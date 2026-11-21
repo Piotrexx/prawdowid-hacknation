@@ -10,20 +10,15 @@ import { useLoad } from "@/lib/useLoad";
 import { CorpusSummary } from "./CorpusSummary";
 import { SourceCard } from "./SourceCard";
 
-type EnabledFilter = "all" | "enabled" | "disabled";
-
 const FIELD_CLASS =
   "mt-1 block min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3";
 
 function matches(
   source: SourceCatalogEntry,
   type: SourceType | "all",
-  enabled: EnabledFilter,
   query: string,
 ): boolean {
   if (type !== "all" && source.source_type !== type) return false;
-  if (enabled === "enabled" && !source.enabled) return false;
-  if (enabled === "disabled" && source.enabled) return false;
   if (!query) return true;
   const haystack = [source.name, source.publisher, source.qualification, source.homepage]
     .join(" ")
@@ -33,11 +28,10 @@ function matches(
 
 function SourceList({ sources }: { sources: SourceCatalogEntry[] }) {
   const [type, setType] = useState<SourceType | "all">("all");
-  const [enabled, setEnabled] = useState<EnabledFilter>("all");
   const [search, setSearch] = useState("");
 
   const query = search.trim().toLocaleLowerCase("pl");
-  const visible = sources.filter((source) => matches(source, type, enabled, query));
+  const visible = sources.filter((source) => matches(source, type, query));
 
   return (
     <section aria-labelledby="lista-zrodel">
@@ -48,7 +42,7 @@ function SourceList({ sources }: { sources: SourceCatalogEntry[] }) {
       <form
         role="search"
         aria-label="Filtrowanie listy źródeł"
-        className="mt-4 grid gap-4 sm:grid-cols-3"
+        className="mt-4 grid gap-4 sm:grid-cols-2"
         onSubmit={(event) => event.preventDefault()}
       >
         <label className="block font-medium">
@@ -74,18 +68,6 @@ function SourceList({ sources }: { sources: SourceCatalogEntry[] }) {
                 {SOURCE_TYPE_LABELS[value]}
               </option>
             ))}
-          </select>
-        </label>
-        <label className="block font-medium">
-          Stan
-          <select
-            value={enabled}
-            onChange={(event) => setEnabled(event.target.value as EnabledFilter)}
-            className={FIELD_CLASS}
-          >
-            <option value="all">Włączone i wyłączone</option>
-            <option value="enabled">Tylko włączone</option>
-            <option value="disabled">Tylko wyłączone</option>
           </select>
         </label>
       </form>

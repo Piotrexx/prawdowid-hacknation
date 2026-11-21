@@ -181,8 +181,6 @@ class SourceCatalogEntry(BaseModel):
     storage: Literal["full_text", "excerpt", "structured"]
     qualification: str
     update_policy: str
-    enabled: bool
-    disabled_reason: str | None = None
     documents: int = 0
     newest: date | None = None
 

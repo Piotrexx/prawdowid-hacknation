@@ -279,5 +279,5 @@ def test_sources_and_health_endpoints(client):
     health = client.get(f"{API}/health").json()
 
     assert sources["corpus"]["documents"] == 5 and sources["rules"]
-    assert any(not s["enabled"] and s["disabled_reason"] for s in sources["sources"])
+    assert all(s["qualification"] and s["license"] for s in sources["sources"])
     assert health["retrieval_mode"] == "bm25" and health["retention_days"] == 30

@@ -1,11 +1,8 @@
-# Katalog źródeł Prawdowida. Jedyna droga, którą dokument może trafić do korpusu.
-# Zmiana katalogu = zmiana w repozytorium (audytowalna historia w git).
-
 rules:
   - "Do korpusu trafiają wyłącznie polskojęzyczne źródła wpisane do tego katalogu wraz z uzasadnieniem kwalifikacji."
   - "Poziom 1: źródła pierwotne i urzędowe (organy państwa, instytucje UE, akty prawne, dane publiczne). Poziom 2: organizacje fact-checkingowe deklarujące standardy IFCN/EFCSN. Poziom 3: media – tylko jako kontekst."
   - "Każdy dokument ma zapisany adres, wydawcę, datę publikacji (jeśli podana) i datę pobrania."
-  - "Szanujemy robots.txt i blokady serwisów. Źródło, które blokuje automatyczne pobieranie, jest wyłączone do czasu uzgodnienia dostępu – nie obchodzimy zabezpieczeń ani paywalli."
+  - "Szanujemy robots.txt i blokady serwisów. Źródło, które blokuje automatyczne pobieranie, nie trafia do katalogu do czasu uzgodnienia dostępu – nie obchodzimy zabezpieczeń ani paywalli."
   - "Treści na otwartych licencjach i materiały urzędowe przechowujemy w pełnym tekście. Dla treści chronionych prawem autorskim przechowujemy tylko tytuł, krótki fragment i link albo dane strukturalne (twierdzenie, ocena, link)."
   - "Źródło wykluczamy, gdy: straci status będący podstawą kwalifikacji, zmieni warunki korzystania na niezgodne z naszym użyciem, albo powtarzalnie publikuje sprostowane informacje bez korekt."
   - "Status źródła (np. sankcje UE) ani obecność domeny w katalogu incydentów nie przesądza o prawdziwości konkretnej treści – może najwyżej wywołać neutralne ostrzeżenie."
@@ -37,19 +34,6 @@ sources:
     update_policy: "Codziennie; nowe pozycje bieżącego rocznika."
     connector: sejm_eli
     params: { publisher: DU, year: 2026, limit: 80, types: ["Ustawa", "Umowa międzynarodowa", "Oświadczenie rządowe"] }
-
-  - id: consilium
-    name: "Rada UE i Rada Europejska – komunikaty prasowe"
-    publisher: "Rada Unii Europejskiej"
-    homepage: "https://www.consilium.europa.eu/pl/press/press-releases/"
-    source_type: official
-    tier: 1
-    license: "Do potwierdzenia w nocie prawnej serwisu"
-    storage: excerpt
-    qualification: "Źródło pierwotne: oficjalne komunikaty instytucji UE (m.in. sankcje, konkluzje)."
-    update_policy: "Po uzgodnieniu dostępu."
-    enabled: false
-    disabled_reason: "Serwis wymaga kontroli przeglądarki (także dla robots.txt), więc automatyczne pobieranie jest zablokowane."
 
   - id: cert-pl
     name: "CERT Polska"
@@ -180,30 +164,3 @@ sources:
     update_policy: "Codziennie; kanał RSS."
     connector: rss
     params: { feed: "https://niebezpiecznik.pl/feed/", max_items: 20 }
-
-  # --- źródła zakwalifikowane merytorycznie, ale wyłączone z automatycznego pobierania ---
-  - id: demagog
-    name: "Demagog"
-    publisher: "Stowarzyszenie Demagog"
-    homepage: "https://demagog.org.pl"
-    source_type: factcheck
-    tier: 2
-    license: "Prawa zastrzeżone; robots.txt: Content-Signal search=yes, ai-train=no"
-    storage: excerpt
-    qualification: "Organizacja fact-checkingowa deklarująca standardy IFCN/EFCSN."
-    update_policy: "Po uzgodnieniu dostępu (API lub eksport)."
-    enabled: false
-    disabled_reason: "Serwis blokuje automatyczne pobieranie (HTTP 403). Nie obchodzimy zabezpieczeń – potrzebne uzgodnienie dostępu."
-
-  - id: afp-sprawdzam
-    name: "AFP Sprawdzam"
-    publisher: "Agence France-Presse"
-    homepage: "https://sprawdzam.afp.com"
-    source_type: factcheck
-    tier: 2
-    license: "Prawa zastrzeżone (AFP)"
-    storage: excerpt
-    qualification: "Redakcja fact-checkingowa deklarująca kodeks IFCN."
-    update_policy: "Po uzgodnieniu dostępu."
-    enabled: false
-    disabled_reason: "Serwis blokuje automatyczne pobieranie (HTTP 403). Potrzebne uzgodnienie dostępu."
