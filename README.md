@@ -5,7 +5,7 @@ Obywatel wkleja wiadomość, link albo zrzut ekranu na stronie WWW i dostaje
 zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą informacją, czego nie udało się ustalić.
 
 > Prototyp hackathonowy (wyzwanie MSZ „Prawdowid”). Nie jest oficjalną usługą.
-> Zespół: _do uzupełnienia_
+> Zespół: Jan Skrobot, Dima Mehalatii, Piotr Łopatecki
 
 ## Co robi
 

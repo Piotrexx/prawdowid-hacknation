@@ -57,7 +57,11 @@ export function TokenPrompt({ notice, takeFocus, onAccepted }: TokenPromptProps)
     >
       <div>
         <label htmlFor="token-moderatora" className="block text-lg font-semibold">
-          Token moderatora
+          Token moderatora{" "}
+          <span aria-hidden="true" className="required-mark">
+            *
+          </span>
+          <span className="sr-only"> (pole wymagane)</span>
         </label>
         <p id="token-pomoc" className="text-muted">
           Token jest pamiętany tylko do zamknięcia tej karty przeglądarki.
@@ -67,6 +71,7 @@ export function TokenPrompt({ notice, takeFocus, onAccepted }: TokenPromptProps)
           ref={inputRef}
           type="password"
           autoComplete="off"
+          aria-required="true"
           value={token}
           aria-describedby={message ? "token-pomoc token-blad" : "token-pomoc"}
           aria-invalid={error ? true : undefined}

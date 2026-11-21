@@ -190,6 +190,11 @@
     background: var(--accent);
   }
 
+  .required-mark {
+    color: var(--bad-fg);
+    font-weight: 700;
+  }
+
   .skip-link {
     position: absolute;
     left: 0.5rem;
