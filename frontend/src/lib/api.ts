@@ -188,11 +188,12 @@ export function getSources(signal?: AbortSignal): Promise<SourcesResponse> {
   return getJson("/sources", { signal });
 }
 
-export async function sendSms(from: string, body: string): Promise<void> {
-  // The reply is TwiML; only delivery matters here, the thread endpoint has the content.
-  await send("/channels/sms/webhook", {
+export async function sendSms(phone: string, text: string): Promise<void> {
+  // The server only acknowledges receipt; the reply shows up in the thread endpoint.
+  await send("/channels/sms/messages", {
     method: "POST",
-    body: new URLSearchParams({ From: from, Body: body }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, text }),
     timeoutMs: CHECK_TIMEOUT_MS,
   });
 }

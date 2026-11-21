@@ -61,13 +61,9 @@ class Settings(BaseSettings):
     case_notify_threshold: int = 2
     moderator_webhook_url: str | None = None
 
-    # --- kanał SMS / WhatsApp (format webhooka Twilio) ---
-    sms_mode: Literal["demo", "twilio", "off"] = "demo"
-    twilio_account_sid: str | None = None
-    twilio_auth_token: SecretStr | None = None
-    twilio_from: str | None = None
+    # --- demonstracyjny kanał SMS (symulator w interfejsie WWW) ---
+    sms_mode: Literal["demo", "off"] = "demo"
     public_web_url: str = "http://localhost:3000"
-    public_api_url: str = "http://localhost:8000"
 
     database_url: str = f"sqlite:///{DATA_DIR / 'prawdowid.db'}"
     corpus_dir: Path = DATA_DIR / "corpus"

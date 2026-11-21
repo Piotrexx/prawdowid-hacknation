@@ -3,7 +3,6 @@ from datetime import date
 
 import pytest
 
-from app.channels.sms import _valid_twilio_signature
 from app.config import Settings
 from app.core.verdict import resolve_verdict
 from app.retrieval.index import CorpusIndex, split_passages
@@ -104,11 +103,3 @@ def test_long_documents_are_split_on_sentence_boundaries():
     doc = make_doc("dlugi", " ".join(f"To jest zdanie numer {n} o sprawach miasta." for n in range(60)))
     passages = split_passages(doc)
     assert len(passages) > 1 and all(p.endswith(".") and len(p) <= 760 for p in passages)
-
-
-def test_twilio_signature_is_verified():
-    settings = Settings(_env_file=None, twilio_auth_token="12345")
-    url = "https://mycompany.com/myapp.php?foo=1&bar=2"
-    form = {"CallSid": "CA1234567890ABCDE", "Caller": "+12349013030", "Digits": "1234", "From": "+12349013030", "To": "+18005551212"}
-    assert _valid_twilio_signature(settings, url, form, "0/KCTR6DLpKmkAf8muzZqo1nDgQ=")
-    assert not _valid_twilio_signature(settings, url, form | {"Digits": "9999"}, "0/KCTR6DLpKmkAf8muzZqo1nDgQ=")

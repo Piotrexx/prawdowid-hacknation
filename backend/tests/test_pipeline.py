@@ -178,8 +178,8 @@ def test_clarification_and_out_of_scope_are_separate_from_verdicts(client, provi
 def test_same_report_gives_same_result_on_web_and_sms(client, provider):
     confirm_vaccines(provider)
     web = check(client, VACCINE_CLAIM)
-    sent = client.post(f"{API}/channels/sms/webhook", data={"From": "+48500100200", "Body": VACCINE_CLAIM})
-    assert sent.status_code == 200 and "<Response>" in sent.text
+    sent = client.post(f"{API}/channels/sms/messages", json={"phone": "+48500100200", "text": VACCINE_CLAIM})
+    assert sent.status_code == 202 and sent.json() == {"accepted": True}
 
     thread = client.get(f"{API}/channels/sms/demo/thread", params={"phone": "+48500100200"}).json()["messages"]
     assert [m["direction"] for m in thread] == ["in", "out"]

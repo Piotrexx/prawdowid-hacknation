@@ -71,7 +71,6 @@ export const CASE_STATUSES = Object.keys(CASE_STATUS_LABELS) as CaseStatus[];
 const CHANNEL_LABELS: Record<string, string> = {
   web: "Strona WWW",
   sms: "SMS",
-  whatsapp: "WhatsApp",
 };
 
 const INPUT_KIND_LABELS: Record<string, string> = {

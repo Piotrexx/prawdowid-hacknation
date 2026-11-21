@@ -56,7 +56,7 @@ npx tsc --noEmit   # kontrola typów (po `npm run build` lub `npx next typegen`)
 | `/sprawdzenie/[id]` | Zapisany wynik sprawdzenia (stały link).                                |
 | `/zrodla`           | Katalog źródeł, zasady kwalifikowania, statystyki zbioru.               |
 | `/o-systemie`       | Jak to działa: zakres, oceny, prywatność, użycie AI, stan serwera.      |
-| `/sms`              | Symulator kanału SMS / WhatsApp (wymaga trybu demonstracyjnego).        |
+| `/sms`              | Symulator kanału SMS (wymaga trybu demonstracyjnego).                   |
 | `/moderator`        | Panel moderatora: sprawy, statystyki, zdarzenia, zgłoszenia, eksport.   |
 
 ## Układ kodu

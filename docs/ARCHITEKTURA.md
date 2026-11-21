@@ -80,7 +80,7 @@ wyszukiwanie po słowach kluczowych z ostrzeżeniem `retrieval_degraded`.
   Strona podana przez użytkownika jest **materiałem do sprawdzenia, nigdy dowodem**.
 - **Wejście.** Walidacja Pydantic, limity długości, limit rozmiaru i typu obrazu, limit żądań na klienta.
 - **Sekrety.** Tylko zmienne środowiskowe / `.env` (w `.gitignore`); panel moderatora wymaga `ADMIN_TOKEN`
-  (bez niego jest wyłączony); webhook Twilio weryfikuje podpis.
+  (bez niego jest wyłączony).
 - **Eksport.** CSV neutralizuje formuły arkusza (CSV injection).
 
 ## Prywatność
@@ -113,8 +113,9 @@ Jedno zgłoszenie to 1 wywołanie modelu na wydzielenie twierdzeń + 1 na każde
 To założenia, nie pomiar: faktyczne zużycie tokenów podaje `meta` każdej odpowiedzi i raport ewaluacji.
 Powtórzone zgłoszenia (24 h) są obsługiwane z pamięci wyników bez kosztu modelu.
 
-Kanał SMS: adapter demonstracyjny nic nie kosztuje. Przy prawdziwym numerze (Twilio) dochodzi opłata operatora
-za numer i każdą wiadomość – według aktualnego cennika operatora; użytkownik płaci standardową opłatę za SMS.
+Kanał SMS to adapter demonstracyjny (symulator w interfejsie WWW) – nic nie kosztuje i nie łączy się
+z żadnym operatorem. Podłączenie prawdziwego operatora SMS oznacza nowy adapter w `app/channels/`
+oraz opłaty według jego cennika; na razie nie jest zaimplementowane.
 
 Większy ruch: wąskim gardłem jest model. Usługa jest bezstanowa poza bazą – można uruchomić wiele instancji
 po przeniesieniu limitu żądań do Redis i bazy do Postgresa. Indeks (ok. 1 100 fragmentów) odpowiada w ~20 ms.

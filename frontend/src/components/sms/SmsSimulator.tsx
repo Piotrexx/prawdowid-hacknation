@@ -29,9 +29,8 @@ export function SmsSimulator() {
     <div className="space-y-6">
       <Notice tone="info" icon={FlaskConical} title="To jest symulator. Nie wysyła prawdziwych SMS-ów.">
         <p>
-          Pokazuje, jak Prawdowid odpowiada w kanale SMS i WhatsApp. Korzysta z tej
-          samej logiki sprawdzania co strona WWW. Wiadomości trafiają do serwera w
-          formacie zgodnym z webhookiem Twilio.
+          Pokazuje, jak Prawdowid odpowiada w kanale SMS. Korzysta z tej samej
+          logiki sprawdzania co strona WWW.
         </p>
       </Notice>
 

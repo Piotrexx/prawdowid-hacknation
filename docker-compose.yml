@@ -7,7 +7,6 @@ services:
     environment:
       CORS_ORIGINS: http://localhost:3000
       PUBLIC_WEB_URL: http://localhost:3000
-      PUBLIC_API_URL: http://localhost:8000
     ports:
       - "8000:8000"
     volumes:

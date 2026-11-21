@@ -4,7 +4,7 @@
 
 | Co | Stan |
 |---|---|
-| Testy automatyczne (`uv run pytest`) | **60/60 przechodzi.** Model jest w nich podstawiony, więc sprawdzają logikę, reguły, bezpieczeństwo i kanały – nie jakość modelu. |
+| Testy automatyczne (`uv run pytest`) | **59/59 przechodzi.** Model jest w nich podstawiony, więc sprawdzają logikę, reguły, bezpieczeństwo i kanały – nie jakość modelu. |
 | Żądania do dostawców modelu | Kształt żądań (API zgodne z OpenAI, w tym tryb `json_object` używany przez DeepSeek, oraz Anthropic) oraz obsługa odmowy, uciętej odpowiedzi, limitu i błędów są sprawdzone na atrapie transportu HTTP – **nie na prawdziwym API**. |
 | Wyszukiwanie na prawdziwym korpusie | Sprawdzone ręcznie: zapytania po polsku znajdują właściwe dokumenty, także anglojęzyczne; pytanie spoza korpusu zwraca 0 wyników. |
 | Ścieżka bez klucza API (scenariusz J) | Sprawdzona na działającym serwerze: status `error`, brak werdyktu, lista materiałów. |
@@ -56,7 +56,7 @@ Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do 
 - Dźwięk i wideo (brak transkrypcji).
 - Wyszukiwanie odwrotne obrazu, wykrywanie przeróbek i deepfake'ów – obraz służy wyłącznie do odczytu tekstu.
 - Strony wymagające JavaScriptu, logowania lub płatnego dostępu oraz strony, które zabraniają automatycznego pobierania.
-- Obrazy w kanale SMS/MMS (użytkownik dostaje informację, żeby użyć strony WWW).
+- Prawdziwy operator SMS: drugi kanał to adapter demonstracyjny (symulator), bez wysyłki na telefony i bez obrazów.
 - Tematy spoza korpusu – wynik to zawsze „brak wystarczających dowodów”.
 - Więcej niż 4 twierdzenia w jednym zgłoszeniu; treść powyżej 20 000 znaków jest przycinana.
 - Interfejs i odpowiedzi tylko po polsku (źródła mogą być w innych językach).
@@ -71,6 +71,6 @@ Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do 
 | **Prywatność** | maskowanie PII przed modelem i zapisem; brak zapisu obrazów, telefonów i IP; retencja 30 dni; usuwanie sesji | maskowanie wyrażeniami regularnymi nie wykryje nazwisk ani adresów; treść trafia do zewnętrznego dostawcy modelu, jeśli nie wybrano modelu lokalnego |
 | **Prompt injection** | rozdzielenie instrukcji i danych, losowe znaczniki, brak narzędzi, wyjście wg schematu, walidacja cytatów, logowanie zdarzeń | heurystyki nie wykryją każdego ataku; atak może skłonić model do wstrzymania się (obniżenie użyteczności, nie fałszywy werdykt) |
 | **Dostępność** | jawne błędy techniczne; praca bez embeddingów; pamięć wyników; limit żądań | jedna instancja, limit w pamięci, zależność od jednego dostawcy modelu w danej konfiguracji |
-| **Nadużycia** | limit żądań na klienta; brak możliwości dodania źródła przez użytkownika; podpis webhooka; token panelu; neutralizacja formuł w eksporcie | zalewanie kolejki moderatora zgłoszeniami; próby użycia wyniku „brak dowodów” jako „nie obalono”; brak CAPTCHA |
+| **Nadużycia** | limit żądań na klienta; brak możliwości dodania źródła przez użytkownika; token panelu; neutralizacja formuł w eksporcie | zalewanie kolejki moderatora zgłoszeniami; próby użycia wyniku „brak dowodów” jako „nie obalono”; brak CAPTCHA |
 | **Prawa autorskie** | polityka przechowywania per źródło; poszanowanie robots.txt; tylko fragment i link dla treści chronionych | licencje wymagają przeglądu prawnego przed pilotażem ([ZRODLA.md](ZRODLA.md)) |
 | **Nadmierne zaufanie do wyniku** | „interpretacja systemu” oddzielona od materiałów źródłowych; ograniczenia przy każdej odpowiedzi; zachęta do czytania źródeł | użytkownik może potraktować wynik jak wyrok – w pilotażu odpowiedzi do publikacji powinien zatwierdzać człowiek |

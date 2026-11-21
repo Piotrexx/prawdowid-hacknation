@@ -1,4 +1,4 @@
-"""Tekstowa postać wyniku dla kanałów bez interfejsu graficznego (SMS, WhatsApp, komunikatory).
+"""Tekstowa postać wyniku dla kanałów bez interfejsu graficznego (SMS, komunikatory).
 Treść merytoryczna pochodzi z tego samego `CheckResponse`, co w kanale WWW."""
 
 import re
