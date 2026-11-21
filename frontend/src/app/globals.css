@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+/* Every text/background pair below meets WCAG AA (4.5:1); borders and focus meet 3:1. */
+:root {
+  color-scheme: light;
+
+  --page: #f6f7f9;
+  --surface: #ffffff;
+  --subtle: #eef1f4;
+  --line: #d3d9e0;
+  --line-strong: #7b8696;
+  --ink: #17212b;
+  --muted: #4b5766;
+  --accent: #0f2747;
+  --accent-hover: #1c3f70;
+  --on-accent: #ffffff;
+  --link: #17498a;
+  --focus: #1b6fd1;
+
+  --ok-fg: #17573a;
+  --ok-bg: #e8f5ed;
+  --ok-line: #3a9463;
+  --bad-fg: #94201a;
+  --bad-bg: #fdecea;
+  --bad-line: #cf4a3c;
+  --warn-fg: #6f4700;
+  --warn-bg: #fdf2d3;
+  --warn-line: #b98212;
+  --calm-fg: #36414f;
+  --calm-bg: #eef1f4;
+  --calm-line: #7b8696;
+  --info-fg: #343190;
+  --info-bg: #ecedfc;
+  --info-line: #6a6ed6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --page: #10151b;
+    --surface: #171d25;
+    --subtle: #1f2731;
+    --line: #313b47;
+    --line-strong: #71808f;
+    --ink: #e8ecf1;
+    --muted: #a9b4c0;
+    --accent: #a9c8f5;
+    --accent-hover: #c4dafa;
+    --on-accent: #0f2747;
+    --link: #9cc4ff;
+    --focus: #8fc0ff;
+
+    --ok-fg: #8fdfae;
+    --ok-bg: #12291d;
+    --ok-line: #3a9463;
+    --bad-fg: #ffb1a8;
+    --bad-bg: #341715;
+    --bad-line: #cf4a3c;
+    --warn-fg: #f3cf78;
+    --warn-bg: #2f250b;
+    --warn-line: #b98212;
+    --calm-fg: #c8d1dc;
+    --calm-bg: #1f2731;
+    --calm-line: #71808f;
+    --info-fg: #c0c3fc;
+    --info-bg: #1e1f42;
+    --info-line: #6a6ed6;
+  }
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-link: var(--link);
+  --color-focus: var(--focus);
+
+  --color-ok-fg: var(--ok-fg);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-line: var(--ok-line);
+  --color-bad-fg: var(--bad-fg);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-line: var(--bad-line);
+  --color-warn-fg: var(--warn-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-line: var(--warn-line);
+  --color-calm-fg: var(--calm-fg);
+  --color-calm-bg: var(--calm-bg);
+  --color-calm-line: var(--calm-line);
+  --color-info-fg: var(--info-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-line: var(--info-line);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-padding-top: 1rem;
+  }
+
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    overflow-wrap: break-word;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* Headings that receive focus programmatically still need a visible indicator. */
+  [tabindex="-1"]:focus {
+    outline: 3px solid var(--focus);
+    outline-offset: 4px;
+  }
+
+  main[tabindex="-1"]:focus {
+    outline: none;
+  }
+
+  summary {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
+@layer components {
+  .link {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.2em;
+  }
+
+  .link:hover {
+    text-decoration-thickness: 0.14em;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 0.5rem;
+    top: 0.5rem;
+    z-index: 50;
+    transform: translateY(-200%);
+    border-radius: 0.5rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+  }
+
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

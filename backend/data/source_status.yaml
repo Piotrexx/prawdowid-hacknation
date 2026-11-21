@@ -1,0 +1,7 @@
+# Jawna lista statusów źródeł, które wywołują NEUTRALNE ostrzeżenie.
+# Status nigdy nie wpływa na werdykt. Każdy wpis musi mieć sprawdzalną podstawę.
+statuses:
+  - domains: ["rt.com", "sputniknews.com"]
+    status: "Nadawca objęty unijnym zakazem rozpowszechniania treści"
+    basis: "rozporządzenie Rady (UE) 2022/350 z 1 marca 2022 r."
+    reference_url: "https://eur-lex.europa.eu/legal-content/PL/TXT/?uri=CELEX:32022R0350"

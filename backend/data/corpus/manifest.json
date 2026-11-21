@@ -1,0 +1,76 @@
+{
+  "built_at": "2026-11-21T12:10:20+00:00",
+  "version": "b5bc0340bb68",
+  "documents": 830,
+  "domains": 11,
+  "by_source": {
+    "cert-pl": 40,
+    "ec-presscorner": 10,
+    "ecdc-news": 10,
+    "factcheck-org": 150,
+    "fakenews-pl": 10,
+    "konkret24": 30,
+    "msz-gov-pl": 59,
+    "politifact": 150,
+    "pravda-claimreview": 211,
+    "pravda-rss": 20,
+    "sejm-eli": 80,
+    "who-news": 60
+  },
+  "by_type": {
+    "official": 109,
+    "international": 70,
+    "factcheck": 571,
+    "legal": 80
+  },
+  "last_run": {
+    "msz-gov-pl": {
+      "fetched": 59,
+      "new": 59
+    },
+    "sejm-eli": {
+      "fetched": 80,
+      "new": 80
+    },
+    "ec-presscorner": {
+      "fetched": 10,
+      "new": 10
+    },
+    "cert-pl": {
+      "fetched": 40,
+      "new": 40
+    },
+    "who-news": {
+      "fetched": 60,
+      "new": 60
+    },
+    "ecdc-news": {
+      "fetched": 10,
+      "new": 10
+    },
+    "konkret24": {
+      "fetched": 30,
+      "new": 30
+    },
+    "pravda-rss": {
+      "fetched": 20,
+      "new": 20
+    },
+    "pravda-claimreview": {
+      "fetched": 211,
+      "new": 211
+    },
+    "fakenews-pl": {
+      "fetched": 10,
+      "new": 10
+    },
+    "factcheck-org": {
+      "fetched": 150,
+      "new": 150
+    },
+    "politifact": {
+      "fetched": 150,
+      "new": 150
+    }
+  }
+}
