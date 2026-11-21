@@ -1,4 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+
+interface LayoutProps {
+  children: ReactNode;
+}
 import { Open_Sans } from "next/font/google";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteHeader } from "@/components/layout/SiteHeader";
@@ -39,7 +44,7 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: LayoutProps) {
   return (
     <html lang="pl" className={openSans.variable} suppressHydrationWarning>
       <head>

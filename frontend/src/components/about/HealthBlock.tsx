@@ -1,12 +1,11 @@
 "use client";
 
-import { CircleCheck, RotateCcw, TriangleAlert } from "lucide-react";
+import { CircleCheck, RotateCcw, TriangleAlert, Cpu, Database } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { LoadingBlock } from "@/components/ui/LoadState";
 import { Tag } from "@/components/ui/Tag";
 import { getHealth } from "@/lib/api";
 import { formatDateTime, formatInteger, plural } from "@/lib/format";
-import { RETRIEVAL_LABELS } from "@/lib/labels";
 import { useLoad } from "@/lib/useLoad";
 
 export function HealthBlock() {
@@ -32,24 +31,22 @@ export function HealthBlock() {
   }
 
   const health = state.data;
-  const { corpus } = health;
   const model = health.llm_configured
     ? [health.llm_provider, health.llm_model].filter(Boolean).join(" / ")
     : "nie skonfigurowano";
+  const bielikModel = health.bielik_configured && health.bielik_model
+    ? health.bielik_model
+    : "nie skonfigurowano";
 
   const rows: Array<[string, string]> = [
-    ["Model językowy", model || "brak danych"],
+    ["Model werdyktu (DeepSeek)", model],
+    ["Model słów kluczowych (Bielik)", bielikModel],
+    ["Google Fact Check API", health.google_factcheck_configured ? "skonfigurowane" : "nie skonfigurowane"],
     ["Miejsce przetwarzania danych", health.processing_location || "brak danych"],
     [
       "Czas przechowywania zapisów",
       `${health.retention_days} ${plural(health.retention_days, "dzień", "dni", "dni")}`,
     ],
-    ["Sposób wyszukiwania", RETRIEVAL_LABELS[health.retrieval_mode] ?? health.retrieval_mode],
-    ["Dokumenty w zbiorze źródeł", formatInteger(corpus.documents)],
-    ["Fragmenty dokumentów", formatInteger(corpus.passages)],
-    ["Domeny internetowe", formatInteger(corpus.domains)],
-    ["Wersja zbioru źródeł", corpus.version || "brak danych"],
-    ["Zbiór zbudowano", formatDateTime(corpus.built_at) ?? "brak danych"],
   ];
 
   return (

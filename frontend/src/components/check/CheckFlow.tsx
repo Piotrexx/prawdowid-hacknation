@@ -1,27 +1,17 @@
 "use client";
 
-import {
-  Clock,
-  FileWarning,
-  RotateCcw,
-  WifiOff,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react";
+import { Clock, FileWarning, RotateCcw, WifiOff, Wrench, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CheckResult } from "@/components/result/CheckResult";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
-import { ApiError, createCheck, createImageCheck, isAbort } from "@/lib/api";
+import { ApiError, createCheck, isAbort } from "@/lib/api";
 import { describeError } from "@/lib/errors";
-import { isSingleUrl } from "@/lib/links";
 import { ensureSessionId } from "@/lib/session";
 import type { CheckResponse } from "@/lib/types";
 import { BusyPanel } from "./BusyPanel";
-import { CheckForm, TEXT_LIMIT, isExampleOnly } from "./CheckForm";
+import { CheckForm } from "./CheckForm";
 import { Permalink } from "./Permalink";
-import { SessionControls } from "./SessionControls";
-import { useImageAttachment } from "./useImageAttachment";
 
 type Phase =
   | { kind: "idle" }
@@ -29,18 +19,23 @@ type Phase =
   | { kind: "result"; result: CheckResponse }
   | { kind: "failure"; error: unknown };
 
-function validate(text: string, hasImage: boolean): string | null {
-  if (hasImage) return null;
-  if (!text.trim()) {
-    return "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zrzut ekranu.";
+function validate(url: string): string | null {
+  if (!url.trim()) {
+    return "Wklej link do artykułu, który chcesz sprawdzić.";
   }
-  if (isExampleOnly(text)) {
-    return "Wklej pod pytaniem treść, którą chcesz sprawdzić.";
-  }
-  if (text.length > TEXT_LIMIT) {
-    return "Tekst jest za długi. Skróć go i spróbuj ponownie.";
+  if (!isValidUrl(url)) {
+    return "To nie wygląda na poprawny adres URL (musi zaczynać się od http:// lub https://).";
   }
   return null;
+}
+
+function isValidUrl(text: string): boolean {
+  try {
+    const url = new URL(text.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 interface Failure {
@@ -59,7 +54,7 @@ function describeFailure(error: unknown): Failure {
   if (kind === "validation") {
     return {
       icon: FileWarning,
-      title: "Nie udało się przyjąć tej treści",
+      title: "Nie udało się przyjąć tego linku",
       message,
       canRetry: false,
     };
@@ -71,13 +66,12 @@ function describeFailure(error: unknown): Failure {
 }
 
 export function CheckFlow() {
-  const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [formError, setFormError] = useState<string | null>(null);
   const [waitSeconds, setWaitSeconds] = useState(0);
-  const image = useImageAttachment();
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const busyRef = useRef<HTMLDivElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const failureRef = useRef<HTMLDivElement>(null);
@@ -89,7 +83,6 @@ export function CheckFlow() {
   const waiting = waitSeconds > 0;
 
   useEffect(() => {
-    // Effects also re-run when the router shows this page again; move focus only on a real change.
     if (focusedPhaseRef.current === phase) return;
     focusedPhaseRef.current = phase;
     if (phase.kind === "loading") busyRef.current?.focus();
@@ -107,10 +100,10 @@ export function CheckFlow() {
 
   async function submit() {
     if (busy || waiting) return;
-    const problem = validate(text, image.attachment !== null);
+    const problem = validate(url);
     if (problem) {
       setFormError(problem);
-      textareaRef.current?.focus();
+      inputRef.current?.focus();
       return;
     }
     setFormError(null);
@@ -121,22 +114,7 @@ export function CheckFlow() {
 
     try {
       const sessionId = ensureSessionId();
-      const trimmed = text.trim();
-      const file = image.attachment?.file;
-      const result = file
-        ? await createImageCheck(file, sessionId, controller.signal)
-        : await createCheck(
-            isSingleUrl(trimmed)
-              ? { url: trimmed, session_id: sessionId }
-              : { text: trimmed, session_id: sessionId },
-            controller.signal,
-          );
-
-      // A question about an image can only be answered in text, so hand the read text back.
-      if (result.status === "needs_clarification" && file && result.input.text.trim()) {
-        setText(result.input.text);
-        image.clear();
-      }
+      const result = await createCheck({ url: url.trim(), session_id: sessionId }, controller.signal);
       setPhase({ kind: "result", result });
     } catch (error) {
       if (isAbort(error)) return;
@@ -151,22 +129,14 @@ export function CheckFlow() {
 
   function reset() {
     requestRef.current?.abort();
-    setText("");
-    image.clear();
+    setUrl("");
     setFormError(null);
     setPhase({ kind: "idle" });
   }
 
   function startOver() {
     reset();
-    textareaRef.current?.focus();
-  }
-
-  function focusInput() {
-    const field = textareaRef.current;
-    if (!field) return;
-    field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
+    inputRef.current?.focus();
   }
 
   const result = phase.kind === "result" ? phase.result : null;
@@ -175,20 +145,16 @@ export function CheckFlow() {
   return (
     <div className="space-y-8">
       <CheckForm
-        text={text}
-        onTextChange={(value) => {
-          setText(value);
+        url={url}
+        onUrlChange={(value) => {
+          setUrl(value);
           if (formError) setFormError(null);
         }}
-        attachment={image.attachment}
-        imageError={image.error}
-        onPickImage={image.attach}
-        onClearImage={image.clear}
         onSubmit={submit}
         busy={busy}
         error={formError}
         waitSeconds={waitSeconds}
-        textareaRef={textareaRef}
+        inputRef={inputRef}
       />
 
       <div aria-live="polite" aria-busy={busy} className="space-y-6">
@@ -199,7 +165,7 @@ export function CheckFlow() {
             <Notice icon={failure.icon} title={failure.title}>
               <p>{failure.message}</p>
               <p className="text-muted">
-                To nie jest wynik sprawdzenia. Twoja treść została w polu powyżej.
+                To nie jest wynik sprawdzenia. Twój link został w polu powyżej.
               </p>
             </Notice>
             {failure.canRetry ? (
@@ -219,8 +185,7 @@ export function CheckFlow() {
               statusActions={
                 result.status === "needs_clarification" ? (
                   <div className="space-y-3">
-                    <p>Dopisz szczegóły w polu powyżej i wybierz „Sprawdź”.</p>
-                    <Button onClick={focusInput}>Wróć do pola z treścią</Button>
+                    <p>Sprawdź, czy link jest poprawny, i spróbuj ponownie.</p>
                   </div>
                 ) : result.status === "error" ? (
                   <Button onClick={submit}>
@@ -232,13 +197,11 @@ export function CheckFlow() {
             />
             {result.status === "completed" ? <Permalink id={result.id} /> : null}
             <Button variant="primary" onClick={startOver}>
-              Sprawdź coś innego
+              Sprawdź inny artykuł
             </Button>
           </>
         ) : null}
       </div>
-
-      <SessionControls onDeleted={reset} />
     </div>
   );
 }

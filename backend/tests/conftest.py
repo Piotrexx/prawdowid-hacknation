@@ -1,129 +1,70 @@
-"""Testy używają podstawionego modelu i małego, wymyślonego korpusu (domena example.org).
-Prawdziwy korpus i prawdziwy model sprawdza `eval/run_eval.py`."""
+"""Testy dla nowego pipeline'u fake news: URL -> trafilatura -> Bielik -> Google Fact Check -> DeepSeek."""
 
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.catalog import Document
 from app.config import Settings
-from app.core.prompts import (
-    ClaimAssessment,
-    ExtractedClaim,
-    Extraction,
-    ImageReading,
-    PassageJudgement,
-)
-from app.llm.base import LLMError, Usage
+from app.core.pipeline import VerificationService
+from app.llm.base import LLMError, LLMProvider, Usage
 from app.main import build_state, create_app
-from app.retrieval.index import CorpusIndex
-from app.schemas import Verdict
+from app.schemas import CheckResponse, CheckStatus, VerdictLabel, FactCheckResult, KeywordExtraction
+from app.store.db import Store
 
 ADMIN = {"X-Admin-Token": "test-token"}
-TODAY = date.today()
 
 
-def make_doc(doc_id: str, text: str, *, source_type="official", tier=1, age_days=10, publisher="Urząd Testowy", **extra) -> Document:
-    return Document(
-        id=doc_id,
-        source_id=f"test-{source_type}",
-        title=f"Dokument {doc_id}",
-        publisher=publisher,
-        url=f"https://example.org/{doc_id}",
-        source_type=source_type,
-        tier=tier,
-        license="fikstura testowa",
-        published_at=TODAY - timedelta(days=age_days),
-        retrieved_at=datetime.now(UTC),
-        text=text,
-        **extra,
-    )
+class FakeLLMProvider:
+    """Fake provider dla DeepSeek (werdykt)."""
+    name = "openai_compatible"
+    model = "deepseek-flash"
 
-
-VACCINE_QUOTE = "Program szczepień ochronnych w Testowie rozpoczął się 1 marca."
-BRIDGE_QUOTE = "Most został zamknięty na czas remontu i nie uległ zniszczeniu."
-DOCS = [
-    make_doc("szczepienia", f"{VACCINE_QUOTE} Szczepienia są bezpłatne dla wszystkich mieszkańców."),
-    make_doc(
-        "most",
-        f"Sprawdzane twierdzenie: Most w Testowie zawalił się podczas powodzi.\nOcena redakcji: Fałsz\n{BRIDGE_QUOTE}",
-        source_type="factcheck",
-        tier=2,
-        publisher="Redakcja Testowa",
-        claim_reviewed="Most w Testowie zawalił się podczas powodzi.",
-        rating="Fałsz",
-        appearance_urls=["https://plotki.example.com/most-runal"],
-    ),
-    make_doc("ludnosc-stara", "Liczba mieszkańców Testowa wynosi 120 tysięcy osób.", age_days=900),
-    make_doc(
-        "ludnosc-nowa",
-        "Według najnowszych danych w Testowie mieszka 95 tysięcy osób.",
-        source_type="factcheck",
-        tier=2,
-        publisher="Redakcja Testowa",
-    ),
-    make_doc(
-        "gazeta",
-        "Jak podaje gazeta, tramwaje w Testowie od poniedziałku kursują co pięć minut.",
-        source_type="media",
-        tier=3,
-        publisher="Gazeta Testowa",
-    ),
-]
-
-
-def claim(text: str, kind: str = "fakt", risk: str = "standard") -> ExtractedClaim:
-    return ExtractedClaim(text=text, kind=kind, queries=[text], risk=risk)
-
-
-def extraction(*claims: ExtractedClaim, status: str = "ok", message: str = "", injection: bool = False) -> Extraction:
-    return Extraction(input_status=status, message=message, claims=list(claims), injection_detected=injection)
-
-
-def assessment(verdict: Verdict, *judgements: tuple[str, str, str], justification: str = "Uzasadnienie [P1].") -> ClaimAssessment:
-    return ClaimAssessment(
-        judgements=[PassageJudgement(passage_id=p, stance=s, quote=q) for p, s, q in judgements],
-        proposed_verdict=verdict,
-        justification=justification,
-        missing="",
-        injection_detected=False,
-    )
-
-
-def passage_number(user_prompt: str, needle: str) -> str:
-    """Numer fragmentu (P1, P2…), w którym model „widzi” podany tekst."""
-    sources_start = user_prompt.index("Fragmenty źródeł:")
-    before = user_prompt[: user_prompt.index(needle, sources_start)]
-    return "P" + before.rsplit("[P", 1)[1].split("]", 1)[0]
-
-
-class FakeProvider:
-    name = "fake"
-    model = "fake-model"
-
-    def __init__(self) -> None:
+    def __init__(self):
         self.calls: list[tuple[str, str, str]] = []
         self.fail: LLMError | None = None
-        self.extract: Callable[[str], Extraction] = lambda user: extraction(claim("Twierdzenie testowe."))
-        self.assess: Callable[[str], ClaimAssessment] = lambda user: assessment(Verdict.INSUFFICIENT)
-        self.reading = ImageReading(text="", visible_dates=[], description="", readable=False, injection_detected=False)
+        self.verdict_response = None
 
-    async def structured(self, *, system, user, schema, effort="medium", images=None):
+    async def structured(self, *, system: str, user: str, schema, effort: str = "medium", images=None):
         self.calls.append((schema.__name__, system, user))
         if self.fail:
             raise self.fail
-        if schema is Extraction:
-            return self.extract(user), Usage(100, 20, 1)
-        if schema is ClaimAssessment:
-            return self.assess(user), Usage(500, 80, 1)
-        return self.reading, Usage(300, 50, 1)
+        if schema.__name__ == "VerdictOnly":
+            return self.verdict_response, Usage(500, 100, 1)
+        return MagicMock(), Usage(100, 20, 1)
+
+
+class FakeBielikProvider:
+    """Fake provider dla Bielik (słowa kluczowe)."""
+    name = "openai_compatible"
+    model = "bielik:4.5b-instruct"
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, str]] = []
+        self.fail: LLMError | None = None
+        self.keywords_response = KeywordExtraction(
+            keywords=["test", "fake", "news", "weryfikacja"],
+            main_topic="Testowy artykuł o fake news",
+            summary="Artykuł testowy do weryfikacji."
+        )
+
+    async def structured(self, *, system: str, user: str, schema, effort: str = "medium", images=None):
+        self.calls.append((schema.__name__, system, user))
+        if self.fail:
+            raise self.fail
+        return self.keywords_response, Usage(200, 50, 1)
 
 
 @pytest.fixture
-def provider() -> FakeProvider:
-    return FakeProvider()
+def deepseek_provider() -> FakeLLMProvider:
+    return FakeLLMProvider()
+
+
+@pytest.fixture
+def bielik_provider() -> FakeBielikProvider:
+    return FakeBielikProvider()
 
 
 @pytest.fixture
@@ -132,17 +73,86 @@ def settings(tmp_path) -> Settings:
         _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         admin_token="test-token",
-        embeddings="off",
         rate_limit_per_minute=1000,
+        llm_provider="openai_compatible",
+        llm_model="deepseek-flash",
+        llm_base_url="https://api.deepseek.com",
+        bielik_base_url="http://localhost:11434",
+        bielik_model="bielik:4.5b-instruct",
+        google_factcheck_api_key=None,
     )
 
 
 @pytest.fixture
-def make_client(settings, provider):
+def mock_fetch_page():
+    """Mockuje fetch_page z urlfetch."""
+    from app.security.urlfetch import FetchedPage
+    from datetime import date
+    from unittest.mock import patch
+
+    async def _mock(url: str, settings: Settings) -> FetchedPage:
+        return FetchedPage(
+            url=url,
+            title="Testowy tytuł artykułu",
+            text="To jest treść testowego artykułu do weryfikacji. Zawiera pewne twierdzenia do sprawdzenia.",
+            published=date.today(),
+        )
+
+    with patch("app.core.pipeline.fetch_page", _mock):
+        yield
+
+
+@pytest.fixture
+def mock_factcheck_api():
+    """Mockuje Google Fact Check API."""
+    from unittest.mock import patch
+    import httpx
+
+    async def _mock_get(*args, **kwargs):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "claims": [
+                {
+                    "text": "Testowe twierdzenie do sprawdzenia",
+                    "claimant": "Jan Kowalski",
+                    "claimDate": "2024-01-15",
+                    "claimReview": [{
+                        "url": "https://factcheck.example.com/review/1",
+                        "title": "Sprawdzenie: Testowe twierdzenie",
+                        "publisher": {"name": "Demagog", "site": "demagog.org.pl"},
+                        "textualRating": "Fałsz",
+                    }],
+                }
+            ]
+        }
+        return mock_response
+
+    with patch("httpx.AsyncClient.get", _mock_get):
+        yield
+
+
+@pytest.fixture
+def make_client(settings, deepseek_provider, bielik_provider, mock_fetch_page):
     def factory(**overrides) -> TestClient:
         app = create_app(with_lifespan=False)
-        index = CorpusIndex(DOCS, version="test", built_at=datetime.now(UTC))
-        build_state(app, settings.model_copy(update=overrides), provider=overrides.pop("provider", provider), index=index)
+
+        # Build service with fake providers
+        store = Store(settings.database_url)
+
+        # Monkey-patch the service providers
+        service = VerificationService(
+            settings=settings,
+            provider=overrides.get("provider", deepseek_provider),
+            store=store,
+        )
+        service._bielik_provider = overrides.get("bielik_provider", bielik_provider)
+
+        app.state.settings = settings
+        app.state.store = store
+        app.state.service = service
+        app.state.limiter = None  # No rate limiting in tests
+
         return TestClient(app)
 
     return factory

@@ -6,10 +6,25 @@ services:
     env_file: ./backend/.env
     environment:
       CORS_ORIGINS: http://localhost:3000
+      # Bielik via Ollama (running in separate container)
+      BIELIK_BASE_URL: http://ollama:11434
+      BIELIK_MODEL: bielik:4.5b-instruct
     ports:
       - "8000:8000"
     volumes:
-      - backend-var:/app/var
+      - backend-data:/app/data
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # Pre-pull Bielik model on startup (CPU mode - no GPU reservation)
+    command: >
+      sh -c "ollama serve & sleep 5 && ollama pull bielik:4.5b-instruct && wait"
 
   frontend:
     build:
@@ -22,4 +37,5 @@ services:
       - backend
 
 volumes:
-  backend-var:
+  backend-data:
+  ollama-data:

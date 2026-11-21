@@ -1,25 +1,21 @@
 import { useId, type ReactNode, type Ref } from "react";
 import type { CheckResponse } from "@/lib/types";
-import { ClaimCard } from "./ClaimCard";
-import { IncidentMatches } from "./IncidentMatches";
+import { FactCheckList } from "./FactCheckList";
 import { InputRecap } from "./InputRecap";
-import { ModeratorCaseBox } from "./ModeratorCaseBox";
-import { RelatedMaterials } from "./RelatedMaterials";
+import { KeywordsDisplay } from "./KeywordsDisplay";
 import { STATUS_TITLES, StatusPanel } from "./StatusPanel";
 import { TechnicalDetails } from "./TechnicalDetails";
-import { Warnings } from "./Warnings";
+import { VerdictBadge } from "./VerdictBadge";
 
 interface CheckResultProps {
   result: CheckResponse;
   headingRef?: Ref<HTMLHeadingElement>;
-  /** Page-specific buttons shown inside the panel for states that are not verdicts. */
   statusActions?: ReactNode;
 }
 
 export function CheckResult({ result, headingRef, statusActions }: CheckResultProps) {
   const id = useId();
   const completed = result.status === "completed";
-  const claims = completed ? result.claims : [];
 
   return (
     <div className="space-y-6">
@@ -33,32 +29,36 @@ export function CheckResult({ result, headingRef, statusActions }: CheckResultPr
 
       <StatusPanel result={result} actions={statusActions} />
       <InputRecap input={result.input} />
-      <Warnings warnings={result.warnings} />
 
-      {completed && result.summary ? (
-        <section aria-labelledby={`${id}-summary`}>
-          <h3 id={`${id}-summary`} className="font-semibold text-muted">
-            W skrócie (interpretacja systemu)
+      {completed && result.verdict && (
+        <section aria-labelledby={`${id}-verdict`} className="space-y-4">
+          <h3 id={`${id}-verdict`} className="text-xl font-semibold">
+            Werdykt
           </h3>
-          <p className="mt-1 text-lg leading-relaxed whitespace-pre-line">
-            {result.summary}
-          </p>
+          <VerdictBadge
+            verdict={result.verdict}
+            confidence={result.confidence}
+            justification={result.justification}
+          />
         </section>
-      ) : null}
+      )}
 
-      {completed && claims.length === 0 ? (
-        <p className="rounded-lg border border-line bg-surface p-4">
-          System nie wydzielił z tej treści twierdzeń, które da się sprawdzić.
-        </p>
-      ) : null}
+      {completed && result.main_topic && (
+        <section aria-labelledby={`${id}-topic`} className="space-y-2">
+          <h3 id={`${id}-topic`} className="font-semibold text-muted">
+            Główne zagadnienie
+          </h3>
+          <p className="text-lg leading-relaxed">{result.main_topic}</p>
+        </section>
+      )}
 
-      {claims.map((claim, index) => (
-        <ClaimCard key={claim.id} claim={claim} index={index + 1} total={claims.length} />
-      ))}
+      {completed && result.keywords.length > 0 && (
+        <KeywordsDisplay keywords={result.keywords} />
+      )}
 
-      <RelatedMaterials materials={result.related_materials} />
-      <IncidentMatches matches={result.incident_matches} />
-      <ModeratorCaseBox info={result.moderator_case} />
+      {completed && result.fact_check_results.length > 0 && (
+        <FactCheckList checks={result.fact_check_results} />
+      )}
 
       {result.limitations.length > 0 ? (
         <section aria-labelledby={`${id}-limits`}>

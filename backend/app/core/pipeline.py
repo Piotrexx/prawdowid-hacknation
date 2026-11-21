@@ -1,56 +1,38 @@
-"""Jedyna ścieżka weryfikacji. Każdy kanał (obecnie WWW) woła `VerificationService.check`,
-więc ten sam materiał daje ten sam wynik merytoryczny niezależnie od kanału."""
+"""Pipeline wykrywania fake news: URL -> trafilatura -> Bielik (keywords) -> Google Fact Check -> DeepSeek (verdict)."""
 
 import asyncio
 import hashlib
 import json
 import logging
-import re
 import time
 import uuid
-from collections import Counter
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from app.catalog import Document
+import httpx
+from pydantic import BaseModel, Field
+
 from app.config import Settings
-from app.core.cases import CaseLoop
-from app.core.media import ImageError, prepare_image
-from app.core.prompts import (
-    OCR_SYSTEM,
-    ClaimAssessment,
-    ExtractedClaim,
-    Extraction,
-    ImageReading,
-    assess_prompts,
-    extract_prompts,
-)
-from app.core.verdict import decide, source_ref, unassessed
-from app.llm.base import ImageInput, LLMError, LLMProvider, T, Usage, estimate_cost
-from app.retrieval.context import ContextCatalog
-from app.retrieval.index import CorpusIndex
+from app.core.prompts import BIELIK_KEYWORD_PROMPT, DEEPSEEK_VERDICT_PROMPT
+from app.llm.base import LLMError, LLMProvider, T, Usage, estimate_cost
+from app.llm.factory import build_provider
 from app.schemas import (
-    VERDICT_LABELS,
     CheckMeta,
+    CheckRequest,
     CheckResponse,
     CheckStatus,
-    ClaimResult,
-    IncidentMatch,
+    FactCheckResult,
     InputInfo,
-    ModeratorCaseInfo,
-    SourceRef,
-    Verdict,
-    Warning,
+    KeywordExtraction,
+    VerdictLabel,
 )
-from app.security.injection import sanitize_untrusted, scan_injection
-from app.security.pii import mask_pii
 from app.security.urlfetch import UrlFetchError, fetch_page
 from app.store.db import Store
-from app.textutil import normalize_for_match, truncate
+from app.textutil import truncate
 
 log = logging.getLogger("check")
 
-_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 _STORED_PAGE_CHARS = 1500
 _NOT_A_VERDICT = "To problem techniczny, a nie wynik sprawdzenia."
 _LLM_MESSAGES = {
@@ -59,28 +41,11 @@ _LLM_MESSAGES = {
     "llm_rate_limited": f"Usługa jest chwilowo przeciążona. {_NOT_A_VERDICT} Spróbuj ponownie za kilka minut.",
     "llm_refused": "Model językowy odmówił przetworzenia tej treści, więc nie mogę jej sprawdzić. To ograniczenie techniczne, a nie wynik sprawdzenia.",
     "llm_bad_output": f"Model językowy zwrócił niepełną odpowiedź. {_NOT_A_VERDICT} Spróbuj ponownie.",
+    "bielik_not_configured": f"Model Bielik nie jest skonfigurowany. {_NOT_A_VERDICT}",
+    "bielik_unavailable": f"Nie mogę połączyć się z modelem Bielik. {_NOT_A_VERDICT} Sprawdź czy Ollama/vLLM działa.",
+    "factcheck_not_configured": f"Google Fact Check API nie jest skonfigurowane. {_NOT_A_VERDICT}",
+    "factcheck_unavailable": f"Nie mogę połączyć się z Google Fact Check API. {_NOT_A_VERDICT} Spróbuj ponownie za chwilę.",
 }
-_INJECTION_WARNINGS = {
-    "corpus_passage": "W jednym ze źródeł wykryliśmy tekst wyglądający na polecenie dla systemu. Został zignorowany.",
-}
-_INJECTION_DEFAULT = "W przesłanej treści wykryliśmy polecenia skierowane do systemu. Zostały zignorowane i nie wpłynęły na wynik."
-
-
-@dataclass
-class Submission:
-    channel: str
-    session_id: str | None = None
-    text: str | None = None
-    url: str | None = None
-    image: bytes | None = None
-
-    @classmethod
-    def from_message(cls, channel: str, session_id: str | None, message: str) -> "Submission":
-        """Wiadomość będąca samym adresem traktujemy jako link do pobrania, resztę jako tekst."""
-        message = message.strip()
-        if _URL_RE.fullmatch(message):
-            return cls(channel=channel, session_id=session_id, url=message)
-        return cls(channel=channel, session_id=session_id, text=message)
 
 
 class _Stop(Exception):
@@ -98,56 +63,71 @@ class _Run:
     channel: str
     check_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     started: float = field(default_factory=time.perf_counter)
-    input: InputInfo = field(default_factory=lambda: InputInfo(kind="text", text=""))
-    material: str = ""
+    input: InputInfo = field(default_factory=lambda: InputInfo(kind="url", text="", url=""))
+    article_title: str = ""
+    article_text: str = ""
+    article_url: str = ""
     usage: Usage = field(default_factory=Usage)
+    bielik_usage: Usage = field(default_factory=Usage)
     stages_ms: dict[str, int] = field(default_factory=dict)
-    warnings: dict[str, Warning] = field(default_factory=dict)
-    incidents: dict[str, IncidentMatch] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
     events: list[tuple[str, str, str]] = field(default_factory=list)
-    quotes_rejected: int = 0
-
-    def warn(self, code: str, message: str) -> None:
-        self.warnings.setdefault(code, Warning(code=code, message=message))
-
-    def flag_injection(self, origin: str, detail: str) -> None:
-        self.events.append(("prompt_injection", origin, detail))
-        self.warn("injection_detected", _INJECTION_WARNINGS.get(origin, _INJECTION_DEFAULT))
+    keywords: list[str] = field(default_factory=list)
+    main_topic: str = ""
+    fact_check_results: list[FactCheckResult] = field(default_factory=list)
+    verdict: VerdictLabel | None = None
+    confidence: float | None = None
+    justification: str | None = None
 
     def mark(self, stage: str, since: float) -> None:
         self.stages_ms[stage] = self.stages_ms.get(stage, 0) + int((time.perf_counter() - since) * 1000)
+
+    def add_warning(self, message: str) -> None:
+        self.warnings.append(message)
+
+
+class _VerdictOnly(BaseModel):
+    """Schema dla werdyktu od DeepSeek."""
+    verdict: VerdictLabel
+    confidence: float = Field(ge=0.0, le=1.0)
+    justification: str
 
 
 class VerificationService:
     def __init__(
         self,
         settings: Settings,
-        index: CorpusIndex,
-        context: ContextCatalog,
         provider: LLMProvider | None,
         store: Store,
-        cases: CaseLoop,
-        source_names: dict[str, str],
-        retrieval_degraded: bool = False,
     ):
         self._settings = settings
-        self._index = index
-        self._context = context
         self._provider = provider
         self._store = store
-        self._cases = cases
-        self._source_names = source_names
-        self._retrieval_degraded = retrieval_degraded
+        self._bielik_provider: LLMProvider | None = None
+        self._init_bielik()
 
-    async def check(self, submission: Submission) -> CheckResponse:
-        run = _Run(channel=submission.channel)
+    def _init_bielik(self) -> None:
+        """Inicjalizuje providera Bielik (Ollama/vLLM compatibile z OpenAI API)."""
+        if self._settings.bielik_base_url and self._settings.bielik_model:
+            try:
+                from app.llm.openai_compat import OpenAICompatProvider
+                self._bielik_provider = OpenAICompatProvider(
+                    model=self._settings.bielik_model,
+                    base_url=self._settings.bielik_base_url,
+                    api_key=self._settings.bielik_api_key.get_secret_value() if self._settings.bielik_api_key else None,
+                    timeout_s=self._settings.bielik_timeout_s,
+                    json_mode="json_object",
+                )
+            except Exception as e:
+                log.warning("Nie udało się zainicjować Bielik: %s", e)
+
+    async def check(self, request: CheckRequest) -> CheckResponse:
+        run = _Run(channel="web")
         cache_key = None
         try:
-            response, cache_key = await self._verify(submission, run)
+            response, cache_key = await self._verify(request, run)
         except _Stop as stop:
             response = self._response(run, stop.status, status_message=stop.message, error_code=stop.error_code)
-            if (stop.error_code or "").startswith("llm_") and run.material:
-                response.related_materials = await self._related_materials(run.material)
         except Exception:
             log.exception("nieoczekiwany błąd sprawdzenia %s", run.check_id)
             response = self._response(
@@ -156,7 +136,7 @@ class VerificationService:
                 status_message=f"Wystąpił nieoczekiwany błąd. {_NOT_A_VERDICT} Spróbuj ponownie.",
                 error_code="internal_error",
             )
-        self._store.save_check(response, submission.session_id, cache_key)
+        self._store.save_check(response, request.session_id, cache_key)
         for kind, origin, detail in run.events:
             self._store.add_event(kind, origin, detail, response.id)
         log.info(
@@ -166,13 +146,15 @@ class VerificationService:
                     "channel": response.channel,
                     "status": response.status.value,
                     "error_code": response.error_code,
-                    "verdicts": [c.verdict.value for c in response.claims],
+                    "verdict": response.verdict.value if response.verdict else None,
+                    "confidence": response.confidence,
                     "duration_ms": response.meta.duration_ms,
                     "stages_ms": response.meta.stages_ms,
                     "tokens_in": response.meta.tokens_in,
                     "tokens_out": response.meta.tokens_out,
+                    "bielik_tokens_in": run.bielik_usage.input_tokens,
+                    "bielik_tokens_out": run.bielik_usage.output_tokens,
                     "cost_usd": response.meta.cost_usd,
-                    "quotes_rejected": run.quotes_rejected,
                     "cached": response.meta.cached,
                     "security_events": len(run.events),
                 }
@@ -180,251 +162,186 @@ class VerificationService:
         )
         return response
 
-    # --- etapy ---
-
-    async def _verify(self, submission: Submission, run: _Run) -> tuple[CheckResponse, str]:
+    async def _verify(self, request: CheckRequest, run: _Run) -> tuple[CheckResponse, str]:
         started = time.perf_counter()
-        await self._prepare_input(submission, run)
-        run.mark("input", started)
 
-        model = self._provider.model if self._provider else "none"
-        fingerprint = f"{self._index.version}|{model}|{normalize_for_match(run.material)}"
+        # 1. Pobierz i wyekstrahuj treść artykułu (trafilatura)
+        await self._fetch_article(request.url, run)
+        run.mark("fetch", started)
+
+        # 2. Ekstrakcja słów kluczowych przez Bielik
+        await self._extract_keywords(run)
+        run.mark("keywords", started)
+
+        # 3. Zapytanie do Google Fact Check Tools API
+        await self._query_factcheck(run)
+        run.mark("factcheck", started)
+
+        # 4. Werdykt przez DeepSeek
+        await self._get_verdict(run)
+        run.mark("verdict", started)
+
+        # Cache key
+        fingerprint = f"{run.article_url}|{self._provider.model if self._provider else 'none'}|{run.keywords}"
         cache_key = hashlib.sha256(fingerprint.encode()).hexdigest()
-        since = datetime.now(UTC) - timedelta(hours=self._settings.result_cache_hours)
-        cached = self._store.find_cached(cache_key, since)
-        if cached:
-            claims, limitations = cached.claims, cached.limitations
-            for match in cached.incident_matches:
-                run.incidents.setdefault(match.incident_id, match)
-            for warning in cached.warnings:
-                # Ostrzeżenia zależne od sposobu zgłoszenia liczymy od nowa dla bieżącego kanału.
-                if warning.code not in ("pii_masked", "image_limits", "input_truncated"):
-                    run.warn(warning.code, warning.message)
-        else:
-            claims, limitations = await self._assess_material(run)
 
-        unresolved = sorted(
-            (c for c in claims if c.verdict == Verdict.INSUFFICIENT), key=lambda c: c.risk != "high"
-        )
-        moderator_case = await self._cases.register(unresolved, run.channel, run.check_id)
-        response = self._response(
-            run,
-            CheckStatus.COMPLETED,
-            summary=_summary(claims),
-            claims=claims,
-            moderator_case=moderator_case,
-            limitations=limitations,
-            cached=cached is not None,
-        )
+        response = self._response(run, CheckStatus.COMPLETED, cached=False)
         return response, cache_key
 
-    async def _prepare_input(self, submission: Submission, run: _Run) -> None:
-        origin = "user_input"
-        if submission.image is not None:
-            origin = "image_text"
-            raw = await self._read_image(submission.image, run)
-        elif submission.url:
-            origin = "fetched_url"
-            run.input = InputInfo(kind="url", text="", url=submission.url)
-            self._add_url_context(submission.url, run)
-            try:
-                page = await fetch_page(submission.url, self._settings)
-            except UrlFetchError as exc:
-                raise _Stop(CheckStatus.ERROR, f"{exc.message} {_NOT_A_VERDICT}", exc.code) from exc
-            run.input.title = page.title or None
-            raw = f"{page.title}\n\n{page.text}" if page.title else page.text
-        else:
-            raw = submission.text or ""
-            linked = _URL_RE.search(raw)
-            if linked:
-                self._add_url_context(linked.group(0).rstrip(".,)"), run)
-
-        material, masked = mask_pii(sanitize_untrusted(raw).strip())
-        if masked:
-            run.warn("pii_masked", "Przed analizą ukryliśmy dane wyglądające na osobowe (np. telefon, e-mail, PESEL).")
-        if len(material) > self._settings.max_input_chars:
-            material = material[: self._settings.max_input_chars]
-            run.warn("input_truncated", "Treść była bardzo długa – przeanalizowaliśmy tylko jej początek.")
-        run.material = material
-        # Dla stron WWW zapisujemy tylko początek treści (minimalizacja danych, prawa autorskie).
-        run.input.text = truncate(material, _STORED_PAGE_CHARS) if run.input.kind == "url" else material
-        if not material:
-            raise _Stop(CheckStatus.NEEDS_CLARIFICATION, "Wklej treść wiadomości albo link, który chcesz sprawdzić.")
-        found = scan_injection(material)
-        if found:
-            run.flag_injection(origin, "; ".join(found))
-
-    def _add_url_context(self, url: str, run: _Run) -> None:
-        status = self._context.source_status(url)
-        if status:
-            run.warnings.setdefault(status.code, status)
-        for match in self._context.url_matches(url):
-            run.incidents.setdefault(match.incident_id, match)
-
-    async def _read_image(self, data: bytes, run: _Run) -> str:
+    async def _fetch_article(self, url: str, run: _Run) -> None:
+        """Pobiera artykuł i ekstrahuje treść używając trafilatura."""
         try:
-            image, media_type, metadata = await asyncio.to_thread(prepare_image, data, self._settings.image_max_bytes)
-        except ImageError as exc:
+            page = await fetch_page(url, self._settings)
+        except UrlFetchError as exc:
             raise _Stop(CheckStatus.ERROR, f"{exc.message} {_NOT_A_VERDICT}", exc.code) from exc
-        run.input = InputInfo(kind="image", text="", image_metadata=metadata)
-        run.warn(
-            "image_limits",
-            "Odczytujemy tylko tekst widoczny na obrazie. Nie sprawdzamy, czy obraz jest przerobiony, "
-            "ani gdzie pojawił się wcześniej. Obrazu nie zapisujemy.",
-        )
-        try:
-            reading = await self._ask(
-                run, OCR_SYSTEM, "Odczytaj załączony obraz.", ImageReading, "low", [ImageInput(image, media_type)]
-            )
-        except _Stop as stop:
-            # Awaria odczytu obrazu to osobny, jawnie nazwany problem techniczny.
-            raise _Stop(
-                CheckStatus.ERROR,
-                f"Odczyt tekstu z obrazu jest teraz niedostępny. {_NOT_A_VERDICT} Możesz wkleić treść jako tekst.",
-                "ocr_unavailable",
-            ) from stop
-        if reading.injection_detected:
-            run.flag_injection("image_text", "model zgłosił polecenia w tekście obrazu")
-        if not reading.readable or not reading.text.strip():
-            raise _Stop(
-                CheckStatus.NEEDS_CLARIFICATION,
-                "Nie udało się odczytać tekstu z tego obrazu. Wklej treść jako tekst albo dodaj wyraźniejszy zrzut ekranu.",
-            )
-        dates = ", ".join(reading.visible_dates)
-        return reading.text + (f"\n\nDaty widoczne na obrazie: {dates}" if dates else "")
 
-    async def _ask(
-        self, run: _Run, system: str, user: str, schema: type[T], effort: str, images: list[ImageInput] | None = None
-    ) -> T:
-        if self._provider is None:
-            raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES["llm_not_configured"], "llm_not_configured")
+        run.article_url = url
+        run.article_title = page.title or ""
+        run.article_text = page.text
+
+        if not run.article_text.strip():
+            raise _Stop(CheckStatus.ERROR, "Nie udało się wyekstrahować treści z tego artykułu.", "url_no_content")
+
+        # Przygotuj input info dla odpowiedzi
+        run.input = InputInfo(
+            kind="url",
+            text=truncate(run.article_text, _STORED_PAGE_CHARS),
+            url=url,
+            title=run.article_title or None,
+        )
+
+    async def _extract_keywords(self, run: _Run) -> None:
+        """Używa Bielik 4.5B Instruct do ekstrakcji słów kluczowych z tytułu i treści."""
+        if self._bielik_provider is None:
+            raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES["bielik_not_configured"], "bielik_not_configured")
+
+        # Prompt w polsku - tylko po polsku
+        user_prompt = BIELIK_KEYWORD_PROMPT.format(
+            title=run.article_title or "Brak tytułu",
+            text=run.article_text[:8000],  # Limit kontekstu
+        )
+
         try:
-            output, usage = await self._provider.structured(
-                system=system, user=user, schema=schema, effort=effort, images=images
+            extraction, usage = await self._bielik_provider.structured(
+                system="Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON.",
+                user=user_prompt,
+                schema=KeywordExtraction,
+                effort="low",
             )
         except LLMError as exc:
-            log.warning("model językowy: %s (%s)", exc.code, exc)
+            log.warning("Bielik błąd: %s (%s)", exc.code, exc)
+            raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES.get(exc.code, _LLM_MESSAGES["bielik_unavailable"]), exc.code) from exc
+
+        run.bielik_usage.add(usage)
+        run.keywords = extraction.keywords[:10]  # Max 10 słów kluczowych
+        run.main_topic = extraction.main_topic
+
+        if not run.keywords:
+            run.add_warning("Nie udało się wyekstrahować słów kluczowych z artykułu.")
+
+    async def _query_factcheck(self, run: _Run) -> None:
+        """Zapytuje Google Fact Check Tools API o sprawdzenia powiązane ze słowami kluczowymi."""
+        api_key = self._settings.google_factcheck_api_key
+        if not api_key:
+            run.add_warning("Google Fact Check API nie jest skonfigurowane - pomijam weryfikację zewnętrzną.")
+            return
+
+        # Budujemy zapytanie ze słów kluczowych
+        query = " OR ".join(f'"{kw}"' for kw in run.keywords[:5])
+        url = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
+        params = {
+            "key": api_key.get_secret_value(),
+            "query": query,
+            "pageSize": 10,
+            "languageCode": "pl",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+        except httpx.HTTPError as exc:
+            log.warning("Google Fact Check API błąd połączenia: %s", exc)
+            run.add_warning("Nie udało się połączyć z Google Fact Check API.")
+            return
+
+        if response.status_code == 429:
+            run.add_warning("Przekroczono limit zapytań do Google Fact Check API.")
+            return
+        if response.status_code >= 400:
+            log.warning("Google Fact Check API błąd %s: %s", response.status_code, response.text)
+            run.add_warning("Błąd Google Fact Check API.")
+            return
+
+        data = response.json()
+        claims = data.get("claims", [])
+
+        # Bierzemy top 5
+        for claim in claims[:5]:
+            claim_review = claim.get("claimReview", [])
+            if not claim_review:
+                continue
+            review = claim_review[0]  # Pierwsza recenzja
+            publisher = review.get("publisher", {})
+            result = FactCheckResult(
+                claim=claim.get("text", ""),
+                claimant=claim.get("claimant"),
+                claim_date=claim.get("claimDate"),
+                claim_review_url=review.get("url", ""),
+                claim_review_title=review.get("title", ""),
+                publisher_name=publisher.get("name", ""),
+                publisher_site=publisher.get("site", ""),
+                rating=review.get("textualRating", ""),
+                textual_rating=review.get("textualRating"),
+                url=claim.get("claimReview", [{}])[0].get("url", ""),
+            )
+            run.fact_check_results.append(result)
+
+        if not run.fact_check_results:
+            run.add_warning("Nie znaleziono powiązanych sprawdzeń faktów w Google Fact Check.")
+
+    async def _get_verdict(self, run: _Run) -> None:
+        """Używa DeepSeek do oceny czy artykuł to fake news na podstawie danych."""
+        if self._provider is None:
+            raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES["llm_not_configured"], "llm_not_configured")
+
+        # Przygotuj kontekst z fakt-checków
+        factcheck_context = ""
+        if run.fact_check_results:
+            factcheck_context = "\n\nZnalezione sprawdzenia faktów (Google Fact Check Tools):\n"
+            for i, fc in enumerate(run.fact_check_results, 1):
+                factcheck_context += (
+                    f"{i}. Twierdzenie: {fc.claim}\n"
+                    f"   Źródło: {fc.publisher_name} ({fc.publisher_site})\n"
+                    f"   Ocena: {fc.rating}\n"
+                    f"   Link: {fc.claim_review_url}\n"
+                )
+        else:
+            factcheck_context = "\n\nBrak znalezionych sprawdzeń faktów w Google Fact Check Tools."
+
+        user_prompt = DEEPSEEK_VERDICT_PROMPT.format(
+            title=run.article_title or "Brak tytułu",
+            text=run.article_text[:10000],
+            keywords=", ".join(run.keywords),
+            main_topic=run.main_topic,
+            factcheck_context=factcheck_context,
+        )
+
+        try:
+            verdict, usage = await self._provider.structured(
+                system="Jesteś ekspertem ds. weryfikacji informacji i wykrywania dezinformacji. "
+                       "Analizujesz artykuły pod kątem fake news. Odpowiadasz wyłącznie obiektem JSON.",
+                user=user_prompt,
+                schema=_VerdictOnly,
+                effort="medium",
+            )
+        except LLMError as exc:
+            log.warning("DeepSeek błąd: %s (%s)", exc.code, exc)
             raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES.get(exc.code, _LLM_MESSAGES["llm_unavailable"]), exc.code) from exc
+
         run.usage.add(usage)
-        return output
-
-    async def _assess_material(self, run: _Run) -> tuple[list[ClaimResult], list[str]]:
-        today = date.today()
-        started = time.perf_counter()
-        system, user = extract_prompts(run.material, today, self._settings.max_claims)
-        extraction = await self._ask(run, system, user, Extraction, self._settings.llm_extract_effort)
-        run.mark("extract", started)
-        if extraction.injection_detected:
-            run.flag_injection("model_flag", "model zgłosił polecenia w analizowanym materiale")
-        if extraction.input_status == "needs_clarification":
-            raise _Stop(
-                CheckStatus.NEEDS_CLARIFICATION,
-                extraction.message or "Napisz dokładniej, którą informację mam sprawdzić.",
-            )
-        if extraction.input_status == "out_of_scope":
-            raise _Stop(
-                CheckStatus.OUT_OF_SCOPE,
-                extraction.message or "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
-            )
-        extracted = extraction.claims[: self._settings.max_claims]
-        if not extracted:
-            raise _Stop(CheckStatus.NEEDS_CLARIFICATION, "Napisz dokładniej, którą informację mam sprawdzić.")
-
-        started = time.perf_counter()
-        outcomes = await asyncio.gather(
-            *(self._assess_claim(run, f"c{n}", claim, today) for n, claim in enumerate(extracted, 1)),
-            return_exceptions=True,
-        )
-        run.mark("verify", started)
-        for outcome in outcomes:
-            if isinstance(outcome, BaseException):
-                raise outcome
-        claims = [claim for claim, _ in outcomes]
-
-        for claim, documents in outcomes:
-            if documents:
-                matches = await asyncio.to_thread(self._context.content_matches, claim.text, documents)
-                for match in matches:
-                    run.incidents.setdefault(match.incident_id, match)
-        if any(e.archival for c in claims for e in c.evidence):
-            run.warn(
-                "archival_material",
-                f"Część źródeł jest starsza niż {self._settings.archival_days} dni. Sprawdź, czy są nadal aktualne.",
-            )
-        if self._retrieval_degraded:
-            run.warn("retrieval_degraded", "Wyszukiwanie działało w trybie uproszczonym (tylko słowa kluczowe), więc mogło pominąć część źródeł.")
-        return claims, self._limitations(run, len(extraction.claims) > len(extracted))
-
-    async def _assess_claim(
-        self, run: _Run, claim_id: str, claim: ExtractedClaim, today: date
-    ) -> tuple[ClaimResult, list[Document]]:
-        if claim.kind != "fakt":
-            return (
-                unassessed(
-                    claim_id,
-                    claim.text,
-                    claim.risk,
-                    Verdict.NOT_VERIFIABLE,
-                    "To opinia albo prognoza, a nie stwierdzenie faktu. Nie da się jej potwierdzić ani obalić na podstawie źródeł.",
-                ),
-                [],
-            )
-        hits = await asyncio.to_thread(
-            self._index.search, [claim.text, *claim.queries], self._settings.retrieval_top_k, today
-        )
-        if not hits:
-            return (
-                unassessed(
-                    claim_id,
-                    claim.text,
-                    claim.risk,
-                    Verdict.INSUFFICIENT,
-                    "W naszych źródłach nie ma materiałów na ten temat, więc nie rozstrzygam.",
-                    "W katalogu źródeł nie znaleźliśmy żadnych materiałów dotyczących tego twierdzenia.",
-                ),
-                [],
-            )
-        for hit in hits:
-            found = scan_injection(hit.passage.text)
-            if found:
-                run.flag_injection("corpus_passage", f"{hit.passage.doc.id}: {'; '.join(found)}")
-        system, user = assess_prompts(claim.text, hits, today)
-        assessment = await self._ask(run, system, user, ClaimAssessment, self._settings.llm_assess_effort)
-        if assessment.injection_detected:
-            run.flag_injection("model_flag", f"model zgłosił polecenia przy ocenie twierdzenia {claim_id}")
-        result, rejected = decide(
-            claim_id=claim_id,
-            claim_text=claim.text,
-            risk=claim.risk,
-            assessment=assessment,
-            hits=hits,
-            source_names=self._source_names,
-            today=today,
-            archival_days=self._settings.archival_days,
-        )
-        run.quotes_rejected += rejected
-        return result, [h.passage.doc for h in hits]
-
-    # --- składanie odpowiedzi ---
-
-    def _limitations(self, run: _Run, claims_truncated: bool) -> list[str]:
-        built = self._index.built_at.date().isoformat() if self._index.built_at else "nieznana data"
-        items = [
-            f"Odpowiedź opiera się wyłącznie na źródłach z katalogu Prawdowida (stan na {built}). Nowsze informacje mogły nie zostać uwzględnione.",
-            "Uzasadnienie to interpretacja modelu językowego. Cytaty i linki pochodzą ze źródeł – przeczytaj je i oceń samodzielnie.",
-        ]
-        if run.input.kind == "url":
-            items.append("Sprawdziliśmy treść strony pobraną w chwili zgłoszenia. Strona mogła się później zmienić.")
-        if run.input.kind == "image":
-            items.append("Tekst z obrazu odczytał model – mógł się pomylić. Nie oceniamy autentyczności obrazu.")
-        if claims_truncated:
-            items.append(f"Sprawdziliśmy {self._settings.max_claims} najważniejsze twierdzenia z tej treści.")
-        return items
-
-    async def _related_materials(self, material: str) -> list[SourceRef]:
-        hits = await asyncio.to_thread(self._index.search, [material[:500]], 5)
-        docs = {h.passage.doc.id: h.passage.doc for h in hits}
-        return [source_ref(d, self._source_names.get(d.source_id, d.publisher)) for d in docs.values()]
+        run.verdict = verdict.verdict
+        run.confidence = verdict.confidence
+        run.justification = verdict.justification
 
     def _response(
         self,
@@ -433,10 +350,6 @@ class VerificationService:
         *,
         status_message: str | None = None,
         error_code: str | None = None,
-        summary: str | None = None,
-        claims: list[ClaimResult] | None = None,
-        moderator_case: ModeratorCaseInfo | None = None,
-        limitations: list[str] | None = None,
         cached: bool = False,
     ) -> CheckResponse:
         provider = self._provider
@@ -449,30 +362,30 @@ class VerificationService:
             status_message=status_message,
             error_code=error_code,
             input=run.input,
-            summary=summary,
-            claims=claims or [],
-            warnings=list(run.warnings.values()),
-            incident_matches=list(run.incidents.values()),
-            moderator_case=moderator_case or ModeratorCaseInfo(),
-            limitations=limitations or [],
+            verdict=run.verdict,
+            verdict_label=run.verdict.value if run.verdict else None,
+            confidence=run.confidence,
+            justification=run.justification,
+            keywords=run.keywords,
+            main_topic=run.main_topic,
+            fact_check_results=run.fact_check_results,
+            source_articles=[],
+            limitations=[
+                "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia. Strona mogła się później zmienić.",
+                "Werdykt to interpretacja modelu językowego opartego na dostępnych sprawdzeniach faktów.",
+                "Brak sprawdzeń w Google Fact Check nie oznacza, że informacja jest prawdziwa.",
+            ],
             meta=CheckMeta(
                 duration_ms=int((time.perf_counter() - run.started) * 1000),
                 stages_ms=run.stages_ms,
                 provider=provider.name if provider else None,
                 model=provider.model if provider else None,
+                bielik_model=self._settings.bielik_model if self._bielik_provider else None,
                 llm_calls=run.usage.calls,
                 tokens_in=run.usage.input_tokens,
                 tokens_out=run.usage.output_tokens,
                 cost_usd=estimate_cost(provider.model, run.usage, override) if provider else None,
-                retrieval_mode=self._index.mode,
-                corpus_version=self._index.version,
                 processing_location=self._settings.processing_location,
                 cached=cached,
             ),
         )
-
-
-def _summary(claims: list[ClaimResult]) -> str:
-    counts = Counter(c.verdict for c in claims)
-    parts = ", ".join(f"{VERDICT_LABELS[v].lower()} – {n}" for v, n in counts.items())
-    return f"Liczba sprawdzonych twierdzeń: {len(claims)}. Wyniki: {parts}."

@@ -1,16 +1,14 @@
 import type {
-  CaseOut,
-  CaseStatus,
-  CaseUpdate,
-  CheckListItem,
+  AdminCheckItem,
+  AdminMetrics,
   CheckRequest,
   CheckResponse,
   HealthResponse,
-  MetricsResponse,
-  SecurityEventOut,
-  SessionDeleteResponse,
-  SourcesResponse,
 } from "./types";
+
+interface SessionDeleteResponse {
+  deleted: number;
+}
 
 const API_ROOT = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -30,7 +28,6 @@ export type ApiErrorKind =
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status?: number;
-  /** Polish message supplied by the backend, when it sent one as a plain string. */
   readonly detail?: string;
   readonly retryAfterSeconds?: number;
 
@@ -48,7 +45,6 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-// A check normally takes up to ~30 s; leave generous headroom before giving up.
 const CHECK_TIMEOUT_MS = 120_000;
 
 interface RequestOptions extends RequestInit {
@@ -118,7 +114,6 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
     return response;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    // A caller-initiated abort is not a failure to report; let it surface as-is.
     if (signal?.aborted) throw error;
     throw new ApiError(timedOut ? "timeout" : "network");
   } finally {
@@ -157,22 +152,6 @@ export function createCheck(
   });
 }
 
-export function createImageCheck(
-  file: File,
-  sessionId: string | null,
-  signal?: AbortSignal,
-): Promise<CheckResponse> {
-  const form = new FormData();
-  form.append("file", file);
-  if (sessionId) form.append("session_id", sessionId);
-  return getJson("/checks/image", {
-    method: "POST",
-    body: form,
-    timeoutMs: CHECK_TIMEOUT_MS,
-    signal,
-  });
-}
-
 export function getCheck(id: string, signal?: AbortSignal): Promise<CheckResponse> {
   return getJson(`/checks/${encodeURIComponent(id)}`, { signal });
 }
@@ -183,55 +162,19 @@ export function deleteSession(sessionId: string): Promise<SessionDeleteResponse>
   });
 }
 
-export function getSources(signal?: AbortSignal): Promise<SourcesResponse> {
-  return getJson("/sources", { signal });
-}
-
 function adminHeaders(token: string): HeadersInit {
   return { "X-Admin-Token": token };
 }
 
-export function getMetrics(token: string, signal?: AbortSignal): Promise<MetricsResponse> {
+export function getMetrics(token: string, signal?: AbortSignal): Promise<AdminMetrics> {
   return getJson("/admin/metrics", { headers: adminHeaders(token), signal });
-}
-
-export function getCases(
-  token: string,
-  status: CaseStatus | null,
-  signal?: AbortSignal,
-): Promise<CaseOut[]> {
-  const query = status ? `?${new URLSearchParams({ status })}` : "";
-  return getJson(`/admin/cases${query}`, { headers: adminHeaders(token), signal });
-}
-
-export function updateCase(
-  token: string,
-  id: number,
-  update: CaseUpdate,
-): Promise<CaseOut> {
-  return getJson(`/admin/cases/${id}`, {
-    method: "PATCH",
-    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
-    body: JSON.stringify(update),
-  });
-}
-
-export function getSecurityEvents(
-  token: string,
-  signal?: AbortSignal,
-  limit = 50,
-): Promise<SecurityEventOut[]> {
-  return getJson(`/admin/events?limit=${limit}`, {
-    headers: adminHeaders(token),
-    signal,
-  });
 }
 
 export function getRecentChecks(
   token: string,
   signal?: AbortSignal,
   limit = 50,
-): Promise<CheckListItem[]> {
+): Promise<AdminCheckItem[]> {
   return getJson(`/admin/checks?limit=${limit}`, {
     headers: adminHeaders(token),
     signal,
@@ -246,7 +189,6 @@ export async function downloadExport(
     headers: adminHeaders(token),
     timeoutMs: 60_000,
   });
-  // Readable only when the server exposes the header to cross-origin scripts.
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
   return { blob: await response.blob(), filename };
