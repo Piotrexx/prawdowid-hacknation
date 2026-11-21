@@ -3,6 +3,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Request, UploadFile
+from pydantic import BaseModel, Field
 
 from app.api.deps import CONSENT_COOKIE, enforce_rate_limit, session_from_cookie
 from app.config import Settings
@@ -110,6 +111,23 @@ async def create_audio_check(
     _require_consent(request, session)
     service: VerificationService = request.app.state.service
     return await service.check(Submission(channel="web", session_id=session, audio=data))
+
+
+class DemoMessage(BaseModel):
+    """Adapter demonstracyjnego drugiego kanału: ta sama logika co WWW."""
+
+    message: str = Field(min_length=1, max_length=20000)
+    session_id: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+@router.post("/channels/demo", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
+async def demo_channel(request: Request, payload: DemoMessage) -> CheckResponse:
+    """Drugi kanał demonstracyjny. Woła dokładnie tę samą ścieżkę weryfikacji,
+    więc wynik merytoryczny dla tego samego zgłoszenia jest spójny z WWW."""
+    service: VerificationService = request.app.state.service
+    session_id = _session(request, payload.session_id)
+    _require_consent(request, session_id)
+    return await service.check(Submission.from_message("demo", session_id, payload.message.strip()))
 
 
 @router.get("/checks/{check_id}", response_model=CheckResponse)

@@ -22,8 +22,8 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 - Nierozstrzygnięte zgłoszenia trafiają do kolejki moderatora; podobne zgłoszenia są grupowane w jedną sprawę.
 - Ignoruje i odnotowuje próby prompt injection, maskuje dane osobowe, nie zapisuje obrazów.
 
-> **Uwaga:** obecnie działa tylko kanał WWW. Wymagania konkursu przewidują drugi kanał albo adapter
-> demonstracyjny – trzeba go dodać przed oceną.
+> **Drugi kanał:** `POST /api/v1/channels/demo` to adapter demonstracyjny, który woła tę samą
+> ścieżkę weryfikacji co WWW (spójność wyniku i cytatów jest testowana).
 
 ## Architektura w skrócie
 

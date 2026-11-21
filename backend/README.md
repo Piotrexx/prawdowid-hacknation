@@ -63,6 +63,7 @@ Publiczne:
 - `POST /api/v1/checks` — tekst lub URL
 - `POST /api/v1/checks/image` — zrzut ekranu/zdjęcie
 - `POST /api/v1/checks/audio` — nagranie (webm/wav/ogg)
+- `POST /api/v1/channels/demo` — adapter demonstracyjnego drugiego kanału (ta sama ścieżka weryfikacji)
 - `GET /api/v1/checks/{id}`
 - `GET /api/v1/health`
 - `POST /api/v1/consent`, `GET /api/v1/consent/{session_id}`

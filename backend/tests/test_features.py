@@ -19,6 +19,17 @@ def _confirm(provider):
     )
 
 
+def test_demo_channel_uses_the_same_verification_path(client, provider):
+    _confirm(provider)
+    web = client.post(f"{API}/checks", json={"text": VACCINE_CLAIM}).json()
+    demo = client.post(f"{API}/channels/demo", json={"message": VACCINE_CLAIM}).json()
+    assert demo["channel"] == "demo"
+    assert [c["verdict"] for c in demo["claims"]] == [c["verdict"] for c in web["claims"]]
+    assert [e["quote"] for c in demo["claims"] for e in c["evidence"]] == [
+        e["quote"] for c in web["claims"] for e in c["evidence"]
+    ]
+
+
 def test_sources_endpoint_is_gone(client):
     assert client.get(f"{API}/sources").status_code == 404
 
