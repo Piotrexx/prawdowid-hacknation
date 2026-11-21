@@ -5,7 +5,10 @@ import type { ModeratorCaseInfo, Warning, WarningCode } from "@/lib/types";
 
 type Tone = "neutral" | "info" | "warn" | "bad";
 
-const WARNING_CARDS: Record<WarningCode, { title: string; badge: string; tone: Tone }> = {
+/** Codes intentionally not shown to the end user (still logged server-side for observability). */
+const HIDDEN_WARNING_CODES: ReadonlySet<WarningCode> = new Set(["keywords_degraded"]);
+
+const WARNING_CARDS: Partial<Record<WarningCode, { title: string; badge: string; tone: Tone }>> = {
   pii_masked: { title: "Ukryto dane osobowe", badge: "Prywatność", tone: "info" },
   incident_match: { title: "Znany incydent", badge: "Uwaga", tone: "warn" },
   archival_material: { title: "Materiał archiwalny", badge: "Informacja", tone: "neutral" },
@@ -14,6 +17,7 @@ const WARNING_CARDS: Record<WarningCode, { title: string; badge: string; tone: T
   retrieval_degraded: { title: "Ograniczone wyszukiwanie", badge: "Uwaga", tone: "warn" },
   image_limits: { title: "Ograniczony odczyt obrazu", badge: "Informacja", tone: "neutral" },
   input_truncated: { title: "Treść została skrócona", badge: "Informacja", tone: "neutral" },
+  factcheck_unavailable: { title: "Baza fact-checków niedostępna", badge: "Uwaga", tone: "warn" },
 };
 
 const FALLBACK = { title: "Uwaga", badge: "Informacja", tone: "neutral" as Tone };
@@ -76,11 +80,16 @@ interface WarningCardsProps {
   level?: 2 | 3;
 }
 
+/** Drops warning codes that are intentionally never shown to the end user. */
+export function visibleWarnings(warnings: Warning[]): Warning[] {
+  return warnings.filter((warning) => !HIDDEN_WARNING_CODES.has(warning.code));
+}
+
 export function hasWarningCards(warnings: Warning[], moderatorCase?: ModeratorCaseInfo): boolean {
   const moderatorShown =
     moderatorCase !== undefined &&
     ["recommended", "created", "updated"].includes(moderatorCase.state);
-  return warnings.length > 0 || moderatorShown;
+  return visibleWarnings(warnings).length > 0 || moderatorShown;
 }
 
 /** "Warto wiedzieć": the check's warnings and moderator status as small cards. */
@@ -94,7 +103,7 @@ export function WarningCards({ warnings, moderatorCase, headingId, level = 2 }: 
         Warto wiedzieć
       </Heading>
       {moderatorCase ? <ModeratorCard info={moderatorCase} /> : null}
-      {warnings.map((warning, index) => {
+      {visibleWarnings(warnings).map((warning, index) => {
         const card = WARNING_CARDS[warning.code] ?? FALLBACK;
         return (
           <Card key={`${warning.code}-${index}`} title={card.title} badge={card.badge} tone={card.tone}>

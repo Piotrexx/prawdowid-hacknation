@@ -14,7 +14,7 @@ interface InputRecapProps {
 export function InputRecap({ input, id, level = 3 }: InputRecapProps) {
   const Heading = level === 2 ? "h2" : "h3";
   const text = input.text.trim();
-  const sameAsUrl = input.url !== null && text === input.url.trim();
+  const sameAsUrl = Boolean(input.url) && text === input.url!.trim();
 
   return (
     <section

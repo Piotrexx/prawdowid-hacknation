@@ -8,11 +8,12 @@ services:
       CORS_ORIGINS: http://localhost:3000
       # Bielik via Ollama (running in separate container)
       BIELIK_BASE_URL: http://ollama:11434/v1
-      BIELIK_MODEL: llama3.2:3b
+      BIELIK_MODEL: SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0
     ports:
       - "8000:8000"
     volumes:
-      - backend-data:/app/data
+      # Tylko dane zmienne. Korpus jest w obrazie pod /app/data i nie wolno go przesłonić.
+      - backend-var:/app/var
     depends_on:
       - ollama
 
@@ -32,7 +33,7 @@ services:
     entrypoint: >
       sh -c "ollama serve &
         until curl -sf http://localhost:11434/ > /dev/null 2>&1; do sleep 2; done &&
-        (ollama list | grep -q 'llama3.2:3b' || ollama pull llama3.2:3b) &&
+        (ollama list | grep -q 'bielik-4.5b-v3.0-instruct' || ollama pull SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0) &&
         wait"
 
   frontend:
@@ -46,5 +47,5 @@ services:
       - backend
 
 volumes:
-  backend-data:
+  backend-var:
   ollama-data:

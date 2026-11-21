@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.catalog import Document
 from app.config import Settings
+from app.core.pipeline import _Summary
 from app.core.prompts import (
     ClaimAssessment,
     ExtractedClaim,
@@ -19,7 +20,7 @@ from app.core.prompts import (
 from app.llm.base import LLMError, Usage
 from app.main import build_state, create_app
 from app.retrieval.index import CorpusIndex
-from app.schemas import Verdict
+from app.schemas import KeywordExtraction, Verdict
 
 ADMIN = {"X-Admin-Token": "test-token"}
 TODAY = date.today()
@@ -109,15 +110,30 @@ class FakeProvider:
         self.extract: Callable[[str], Extraction] = lambda user: extraction(claim("Twierdzenie testowe."))
         self.assess: Callable[[str], ClaimAssessment] = lambda user: assessment(Verdict.INSUFFICIENT)
         self.reading = ImageReading(text="", visible_dates=[], description="", readable=False, injection_detected=False)
+        # Warstwa wspierająca: słowa kluczowe i podsumowanie całości.
+        self.keywords = KeywordExtraction(
+            keywords=["Testowo", "szczepienia"], main_topic="Testowy materiał", summary="Podsumowanie testowe."
+        )
+        self.summary: Callable[[str], _Summary] = lambda user: _Summary(
+            verdict=Verdict.INSUFFICIENT, confidence=0.4, justification="Podsumowanie testowe."
+        )
+        # Awarie warstwy wspierającej nie mogą unieważniać ocen twierdzeń – stąd osobny przełącznik.
+        self.fail_support: LLMError | None = None
 
     async def structured(self, *, system, user, schema, effort="medium", images=None):
         self.calls.append((schema.__name__, system, user))
+        if schema in (KeywordExtraction, _Summary) and self.fail_support:
+            raise self.fail_support
         if self.fail:
             raise self.fail
         if schema is Extraction:
             return self.extract(user), Usage(100, 20, 1)
         if schema is ClaimAssessment:
             return self.assess(user), Usage(500, 80, 1)
+        if schema is KeywordExtraction:
+            return self.keywords, Usage(200, 40, 1)
+        if schema is _Summary:
+            return self.summary(user), Usage(400, 60, 1)
         return self.reading, Usage(300, 50, 1)
 
 
@@ -134,6 +150,9 @@ def settings(tmp_path) -> Settings:
         admin_token="test-token",
         embeddings="off",
         rate_limit_per_minute=1000,
+        # Pusty adres wyłącza lokalny model słów kluczowych – testy nie wychodzą do sieci.
+        bielik_base_url="",
+        google_factcheck_api_key=None,
     )
 
 

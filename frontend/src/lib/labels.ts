@@ -1,4 +1,5 @@
 import type {
+  CaseStatus,
   CheckStatus,
   RetrievalMode,
   Stance,
@@ -60,6 +61,14 @@ export const RETRIEVAL_LABELS: Record<RetrievalMode, string> = {
   bm25: "słowa kluczowe (BM25)",
   none: "bez wyszukiwania",
 };
+
+export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
+  open: "Otwarta",
+  in_review: "W trakcie",
+  resolved: "Zamknięta",
+};
+
+export const CASE_STATUSES = Object.keys(CASE_STATUS_LABELS) as CaseStatus[];
 
 export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
   completed: "Zakończone",

@@ -12,13 +12,19 @@ dependencies = [
     "trafilatura>=2.0",
     "sqlalchemy>=2.0",
     "python-multipart>=0.0.9",
+    "anthropic>=1.0",
+    "pyyaml>=6.0",
+    "pillow>=11.0",
+    "numpy>=2.0",
+    "fastembed>=0.4",
 ]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.8"]
+ingest = ["feedparser>=6.0", "ijson>=3.3"]
 
 [tool.uv]
-default-groups = ["dev"]
+default-groups = ["dev", "ingest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -19,7 +19,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { STATUS_TITLES } from "@/components/result/StatusPanel";
 import { VerdictChip, verdictStripe } from "@/components/result/VerdictBadge";
-import { warningCard } from "@/components/result/Warnings";
+import { visibleWarnings, warningCard } from "@/components/result/Warnings";
 import { Button } from "@/components/ui/Button";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { Tag } from "@/components/ui/Tag";
@@ -38,7 +38,7 @@ export type TurnState =
 /** The assistant's side of the thread: a small mark, then the answer. */
 function AssistantRow({ children }: { children: ReactNode }) {
   return (
-    <div className="flex gap-3">
+    <div className="flex items-start gap-3">
       <span
         aria-hidden="true"
         className="mt-1 hidden size-8 shrink-0 sm:grid place-items-center bg-accent text-sm font-bold text-on-accent"
@@ -54,7 +54,7 @@ function Loading() {
   const { t } = useTranslation();
   return (
     <AssistantRow>
-      <div className="flex items-center gap-3 py-1.5">
+      <div className="flex items-start gap-3 py-1.5">
         <Loader aria-hidden="true" className="size-5 text-accent motion-safe:animate-spin" />
         <div>
           <p className="font-semibold">{t("chat.searching")}</p>
@@ -179,7 +179,7 @@ function Verdicts({ result }: { result: CheckResponse }) {
       : moderator.state === "created" || moderator.state === "updated"
         ? [{ key: "mod", title: t("result.waitingModerator"), tone: "info" as const }]
         : []),
-    ...result.warnings.map((warning, index) => ({
+    ...visibleWarnings(result.warnings).map((warning, index) => ({
       key: `${warning.code}-${index}`,
       title: `${warningCard(warning.code).title}. ${warning.message}`,
       tone: warningCard(warning.code).tone,

@@ -15,6 +15,12 @@ kanał (obecnie WWW)
   → 7. reguły werdyktu         KOD: weryfikacja cytatów, werdykt, siła podstawy, sprzeczności
   → 8. pętla informacji        KOD: sprawa moderatora dla nierozstrzygniętych, grupowanie, powiadomienie
   → CheckResponse → zapis przebiegu → odpowiedź w formie właściwej dla kanału
+
+  równolegle z krokami 5–7 (warstwa wspierająca, nigdy rozstrzygająca):
+  → słowa kluczowe             BIELIK (lokalnie, Ollama/vLLM): słowa kluczowe i główny temat;
+                               przy awarii model zdalny, a potem zapytania z kroku 4
+  → fact-checki zewnętrzne     KOD: Google Fact Check Tools dla słów kluczowych
+  → podsumowanie całości       MODEL: jeden werdykt dla całego materiału, uzgodniony z ocenami twierdzeń
 ```
 
 Kanał zna tylko `VerificationService.check()` i model `CheckResponse`. Obecnie jedynym kanałem jest WWW.
@@ -44,6 +50,18 @@ Model językowy rozumie pytanie, porównuje materiały i formułuje uzasadnienie
    system nie może więc „wymyślić” źródła.
 5. Gdy reguły korygują propozycję modelu, uzasadnienie modelu jest zastępowane stałym komunikatem.
 
+## Dwie warstwy odpowiedzi
+
+| Warstwa | Pola `CheckResponse` | Skąd się bierze | Rola |
+|---|---|---|---|
+| dowodowa | `claims[]` (`evidence`, `strength`, `conflict`, `missing`) | katalog źródeł + cytaty sprawdzone w `core/verdict.py` | **rozstrzygająca** |
+| wspierająca | `verdict`, `confidence`, `justification`, `keywords`, `main_topic`, `fact_check_results[]` | lokalny model słów kluczowych, Google Fact Check Tools, podsumowanie modelu | kontekst i streszczenie |
+
+Warstwa wspierająca nigdy nie nadpisuje ocen twierdzeń. `_reconcile()` w `core/pipeline.py` pilnuje,
+by podsumowanie nie było mocniejsze niż dowody: jeśli żadne twierdzenie nie zostało rozstrzygnięte,
+podsumowanie też nie rozstrzyga. Awaria słów kluczowych, Google Fact Check albo podsumowania
+zostawia oceny twierdzeń nietknięte i daje tylko ostrzeżenie.
+
 **Siła podstawy** to suma jawnych przesłanek (każda jest pokazywana użytkownikowi):
 jakość najlepszego źródła (pierwotne/urzędowe 0,35; fact-checking 0,28; media 0,12),
 liczba niezależnych wydawców (0,10 / 0,20 / 0,30), aktualność (0,20 → 0,05 dla materiału archiwalnego),
@@ -56,6 +74,8 @@ zgodność źródeł (+0,15 / −0,15). Progi: mocna ≥ 0,75, umiarkowana ≥ 0
 | Model językowy | DeepSeek `deepseek-flash` (obecnie DeepSeek-V4.1-Flash) przez API zgodne z OpenAI; odpowiedź w trybie `json_object`, walidowana schematem z jedną ponowną próbą | `LLM_BASE_URL` + `LLM_MODEL` – Mistral (UE), Ollama/vLLM (własny serwer, np. Bielik), OpenRouter; `LLM_PROVIDER=anthropic` – Claude |
 | Embeddingi | `paraphrase-multilingual-MiniLM-L12-v2` przez fastembed (ONNX), **lokalnie** | `EMBEDDING_MODEL` lub `EMBEDDINGS=off` (samo BM25) |
 | Wyszukiwanie | BM25 + kosinus w pamięci (numpy), RRF | interfejs `CorpusIndex.search` – można podłączyć bazę wektorową |
+| Słowa kluczowe | **Bielik 4.5B v3.0 Instruct** (`SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0`) przez Ollamę/vLLM, **lokalnie** | `BIELIK_BASE_URL` + `BIELIK_MODEL`; puste `BIELIK_BASE_URL` wyłącza etap |
+| Fact-checki zewnętrzne | Google Fact Check Tools | `GOOGLE_FACTCHECK_API_KEY`; bez klucza etap jest pomijany |
 | Baza | SQLite | `DATABASE_URL` (SQLAlchemy – np. Postgres) |
 | Odczyt obrazu | ten sam model językowy (wizja) | idzie za `LLM_PROVIDER` |
 
@@ -127,3 +147,19 @@ po przeniesieniu limitu żądań do Redis i bazy do Postgresa. Indeks (kilkaset 
 - Limit 4 twierdzeń i 20 000 znaków na zgłoszenie.
 - Limit żądań i blokada grupowania spraw działają w pamięci jednego procesu.
 - Pełna lista nieobsługiwanych przypadków: [TESTY-I-RYZYKA.md](TESTY-I-RYZYKA.md).
+
+## Sesja i zgoda na politykę prywatności
+
+Numer sesji (`prawdowid_session`) i wersja zaakceptowanej polityki (`prawdowid_privacy_consent`)
+są trzymane w ciasteczkach, nie w `localStorage`, dzięki czemu backend widzi je przy każdym żądaniu.
+Ciasteczka ustawia JavaScript (nie są HttpOnly, bo frontend musi je czytać), mają `SameSite=Lax`
+i `Secure` po HTTPS; przy wdrożeniu frontendu i backendu na osobne domeny trzeba zmienić
+na `SameSite=None; Secure`. CORS ma `allow_credentials=True` przy jawnej liście origins.
+
+`POST /api/v1/checks` bierze numer sesji z treści żądania, a gdy go nie ma – z ciasteczka.
+Treść ciasteczka pochodzi od klienta, więc jej format jest sprawdzany przed użyciem
+(`session_from_cookie` w `api/deps.py`).
+
+Tabela `privacy_consents` przechowuje **wyłącznie** numer sesji, wersję polityki, fakt zgody
+i czas zapisu – bez treści sprawdzeń i bez odpowiedzi modelu (te są w tabeli `checks`).
+Usunięcie sesji (`DELETE /api/v1/sessions/{id}`) kasuje też zgodę.

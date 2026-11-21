@@ -4,7 +4,7 @@ import { ArrowRight, Copy, FileText } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SideButton, SideLink } from "@/components/layout/SideLinks";
 import { cx } from "@/lib/cx";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDuration } from "@/lib/format";
 import type { CheckResponse } from "@/lib/types";
 import { ClaimCard, claimAnchors } from "./ClaimCard";
 import { IncidentMatches } from "./IncidentMatches";
@@ -200,6 +200,7 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const active = useActiveClaim(result.claims.length);
   const checkedAt = formatDateTime(result.created_at);
+  const duration = formatDuration(result.meta.duration_ms);
 
   useEffect(() => {
     if (focusHeading) headingRef.current?.focus();
@@ -214,6 +215,7 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
               Sprawdzono: {checkedAt}. Od tego czasu informacje mogły się zmienić.
             </p>
           ) : null}
+          {duration ? <p className="text-sm text-muted">{duration}</p> : null}
           <h1
             id="wynik-tytul"
             ref={headingRef}

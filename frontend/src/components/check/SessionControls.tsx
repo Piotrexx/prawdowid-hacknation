@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { deleteSession } from "@/lib/api";
 import { describeError } from "@/lib/errors";
 import { plural } from "@/lib/format";
+import { forgetConsent } from "@/lib/consent";
 import { clearSessionId, peekSessionId } from "@/lib/session";
 
 type Step = "idle" | "confirm" | "deleting";
@@ -29,6 +30,9 @@ export function SessionControls({ onDeleted }: { onDeleted: () => void }) {
     try {
       const { deleted } = await deleteSession(sessionId);
       clearSessionId();
+      // Zgoda jest powiązana z numerem sesji, który właśnie przestał istnieć,
+      // więc przy kolejnym sprawdzeniu pytamy o nią ponownie.
+      forgetConsent();
       onDeleted();
       setMessage(
         deleted > 0

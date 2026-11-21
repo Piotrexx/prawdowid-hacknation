@@ -22,18 +22,19 @@ export function ModeratorCaseBox({ info }: { info: ModeratorCaseInfo }) {
 
   if (info.state !== "created" && info.state !== "updated") return null;
 
+  const occurrences = info.occurrences ?? 0;
   const title =
-    info.case_id !== null
+    info.case_id != null
       ? `Sprawa nr ${info.case_id} czeka na sprawdzenie przez człowieka`
       : "Sprawa czeka na sprawdzenie przez człowieka";
 
   return (
     <Notice tone="info" icon={UserRoundCheck} title={title}>
       <p>{info.message || "Ta treść trafiła do kolejki moderatora."}</p>
-      {info.occurrences !== null && info.occurrences > 1 ? (
+      {occurrences > 1 ? (
         <p className="text-muted">
-          Podobne zgłoszenie pojawiło się już {info.occurrences}{" "}
-          {plural(info.occurrences, "raz", "razy", "razy")}.
+          Podobne zgłoszenie pojawiło się już {occurrences}{" "}
+          {plural(occurrences, "raz", "razy", "razy")}.
         </p>
       ) : null}
       {info.notified ? <p className="text-muted">Moderator dostał powiadomienie.</p> : null}

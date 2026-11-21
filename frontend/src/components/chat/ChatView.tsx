@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOff, Quote, Scale } from "lucide-react";
+import { EyeOff, Quote, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageAttachment } from "@/components/check/useImageAttachment";
@@ -11,6 +11,7 @@ import { plural } from "@/lib/format";
 import { rememberCheck } from "@/lib/history";
 import { SHORT_VERDICT_LABELS } from "@/lib/labels";
 import { isSingleUrl } from "@/lib/links";
+import { maskPii } from "@/lib/pii";
 import { useNewCheckCount } from "@/lib/newCheck";
 import { cacheResult } from "@/lib/resultCache";
 import { ensureSessionId } from "@/lib/session";
@@ -21,6 +22,8 @@ import { Composer, TEXT_LIMIT } from "./Composer";
 interface Turn {
   id: number;
   text: string;
+  sentText: string;
+  maskedPii: string[];
   file: File | null;
   /** Own object URL, so clearing the composer does not break the image in the thread. */
   imageUrl: string | null;
@@ -73,6 +76,12 @@ function UserMessage({ turn }: { turn: Turn }) {
               >
                 {expanded ? t("chat.collapse") : t("chat.expand")}
               </button>
+            ) : null}
+            {turn.maskedPii.length > 0 ? (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+                <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+                Zamaskowano: {turn.maskedPii.join(", ")}.
+              </p>
             ) : null}
           </>
         )}
@@ -230,6 +239,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     }
     setFormError(null);
 
+    const { text: sentText, masked: maskedPii } = maskPii(trimmed);
+
     const id = nextId.current++;
     let imageUrl: string | null = null;
     if (file) {
@@ -239,17 +250,17 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     scrollTo.current = id;
     setTurns((current) => [
       ...current,
-      { id, text: trimmed, file, imageUrl, state: { kind: "loading" } },
+      { id, text: trimmed, sentText, maskedPii, file, imageUrl, state: { kind: "loading" } },
     ]);
     setText("");
     image.clear();
     textareaRef.current?.focus();
-    void run(id, { text: trimmed, file });
+    void run(id, { text: sentText, file });
   }
 
   function retry(turn: Turn) {
     if (busy || waiting) return;
-    void run(turn.id, { text: turn.text, file: turn.file });
+    void run(turn.id, { text: turn.sentText, file: turn.file });
   }
 
   function focusComposer() {

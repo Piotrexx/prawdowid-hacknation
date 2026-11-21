@@ -6,6 +6,7 @@ interface LayoutProps {
 }
 import { Open_Sans } from "next/font/google";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { PrivacyConsentDialog } from "@/components/privacy/PrivacyConsentDialog";
 import { APPLY_SETTINGS_SCRIPT } from "@/lib/a11ySettings";
 import { I18nProvider } from "@/i18n/provider";
 import "./globals.css";
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: LayoutProps) {
               {children}
             </main>
           </div>
+          <PrivacyConsentDialog />
         </I18nProvider>
       </body>
     </html>

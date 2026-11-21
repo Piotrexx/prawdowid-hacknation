@@ -3,6 +3,7 @@
 import io
 
 from PIL import Image
+from pydantic import SecretStr
 
 from app.core.prompts import ImageReading
 from app.llm.base import LLMUnavailable
@@ -50,7 +51,12 @@ def test_simple_fact_is_confirmed_with_exact_quote(client, provider):
     assert found["justification"] == "Uzasadnienie [E1]."
     assert found["strength"]["level"] == "mocna"
     assert {f["code"] for f in found["strength"]["factors"]} >= {"source_quality", "recency", "agreement"}
-    assert result["meta"]["tokens_in"] == 600 and result["meta"]["llm_calls"] == 2
+    # Wydzielenie twierdzeń + ocena dowodów + słowa kluczowe + podsumowanie całości.
+    # Warstwa dowodowa i wspierająca liczą się równolegle, więc kolejność wywołań nie jest ustalona.
+    assert sorted(c[0] for c in provider.calls) == [
+        "ClaimAssessment", "Extraction", "KeywordExtraction", "_Summary"
+    ]
+    assert result["meta"]["tokens_in"] == 1200 and result["meta"]["llm_calls"] == 4
 
 
 def test_fabricated_quote_never_produces_a_verdict(client, provider):
@@ -138,7 +144,8 @@ def test_opinion_is_not_verifiable(client, provider):
     [found] = check(client, "Testowo to najpiękniejsze miasto.")["claims"]
 
     assert found["verdict"] == "nie_podlega_weryfikacji"
-    assert [c[0] for c in provider.calls] == ["Extraction"]
+    # Opinii nie wyszukujemy w źródłach, więc etap oceny dowodów nie jest w ogóle wołany.
+    assert "ClaimAssessment" not in [c[0] for c in provider.calls]
 
 
 def test_model_outage_is_reported_as_technical_problem_not_verdict(client, provider):
@@ -229,7 +236,7 @@ def test_admin_requires_token_and_exposes_metrics_and_export(client, provider):
     assert client.get(f"{API}/admin/metrics").status_code == 401
     metrics = client.get(f"{API}/admin/metrics", headers=ADMIN).json()
     assert metrics["checks_total"] == 1 and metrics["by_verdict"] == {"potwierdzone": 1}
-    assert metrics["abstention_rate"] == 0 and metrics["tokens_in"] == 600
+    assert metrics["abstention_rate"] == 0 and metrics["tokens_in"] == 1200
     exported = client.get(f"{API}/admin/export", params={"format": "csv"}, headers=ADMIN).text
     assert "potwierdzone" in exported and "https://example.org/szczepienia" in exported
     assert "'=HYPERLINK(1)" in exported
@@ -281,3 +288,237 @@ def test_sources_and_health_endpoints(client):
     assert sources["corpus"]["documents"] == 5 and sources["rules"]
     assert all(s["qualification"] and s["license"] for s in sources["sources"])
     assert health["retrieval_mode"] == "bm25" and health["retention_days"] == 30
+
+
+# --- warstwa wspierająca: słowa kluczowe, Google Fact Check Tools, podsumowanie ---
+
+
+def test_keywords_and_summary_accompany_the_evidence(client, provider):
+    confirm_vaccines(provider)
+    result = check(client, VACCINE_CLAIM)
+
+    assert result["keywords"] == ["Testowo", "szczepienia"]
+    assert result["main_topic"] == "Testowy materiał"
+    # Werdykt podsumowujący nie zastępuje oceny twierdzenia – oba są w odpowiedzi.
+    assert result["claims"][0]["verdict"] == "potwierdzone"
+    assert result["verdict"] and result["verdict_label"]
+
+
+def test_support_layer_failure_does_not_invalidate_the_evidence(client, provider):
+    confirm_vaccines(provider)
+    provider.fail_support = LLMUnavailable("brak połączenia")
+    result = check(client, VACCINE_CLAIM)
+
+    # Dowody i werdykt twierdzenia zostają; brakuje tylko warstwy wspierającej.
+    assert result["status"] == "completed"
+    assert result["claims"][0]["verdict"] == "potwierdzone"
+    assert result["claims"][0]["evidence"][0]["quote"] == VACCINE_QUOTE
+    assert result["verdict"] is None and result["justification"] is None
+
+
+def test_summary_cannot_be_stronger_than_the_evidence(client, provider):
+    """Podsumowanie to interpretacja modelu, więc nie wolno mu rozstrzygać bez dowodów."""
+    provider.extract = lambda user: extraction(claim(UNKNOWN_CLAIM))
+    provider.summary = lambda user: _confident_summary()
+    result = check(client, UNKNOWN_CLAIM)
+
+    assert result["claims"][0]["verdict"] == "brak_wystarczajacych_dowodow"
+    assert result["verdict"] == "brak_wystarczajacych_dowodow"
+    assert result["confidence"] <= 0.5
+
+
+def _confident_summary():
+    from app.core.pipeline import _Summary
+
+    return _Summary(verdict=Verdict.CONFIRMED, confidence=0.99, justification="Model jest pewny bez dowodów.")
+
+
+def test_factcheck_results_are_attached_as_supporting_context(make_client, provider, monkeypatch):
+    import httpx
+
+    payload = {
+        "claims": [
+            {
+                "text": "Most w Testowie zawalił się podczas powodzi.",
+                "claimant": "Anonim",
+                "claimDate": "2026-01-02",
+                "claimReview": [
+                    {
+                        "url": "https://redakcja.example.org/most",
+                        "title": "Most nie zawalił się",
+                        "publisher": {"name": "Redakcja Testowa", "site": "redakcja.example.org"},
+                        "textualRating": "Fałsz",
+                    }
+                ],
+            }
+        ]
+    }
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    client = make_client(google_factcheck_api_key=SecretStr("test-key"))
+    confirm_vaccines(provider)
+    result = check(client, VACCINE_CLAIM)
+
+    [factcheck] = result["fact_check_results"]
+    assert factcheck["publisher_name"] == "Redakcja Testowa"
+    assert factcheck["rating"] == "Fałsz"
+    assert factcheck["claim_review_url"] == "https://redakcja.example.org/most"
+    # Fact-check zewnętrzny nie podmienia werdyktu opartego na katalogu źródeł.
+    assert result["claims"][0]["verdict"] == "potwierdzone"
+
+
+def test_factcheck_outage_is_only_a_warning(make_client, provider, monkeypatch):
+    import httpx
+
+    async def fail_get(self, url, **kwargs):
+        raise httpx.ConnectError("brak sieci")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fail_get)
+    client = make_client(google_factcheck_api_key=SecretStr("test-key"))
+    confirm_vaccines(provider)
+    result = check(client, VACCINE_CLAIM)
+
+    assert result["status"] == "completed"
+    assert result["fact_check_results"] == []
+    assert "factcheck_unavailable" in {w["code"] for w in result["warnings"]}
+
+
+# --- zgoda na politykę prywatności ---
+
+
+def test_consent_is_recorded_and_removed_with_the_session(client):
+    session = "sesja-testowa-1"
+    recorded = client.post(
+        f"{API}/consent", json={"session_id": session, "policy_version": "2026-11-21", "accepted": True}
+    )
+    assert recorded.status_code == 200
+    assert recorded.json()["accepted"] is True and recorded.json()["recorded_at"]
+
+    found = client.get(f"{API}/consent/{session}", params={"policy_version": "2026-11-21"})
+    assert found.status_code == 200
+
+    assert client.delete(f"{API}/sessions/{session}").status_code == 200
+    gone = client.get(f"{API}/consent/{session}", params={"policy_version": "2026-11-21"})
+    assert gone.status_code == 404
+
+
+def test_consent_does_not_store_any_check_content(client, provider):
+    """Zgoda to tylko fakt zgody: identyfikator sesji, wersja polityki i czas."""
+    confirm_vaccines(provider)
+    check(client, VACCINE_CLAIM, session_id="sesja-testowa-2")
+    client.post(
+        f"{API}/consent", json={"session_id": "sesja-testowa-2", "policy_version": "2026-11-21", "accepted": True}
+    )
+
+    body = client.get(f"{API}/consent/sesja-testowa-2", params={"policy_version": "2026-11-21"}).json()
+    assert set(body) == {"session_id", "policy_version", "accepted", "recorded_at"}
+    assert VACCINE_QUOTE not in str(body)
+
+
+def test_new_policy_version_requires_a_new_consent(client):
+    session = "sesja-testowa-3"
+    client.post(f"{API}/consent", json={"session_id": session, "policy_version": "2026-01-01", "accepted": True})
+
+    assert client.get(f"{API}/consent/{session}", params={"policy_version": "2026-01-01"}).status_code == 200
+    assert client.get(f"{API}/consent/{session}", params={"policy_version": "2026-11-21"}).status_code == 404
+
+
+# --- numer sesji i zgoda w ciasteczkach ---
+
+
+def test_session_cookie_is_used_when_body_omits_it(client, provider):
+    """Numer sesji jedzie w ciasteczku, więc żądanie nie musi go powtarzać."""
+    confirm_vaccines(provider)
+    client.cookies.set("prawdowid_session", "ciasteczko-sesji-1")
+    check(client, VACCINE_CLAIM)
+
+    # Usunięcie sesji z ciasteczka kasuje właśnie to sprawdzenie.
+    assert client.delete(f"{API}/sessions/ciasteczko-sesji-1").json() == {"deleted": 1}
+
+
+def test_consent_can_be_recorded_from_the_session_cookie(client):
+    client.cookies.set("prawdowid_session", "ciasteczko-sesji-2")
+    recorded = client.post(f"{API}/consent", json={"policy_version": "2026-11-21", "accepted": True})
+
+    assert recorded.status_code == 200
+    assert recorded.json()["session_id"] == "ciasteczko-sesji-2"
+
+
+def test_consent_without_session_anywhere_is_rejected(client):
+    client.cookies.clear()
+    refused = client.post(f"{API}/consent", json={"policy_version": "2026-11-21", "accepted": True})
+
+    assert refused.status_code == 422
+
+
+def test_malformed_session_cookie_is_ignored(client, provider):
+    """Treść ciasteczka pochodzi od klienta, więc zły format nie może trafić do bazy."""
+    confirm_vaccines(provider)
+    client.cookies.set("prawdowid_session", "abc")  # krótszy niż 8 znaków
+    result = check(client, VACCINE_CLAIM)
+
+    # Sprawdzenie przechodzi, ale nie zostaje powiązane z tym numerem sesji.
+    assert result["status"] == "completed"
+    assert client.delete(f"{API}/sessions/abc").status_code == 422
+
+
+# --- zapis przebiegu: pytanie, czas, wykorzystane źródła, wynik (§3 wymagań) ---
+
+
+def test_stored_run_records_question_time_sources_and_result(client, provider):
+    confirm_vaccines(provider)
+    created = check(client, VACCINE_CLAIM)
+
+    # Zapis czytany z bazy, nie z odpowiedzi na POST.
+    stored = client.get(f"{API}/checks/{created['id']}")
+    assert stored.status_code == 200
+    saved = stored.json()
+
+    assert VACCINE_CLAIM in saved["input"]["text"]  # pytanie
+    assert saved["created_at"]  # czas
+    assert saved["claims"][0]["verdict"] == "potwierdzone"  # wynik
+
+    # wykorzystane źródła – nie wolno, by to była pusta lista, gdy werdykt opiera się na dowodach
+    assert saved["source_articles"], "zapis przebiegu nie pokazuje, na czym oparto odpowiedź"
+    urls = [source["url"] for source in saved["source_articles"]]
+    assert "https://example.org/szczepienia" in urls
+    # Każde źródło z dowodów musi być w zapisie.
+    cited = {e["source"]["url"] for c in saved["claims"] for e in c["evidence"]}
+    assert cited <= set(urls)
+
+
+def test_used_sources_are_listed_once_per_document(client, provider):
+    """Ten sam dokument cytowany przy kilku twierdzeniach pojawia się w zapisie raz."""
+    provider.extract = lambda user: extraction(claim(VACCINE_CLAIM), claim(VACCINE_CLAIM + " Powtórnie."))
+    provider.assess = lambda user: assessment(
+        Verdict.CONFIRMED, (passage_number(user, VACCINE_QUOTE), "supports", VACCINE_QUOTE)
+    )
+    saved = check(client, VACCINE_CLAIM)
+
+    assert len(saved["claims"]) == 2
+    doc_ids = [source["doc_id"] for source in saved["source_articles"]]
+    assert len(doc_ids) == len(set(doc_ids)), f"powtórzone źródła w zapisie: {doc_ids}"
+
+
+def test_run_without_evidence_records_no_sources(client, provider):
+    """Brak dowodów musi dać pusty wykaz źródeł, a nie zmyślone wpisy."""
+    provider.extract = lambda user: extraction(claim(UNKNOWN_CLAIM))
+    saved = check(client, UNKNOWN_CLAIM)
+
+    assert saved["claims"][0]["verdict"] == "brak_wystarczajacych_dowodow"
+    assert saved["source_articles"] == []
+
+
+def test_export_shows_the_sources_behind_each_verdict(client, provider):
+    confirm_vaccines(provider)
+    check(client, VACCINE_CLAIM)
+
+    exported = client.get(f"{API}/admin/export", params={"format": "json"}, headers=ADMIN).json()
+    [record] = exported
+    assert [s["url"] for s in record["source_articles"]] == ["https://example.org/szczepienia"]
+
+    csv_text = client.get(f"{API}/admin/export", params={"format": "csv"}, headers=ADMIN).text
+    assert "https://example.org/szczepienia" in csv_text

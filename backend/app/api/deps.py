@@ -1,9 +1,30 @@
 import hashlib
 import hmac
+import re
 
 from fastapi import Header, HTTPException, Request
 
 from app.config import Settings
+
+# Nazwy muszą odpowiadać SESSION_COOKIE w frontend/src/lib/session.ts
+# i CONSENT_COOKIE w frontend/src/lib/consent.ts.
+SESSION_COOKIE = "prawdowid_session"
+CONSENT_COOKIE = "prawdowid_privacy_consent"
+_SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def session_from_cookie(request: Request) -> str | None:
+    """Numer sesji z ciasteczka. Treść ciasteczka pochodzi od klienta, więc
+    sprawdzamy format, zanim użyjemy go jako klucza w bazie."""
+    value = request.cookies.get(SESSION_COOKIE)
+    return value if value and _SESSION_RE.match(value) else None
+
+
+def consent_from_cookie(request: Request) -> str | None:
+    """Wersja polityki prywatności zaakceptowana przez klienta, według ciasteczka.
+    To tylko wskazówka dla logów i diagnostyki – wiążący zapis jest w bazie."""
+    value = request.cookies.get(CONSENT_COOKIE)
+    return value[:32] if value else None
 
 
 def enforce_rate_limit(request: Request) -> None:

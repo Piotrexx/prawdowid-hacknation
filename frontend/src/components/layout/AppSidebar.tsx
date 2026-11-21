@@ -1,12 +1,13 @@
 "use client";
 
-import { BookOpen, ChevronLeft, ChevronRight, Menu, MessageSquareText, Plus, SquarePen, X, type LucideIcon } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Menu, MessageSquareText, Plus, Shield, SquarePen, Trash2, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HistoryList } from "@/components/chat/HistoryList";
 import { cx } from "@/lib/cx";
+import { clearHistory, useHistory } from "@/lib/history";
 import { requestNewCheck } from "@/lib/newCheck";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
@@ -14,6 +15,7 @@ function getNavItems(t: (key: string) => string) {
   return [
     { href: "/", label: t("nav.check"), icon: MessageSquareText },
     { href: "/zrodla", label: t("nav.sources"), icon: BookOpen },
+    { href: "/prywatnosc", label: t("nav.privacy"), icon: Shield },
   ] as Array<{ href: string; label: string; icon: LucideIcon }>;
 }
 
@@ -108,6 +110,7 @@ function SidebarContent({ idPrefix, onNavigate, collapsed }: SidebarContentProps
   const { t } = useTranslation();
   const startNewCheck = useStartNewCheck(onNavigate);
   const historyId = `${idPrefix}-historia`;
+  const history = useHistory();
 
   return (
     <>
@@ -129,9 +132,22 @@ function SidebarContent({ idPrefix, onNavigate, collapsed }: SidebarContentProps
           aria-labelledby={historyId}
           className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
         >
-          <h2 id={historyId} className="eyebrow mb-2 px-5">
-            {t("sidebar.sessions")}
-          </h2>
+          <div className="mb-2 flex items-center justify-between px-5">
+            <h2 id={historyId} className="eyebrow">
+              {t("sidebar.sessions")}
+            </h2>
+            {history?.length ? (
+              <button
+                type="button"
+                onClick={clearHistory}
+                title={t("sidebar.clearHistory")}
+                className="grid size-7 place-items-center text-muted hover:text-accent"
+              >
+                <Trash2 aria-hidden="true" className="size-4" />
+                <span className="sr-only">{t("sidebar.clearHistory")}</span>
+              </button>
+            ) : null}
+          </div>
           <div className="min-h-0 shrink overflow-y-auto px-2">
             <HistoryList onNavigate={onNavigate} />
           </div>

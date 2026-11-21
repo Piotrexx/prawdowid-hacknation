@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowUp, ImagePlus, X } from "lucide-react";
-import { useLayoutEffect, useRef, type RefObject } from "react";
+import { ArrowUp, ImagePlus, Mic, MicOff, X } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "@/lib/cx";
 import { formatInteger, plural } from "@/lib/format";
@@ -29,6 +29,52 @@ interface ComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function getSR(): (new () => any) | null {
+  if (typeof window === "undefined") return null;
+  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
+}
+
+function useSpeech(onTranscript: (text: string) => void) {
+  const [recording, setRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const recRef = useRef<any>(null);
+
+  const supported = getSR() !== null;
+
+  function toggle() {
+    if (recording) {
+      recRef.current?.stop();
+      return;
+    }
+    setVoiceError(null);
+    const SR = getSR();
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = "pl-PL";
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = (event: any) => {
+      const transcript = Array.from(event.results as any[])
+        .map((r: any) => r[0].transcript as string)
+        .join(" ")
+        .trim();
+      if (transcript) onTranscript(transcript);
+    };
+    rec.onerror = () => {
+      setVoiceError("Nie udało się nagrać głosu. Sprawdź uprawnienia mikrofonu.");
+      setRecording(false);
+    };
+    rec.onend = () => setRecording(false);
+    recRef.current = rec;
+    rec.start();
+    setRecording(true);
+  }
+
+  return { supported, recording, voiceError, toggle };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function Composer({
   text,
   onTextChange,
@@ -46,6 +92,9 @@ export function Composer({
   const fileRef = useRef<HTMLInputElement>(null);
   const overLimit = text.length > TEXT_LIMIT;
   const blocked = busy || waitSeconds > 0;
+  const speech = useSpeech((transcript) => {
+    onTextChange(text ? `${text} ${transcript}` : transcript);
+  });
 
   // Grows with the text up to MAX_HEIGHT, then scrolls.
   useLayoutEffect(() => {
@@ -157,6 +206,24 @@ export function Composer({
             <ImagePlus aria-hidden="true" className="size-5" />
             {attachment ? t("composer.otherImage") : t("composer.screenshot")}
           </button>
+          {speech.supported ? (
+            <button
+              type="button"
+              onClick={speech.toggle}
+              aria-pressed={speech.recording}
+              className={cx(
+                "inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold hover:bg-subtle",
+                speech.recording ? "text-bad-fg" : "text-link",
+              )}
+            >
+              {speech.recording ? (
+                <MicOff aria-hidden="true" className="size-5" />
+              ) : (
+                <Mic aria-hidden="true" className="size-5" />
+              )}
+              {speech.recording ? t("composer.voiceStop") : t("composer.voice")}
+            </button>
+          ) : null}
           <span className="flex-1" />
           {text.length >= COUNTER_FROM ? (
             <span
@@ -177,9 +244,9 @@ export function Composer({
         </div>
       </div>
 
-      {error || imageError ? (
+      {error || imageError || speech.voiceError ? (
         <p id="czat-blad" role="alert" className="mt-2 text-sm font-semibold text-bad-fg">
-          {error || imageError}
+          {error || imageError || speech.voiceError}
         </p>
       ) : null}
       {waitSeconds > 0 ? (
