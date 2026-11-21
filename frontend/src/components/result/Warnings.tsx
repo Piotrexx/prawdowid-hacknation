@@ -13,6 +13,11 @@ const WARNING_CARDS: Record<WarningCode, { title: string; badge: string; tone: T
   source_status: { title: "Uwaga dotycząca źródeł", badge: "Uwaga", tone: "warn" },
   retrieval_degraded: { title: "Ograniczone wyszukiwanie", badge: "Uwaga", tone: "warn" },
   image_limits: { title: "Ograniczony odczyt obrazu", badge: "Informacja", tone: "neutral" },
+  image_manipulation: { title: "Możliwa edycja zdjęcia", badge: "Uwaga", tone: "bad" },
+  image_edit_software: { title: "Ślad programu do edycji", badge: "Informacja", tone: "warn" },
+  ai_generated: { title: "Obraz wygenerowany przez AI", badge: "Uwaga", tone: "bad" },
+  ai_edited: { title: "Obraz edytowany z użyciem AI", badge: "Uwaga", tone: "warn" },
+  content_credentials: { title: "Content Credentials (C2PA)", badge: "Informacja", tone: "info" },
   input_truncated: { title: "Treść została skrócona", badge: "Informacja", tone: "neutral" },
 };
 

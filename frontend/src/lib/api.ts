@@ -310,12 +310,19 @@ export async function createCheck(
 }
 
 export async function createImageCheck(
-  _file: File,
-  _sessionId: string | undefined,
-  _signal?: AbortSignal,
+  file: File,
+  sessionId: string | undefined,
+  signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  throw new ApiError("validation", {
-    detail: "Sprawdzanie zdjęć nie jest jeszcze dostępne. Wklej link do artykułu.",
+  const form = new FormData();
+  form.append("file", file);
+  if (sessionId) form.append("session_id", sessionId);
+  // No Content-Type header: the browser sets the multipart boundary itself.
+  return getAdapted("/checks/image", {
+    method: "POST",
+    body: form,
+    timeoutMs: CHECK_TIMEOUT_MS,
+    signal,
   });
 }
 

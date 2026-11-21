@@ -1,8 +1,10 @@
+import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from app.api.deps import enforce_rate_limit
+from app.core.image_check import ImageCheckService
 from app.core.pipeline import VerificationService
 from app.schemas import CheckRequest, CheckResponse, HealthResponse
 from app.store.db import Store
@@ -33,6 +35,28 @@ def health(request: Request) -> HealthResponse:
 async def create_check(request: Request, payload: CheckRequest) -> CheckResponse:
     service: VerificationService = request.app.state.service
     return await service.check(payload)
+
+
+_SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+@router.post("/checks/image", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
+async def create_image_check(
+    request: Request,
+    file: Annotated[UploadFile, File(description="Zdjęcie JPEG, PNG, WebP lub GIF")],
+    session_id: Annotated[str | None, Form()] = None,
+) -> CheckResponse:
+    """Sprawdza, czy zdjęcie nie zostało zmienione, porównując je z kopiami znalezionymi w sieci (Yandex, TinEye)."""
+    limit = request.app.state.settings.image_max_bytes
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"Zdjęcie jest za duże (maksymalnie {limit // (1024 * 1024)} MB).")
+    if not data:
+        raise HTTPException(422, "Nie przesłano zdjęcia.")
+    if session_id is not None and not _SESSION_ID.match(session_id):
+        raise HTTPException(422, "Niepoprawny identyfikator sesji.")
+    service: ImageCheckService = request.app.state.image_service
+    return await service.check(data, session_id)
 
 
 @router.get("/checks/{check_id}", response_model=CheckResponse)
