@@ -12,13 +12,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, Protocol
-from urllib.parse import urlsplit
 
 import numpy as np
 
 from app.catalog import Document
 from app.schemas import CorpusStats
-from app.textutil import split_sentences, tokenize
+from app.textutil import site_domain, split_sentences, tokenize
 
 log = logging.getLogger("retrieval")
 
@@ -103,10 +102,6 @@ def split_passages(doc: Document) -> list[str]:
     return passages
 
 
-def _domain(url: str) -> str:
-    return urlsplit(url).netloc.lower().removeprefix("www.")
-
-
 class CorpusIndex:
     def __init__(self, documents: list[Document], version: str = "", built_at: datetime | None = None):
         self.documents = documents
@@ -157,7 +152,7 @@ class CorpusIndex:
         return CorpusStats(
             documents=len(self.documents),
             passages=len(self.passages),
-            domains=len({_domain(d.url) for d in self.documents}),
+            domains=len({site_domain(d.url) for d in self.documents}),
             by_type=dict(Counter(d.source_type for d in self.documents)),
             version=self.version,
             built_at=self.built_at,

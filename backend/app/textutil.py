@@ -1,6 +1,7 @@
 import html
 import re
 import unicodedata
+from urllib.parse import urlsplit
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -11,6 +12,9 @@ _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+")
 _TYPOGRAPHY = str.maketrans(
     {"„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "’": "'", "‘": "'", "–": "-", "—": "-", " ": " "}
 )
+
+# Końcówki, pod którymi instytucje rejestrują własne domeny (np. sejm.gov.pl, pravda.org.pl).
+_SHARED_SUFFIXES = frozenset({"gov.pl", "org.pl", "com.pl", "net.pl", "edu.pl", "waw.pl"})
 
 STOPWORDS = frozenset(
     """a aby ale albo anie az bardzo bez bo by byc byl byla bylo byly co czy czyli dla do
@@ -66,3 +70,10 @@ def jaccard(a: str, b: str) -> float:
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / len(ta | tb)
+
+
+def site_domain(url: str) -> str:
+    """Domena serwisu bez poddomen, żeby np. cyfrowa.rp.pl i rp.pl liczyć jako jedno źródło."""
+    labels = (urlsplit(url).hostname or "").lower().removeprefix("www.").split(".")
+    keep = 3 if len(labels) > 2 and ".".join(labels[-2:]) in _SHARED_SUFFIXES else 2
+    return ".".join(labels[-keep:])

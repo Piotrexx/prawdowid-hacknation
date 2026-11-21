@@ -6,13 +6,11 @@ w interfejsie (`/zrodla`) i przez API (`GET /api/v1/sources`).
 
 ## Korpus demonstracyjny
 
-Stan na 2026-11-21 (wersja `9bf4998aa9b3`, szczegóły w `backend/data/corpus/manifest.json`):
-**450 dokumentów, 6 domen, 3 typy źródeł** (urzędowe 99, akty prawne 80, fact-checking 271).
+Stan na 2026-11-21 (wersja `10d51f43c4ec`, szczegóły w `backend/data/corpus/manifest.json`):
+**575 dokumentów, 11 domen, 4 typy źródeł** (urzędowe 109, akty prawne 80, fact-checking 271, media 115).
 Korpus jest wyłącznie polskojęzyczny. Wszystkie rekordy zostały pobrane automatycznie z prawdziwych
 serwisów – nie ma w nim treści napisanych przez zespół ani wygenerowanych przez model.
-
-> Wymagania konkursu mówią o co najmniej 10 domenach. Po rezygnacji ze źródeł w innych językach jest ich 6 –
-> przed oceną trzeba dodać kolejne polskie źródła (wpis w katalogu i ponowne `app.ingest.run`).
+Domeny liczymy na poziomie serwisu (np. `cyfrowa.rp.pl` i `rp.pl` to jedna domena).
 
 | Źródło | Typ | Poziom | Dok. | Co przechowujemy | Licencja / podstawa |
 |---|---|---|---|---|---|
@@ -23,6 +21,11 @@ serwisów – nie ma w nim treści napisanych przez zespół ani wygenerowanych 
 | Pravda – artykuły | fact-checking | 2 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
 | Pravda – ClaimReview | fact-checking | 2 | 211 | twierdzenie, ocena, link | dane strukturalne opublikowane przez wydawcę |
 | FakeNews.pl | fact-checking | 2 | 10 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
+| Ośrodek Studiów Wschodnich – analizy | urzędowe | 1 | 10 | tytuł, zajawka, link | do potwierdzenia – tylko fragment |
+| Rzeczpospolita | media | 3 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
+| CyberDefence24 | media | 3 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
+| Defence24 | media | 3 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
+| Niebezpiecznik | media | 3 | 15 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
 
 Rekordy ClaimReview pochodzą z publicznego kanału danych Google Fact Check Tools
 (`datacommons-feeds/factcheck`), do którego wydawcy sami zgłaszają oceny w formacie schema.org/ClaimReview.
@@ -35,7 +38,8 @@ tym samym mechanizmem (rekord z `claim_reviewed`, `rating` i `appearance_urls`).
 Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
 
 - **Poziom 1** – źródła pierwotne i urzędowe; **poziom 2** – organizacje fact-checkingowe deklarujące
-  standardy IFCN/EFCSN; **poziom 3** – media, tylko jako kontekst.
+  standardy IFCN/EFCSN; **poziom 3** – media, tylko jako kontekst. Reguły werdyktu to wymuszają:
+  cytat z mediów jest zawsze pokazywany jako „kontekst” i sam nie może potwierdzić ani obalić twierdzenia.
 - Każdy wpis ma uzasadnienie kwalifikacji, licencję, politykę przechowywania i politykę aktualizacji.
 - Treści otwarte i urzędowe przechowujemy w całości; treści chronione – tylko tytuł, krótki fragment i link
   albo dane strukturalne. Odpowiedź zawsze prowadzi do oryginału.
@@ -71,4 +75,6 @@ W prototypie aktualizację uruchamia się ręcznie lub z crona; częstotliwości
 - Przegląd prawny licencji (zwłaszcza zakres użycia danych ClaimReview i fragmentów treści chronionych).
 - Potwierdzenie statusu IFCN/EFCSN każdej redakcji w oficjalnych rejestrach (w katalogu oznaczone jako deklaracja).
 - Uzgodnienie dostępu do źródeł wyłączonych oraz dołączenie pakietu źródeł i bazy incydentów organizatora.
-- Rozszerzenie polskich źródeł do co najmniej 10 domen: dane.gov.pl, GUS, BIP, kolejne urzędy i redakcje fact-checkingowe.
+- Rozszerzenie polskich źródeł pierwotnych: dane.gov.pl, GUS, BIP, kolejne urzędy i redakcje fact-checkingowe.
+- OSW zakwalifikowano jako instytucję państwową (poziom 1), choć publikuje analizy, a nie dokumenty urzędowe – do decyzji, czy nie powinien to być poziom 2.
+- Kanał BIP Rzecznika Praw Obywatelskich odrzucono: zawiera głównie wpisy rejestrowe z nazwiskami osób.

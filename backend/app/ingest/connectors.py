@@ -14,6 +14,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from app.catalog import CatalogSource, Document
+from app.security.injection import sanitize_untrusted
 from app.security.urlfetch import parse_robots
 from app.textutil import collapse_ws, strip_html, truncate
 
@@ -102,7 +103,8 @@ def _make(
     return Document(
         id=_doc_id(src.id, url + id_key),
         source_id=src.id,
-        title=collapse_ws(title),
+        # Znaki niewidoczne ze źródła (częste w kanałach RSS) nie mogą trafić do korpusu.
+        title=collapse_ws(sanitize_untrusted(title)),
         publisher=src.publisher,
         url=url,
         source_type=src.source_type,
@@ -110,7 +112,7 @@ def _make(
         license=src.license,
         published_at=published,
         retrieved_at=datetime.now(UTC),
-        text=text.strip(),
+        text=sanitize_untrusted(text).strip(),
         **extra,
     )
 

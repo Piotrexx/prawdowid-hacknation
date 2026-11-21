@@ -97,6 +97,16 @@ def test_conflicting_sources_are_shown_without_arbitrary_verdict(client, provide
     assert any(w["code"] == "archival_material" for w in result["warnings"])
 
 
+def test_media_source_gives_context_but_cannot_decide(client, provider):
+    quote = "tramwaje w Testowie od poniedziałku kursują co pięć minut"
+    provider.extract = lambda user: extraction(claim("Tramwaje w Testowie kursują co pięć minut."))
+    provider.assess = lambda user: assessment(Verdict.CONFIRMED, (passage_number(user, quote), "supports", quote))
+    [found] = check(client, "Tramwaje w Testowie kursują co pięć minut.")["claims"]
+
+    assert found["verdict"] == "brak_wystarczajacych_dowodow"
+    assert [(e["stance"], e["source"]["source_type"]) for e in found["evidence"]] == [("context", "media")]
+
+
 def test_missing_evidence_abstains_and_repeated_report_updates_one_case(client, provider):
     provider.extract = lambda user: extraction(claim(UNKNOWN_CLAIM))
     first = check(client, UNKNOWN_CLAIM)
@@ -268,6 +278,6 @@ def test_sources_and_health_endpoints(client):
     sources = client.get(f"{API}/sources").json()
     health = client.get(f"{API}/health").json()
 
-    assert sources["corpus"]["documents"] == 4 and sources["rules"]
+    assert sources["corpus"]["documents"] == 5 and sources["rules"]
     assert any(not s["enabled"] and s["disabled_reason"] for s in sources["sources"])
     assert health["retrieval_mode"] == "bm25" and health["retention_days"] == 30

@@ -64,6 +64,13 @@ DOCS = [
         tier=2,
         publisher="Redakcja Testowa",
     ),
+    make_doc(
+        "gazeta",
+        "Jak podaje gazeta, tramwaje w Testowie od poniedziałku kursują co pięć minut.",
+        source_type="media",
+        tier=3,
+        publisher="Gazeta Testowa",
+    ),
 ]
 
 

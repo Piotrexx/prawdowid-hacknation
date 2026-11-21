@@ -24,6 +24,7 @@ from app.schemas import (
 from app.textutil import collapse_ws, normalize_for_match
 
 _MIN_QUOTE_CHARS = 12
+_CONTEXT_ONLY_TIER = 3
 _PASSAGE_REF_RE = re.compile(r"\s*\[P(\d+)\]")
 _PASSAGE_ID_RE = re.compile(r"(\d+)")
 _STANCE_ORDER = {"supports": 0, "refutes": 1, "context": 2}
@@ -79,9 +80,11 @@ def validated_evidence(
         if normalize_for_match(quote) not in haystack:
             rejected += 1
             continue
+        # Media (poziom 3) mogą dać kontekst, ale nie rozstrzygają – tak stanowi katalog źródeł.
+        stance = "context" if passage.doc.tier >= _CONTEXT_ONLY_TIER else judgement.stance
         if (passage.doc.id, quote) not in seen:
             seen.add((passage.doc.id, quote))
-            accepted.append((number, judgement.stance, quote))
+            accepted.append((number, stance, quote))
 
     accepted.sort(key=lambda item: _STANCE_ORDER[item[1]])
     evidence, ref_map = [], {}

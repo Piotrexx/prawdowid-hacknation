@@ -7,7 +7,6 @@ import logging
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from app.catalog import Document, load_catalog
 from app.config import get_settings
@@ -18,6 +17,7 @@ from app.ingest.connectors import (
     build_claimreview_docs,
     load_claimreviews,
 )
+from app.textutil import site_domain
 
 log = logging.getLogger("ingest")
 
@@ -90,7 +90,7 @@ def main() -> None:
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "version": hashlib.sha256(payload.encode()).hexdigest()[:12],
         "documents": len(ordered),
-        "domains": len({urlsplit(d.url).netloc.removeprefix("www.") for d in ordered}),
+        "domains": len({site_domain(d.url) for d in ordered}),
         "by_source": dict(Counter(d.source_id for d in ordered)),
         "by_type": dict(Counter(d.source_type for d in ordered)),
         "last_run": report,

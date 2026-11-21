@@ -4,7 +4,7 @@
 
 | Co | Stan |
 |---|---|
-| Testy automatyczne (`uv run pytest`) | **59/59 przechodzi.** Model jest w nich podstawiony, więc sprawdzają logikę, reguły, bezpieczeństwo i kanały – nie jakość modelu. |
+| Testy automatyczne (`uv run pytest`) | **60/60 przechodzi.** Model jest w nich podstawiony, więc sprawdzają logikę, reguły, bezpieczeństwo i kanały – nie jakość modelu. |
 | Żądania do dostawców modelu | Kształt żądań (API zgodne z OpenAI, w tym tryb `json_object` używany przez DeepSeek, oraz Anthropic) oraz obsługa odmowy, uciętej odpowiedzi, limitu i błędów są sprawdzone na atrapie transportu HTTP – **nie na prawdziwym API**. |
 | Wyszukiwanie na prawdziwym korpusie | Sprawdzone ręcznie na wcześniejszej, szerszej wersji korpusu: zapytania po polsku znajdują właściwe dokumenty; pytanie spoza korpusu zwraca 0 wyników. |
 | Ścieżka bez klucza API (scenariusz J) | Sprawdzona na działającym serwerze: status `error`, brak werdyktu, lista materiałów. |
@@ -56,7 +56,6 @@ Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do 
 - Dźwięk i wideo (brak transkrypcji).
 - Wyszukiwanie odwrotne obrazu, wykrywanie przeróbek i deepfake'ów – obraz służy wyłącznie do odczytu tekstu.
 - Strony wymagające JavaScriptu, logowania lub płatnego dostępu oraz strony, które zabraniają automatycznego pobierania.
-- **Minimum 10 domen w korpusie**: po ograniczeniu do źródeł polskojęzycznych jest ich 6. To wymaganie techniczne konkursu.
 - **Drugi kanał komunikacji** (SMS, komunikator itp.) ani adapter demonstracyjny – działa tylko interfejs WWW. To wymaganie podstawowe konkursu.
 - Tematy spoza korpusu – wynik to zawsze „brak wystarczających dowodów”.
 - Więcej niż 4 twierdzenia w jednym zgłoszeniu; treść powyżej 20 000 znaków jest przycinana.
@@ -68,7 +67,7 @@ Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do 
 | Ryzyko | Ograniczenie w prototypie | Co zostaje |
 |---|---|---|
 | **Halucynacje** | werdykt tylko z cytatów potwierdzonych w źródle; metadane źródeł z korpusu, nie z modelu; model nie korzysta z własnej wiedzy (instrukcja) i zawsze może się wstrzymać | cytat może istnieć, ale być źle zinterpretowany – potrzebny ręczny przegląd próby i moderator przy sprawach wysokiego ryzyka |
-| **Stronniczość źródeł** | jawny katalog z uzasadnieniem kwalifikacji; siła podstawy premiuje niezależnych wydawców; sprzeczne źródła są pokazywane | korpus demonstracyjny jest mały (6 domen, przewaga jednej redakcji fact-checkingowej) i nierówny tematycznie; oceny redakcji fact-checkingowych przyjmujemy jako dowód poziomu 2 |
+| **Stronniczość źródeł** | jawny katalog z uzasadnieniem kwalifikacji; siła podstawy premiuje niezależnych wydawców; sprzeczne źródła są pokazywane | korpus demonstracyjny jest mały (11 domen, przewaga jednej redakcji fact-checkingowej) i nierówny tematycznie; oceny redakcji fact-checkingowych przyjmujemy jako dowód poziomu 2 |
 | **Prywatność** | maskowanie PII przed modelem i zapisem; brak zapisu obrazów i adresów IP; retencja 30 dni; usuwanie sesji | maskowanie wyrażeniami regularnymi nie wykryje nazwisk ani adresów; treść trafia do zewnętrznego dostawcy modelu, jeśli nie wybrano modelu lokalnego |
 | **Prompt injection** | rozdzielenie instrukcji i danych, losowe znaczniki, brak narzędzi, wyjście wg schematu, walidacja cytatów, logowanie zdarzeń | heurystyki nie wykryją każdego ataku; atak może skłonić model do wstrzymania się (obniżenie użyteczności, nie fałszywy werdykt) |
 | **Dostępność** | jawne błędy techniczne; praca bez embeddingów; pamięć wyników; limit żądań | jedna instancja, limit w pamięci, zależność od jednego dostawcy modelu w danej konfiguracji |

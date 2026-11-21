@@ -35,6 +35,7 @@ Model językowy rozumie pytanie, porównuje materiały i formułuje uzasadnienie
 | potwierdzone | ≥ 1 potwierdzony cytat „potwierdza”, brak „zaprzecza” | potwierdzone |
 | fałszywe | ≥ 1 potwierdzony cytat „zaprzecza”, brak „potwierdza” | fałszywe |
 | wprowadzające w błąd | ≥ 1 potwierdzony cytat „zaprzecza” lub „kontekst” | wprowadzające w błąd |
+| dowolna | cytat pochodzi z mediów (poziom 3) | cytat liczy się tylko jako „kontekst” |
 | potwierdzone / fałszywe | są cytaty „potwierdza” **i** „zaprzecza” | brak wystarczających dowodów + jawna rozbieżność |
 | dowolna rozstrzygająca | brak wymaganego cytatu | brak wystarczających dowodów |
 | brak dowodów / nie podlega weryfikacji | – | bez zmian (model zawsze może się wstrzymać) |
