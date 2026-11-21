@@ -116,6 +116,7 @@ export interface SourceRef {
   source_type: string;
   source_name: string;
   rating: string | null;
+  similarity?: number | null;
   license?: string | null;
   claim_reviewed?: string | null;
 }

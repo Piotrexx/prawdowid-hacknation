@@ -51,7 +51,24 @@ class Settings(BaseSettings):
     url_fetch_max_bytes: int = 2_000_000
     image_max_bytes: int = 5_000_000
 
-    database_url: str = f"sqlite:///{DATA_DIR / 'prawdowid.db'}"
+    database_url: str = "postgresql+psycopg://prawdowid:prawdowid@localhost:5432/prawdowid"
+
+    # --- Korpus i wyszukiwanie semantyczne ---
+    embedding_backend: Literal["fastembed", "none"] = "fastembed"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_dim: int = 384
+    embedding_cache_dir: str | None = None
+    retrieval_top_k: int = 6
+    retrieval_candidates: int = 20
+    retrieval_min_similarity: float = 0.58
+    retrieval_strong_similarity: float = 0.82
+    retrieval_max_age_days: int = 90
+    retrieval_max_per_source: int = 2
+
+    # --- Ingest źródeł ---
+    ingest_max_per_source: int = 10
+    ingest_timeout_s: float = 20.0
+    ingest_request_delay_s: float = 1.0
 
     @property
     def cors_origin_list(self) -> list[str]:

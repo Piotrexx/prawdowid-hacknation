@@ -1,4 +1,3 @@
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -16,6 +15,13 @@ def health(request: Request) -> HealthResponse:
     service: VerificationService = request.app.state.service
     provider = service._provider
     bielik_provider = service._bielik_provider
+    corpus = getattr(request.app.state, "corpus", None)
+    corpus_documents = 0
+    if corpus is not None:
+        try:
+            corpus_documents = corpus.count()
+        except Exception:
+            corpus_documents = 0
     return HealthResponse(
         status="ok" if provider and bielik_provider else "degraded",
         llm_provider=settings.llm_provider,
@@ -26,6 +32,9 @@ def health(request: Request) -> HealthResponse:
         google_factcheck_configured=settings.google_factcheck_api_key is not None,
         processing_location=settings.processing_location,
         retention_days=settings.retention_days,
+        corpus_ready=corpus_documents > 0,
+        corpus_documents=corpus_documents,
+        embedding_model=settings.embedding_model if settings.embedding_backend != "none" else None,
     )
 
 

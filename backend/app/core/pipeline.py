@@ -7,16 +7,15 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import UTC, datetime
 
 import httpx
 from pydantic import BaseModel, Field
 
 from app.config import Settings
 from app.core.prompts import BIELIK_KEYWORD_PROMPT, DEEPSEEK_VERDICT_PROMPT
-from app.llm.base import LLMError, LLMProvider, T, Usage, estimate_cost
-from app.llm.factory import build_provider
+from app.llm.base import LLMError, LLMProvider, Usage, estimate_cost
+from app.retrieval.service import RelatedArticle, RetrievalService
 from app.schemas import (
     CheckMeta,
     CheckRequest,
@@ -25,6 +24,7 @@ from app.schemas import (
     FactCheckResult,
     InputInfo,
     KeywordExtraction,
+    SourceRef,
     VerdictLabel,
 )
 from app.security.urlfetch import UrlFetchError, fetch_page
@@ -67,6 +67,7 @@ class _Run:
     article_title: str = ""
     article_text: str = ""
     article_url: str = ""
+    published_at: datetime | None = None
     usage: Usage = field(default_factory=Usage)
     bielik_usage: Usage = field(default_factory=Usage)
     stages_ms: dict[str, int] = field(default_factory=dict)
@@ -74,7 +75,9 @@ class _Run:
     events: list[tuple[str, str, str]] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     main_topic: str = ""
+    summary: str = ""
     fact_check_results: list[FactCheckResult] = field(default_factory=list)
+    related: list[RelatedArticle] = field(default_factory=list)
     verdict: VerdictLabel | None = None
     confidence: float | None = None
     justification: str | None = None
@@ -99,10 +102,12 @@ class VerificationService:
         settings: Settings,
         provider: LLMProvider | None,
         store: Store,
+        retriever: RetrievalService | None = None,
     ):
         self._settings = settings
         self._provider = provider
         self._store = store
+        self._retriever = retriever
         self._bielik_provider: LLMProvider | None = None
         self._init_bielik()
 
@@ -173,16 +178,22 @@ class VerificationService:
         await self._extract_keywords(run)
         run.mark("keywords", started)
 
-        # 3. Zapytanie do Google Fact Check Tools API
-        await self._query_factcheck(run)
-        run.mark("factcheck", started)
+        # 3. Równolegle: Google Fact Check Tools API i wyszukiwanie w korpusie
+        search_started = time.perf_counter()
+        await asyncio.gather(self._query_factcheck(run), self._retrieve_related(run))
+        run.mark("factcheck", search_started)
+        run.mark("retrieval", search_started)
 
         # 4. Werdykt przez DeepSeek
         await self._get_verdict(run)
         run.mark("verdict", started)
 
         # Cache key
-        fingerprint = f"{run.article_url}|{self._provider.model if self._provider else 'none'}|{run.keywords}"
+        related_ids = ",".join(item.document.doc_id for item in run.related)
+        fingerprint = (
+            f"{run.article_url}|{self._provider.model if self._provider else 'none'}|"
+            f"{run.keywords}|{related_ids}"
+        )
         cache_key = hashlib.sha256(fingerprint.encode()).hexdigest()
 
         response = self._response(run, CheckStatus.COMPLETED, cached=False)
@@ -198,6 +209,9 @@ class VerificationService:
         run.article_url = url
         run.article_title = page.title or ""
         run.article_text = page.text
+        run.published_at = (
+            datetime.combine(page.published, datetime.min.time()) if page.published else None
+        )
 
         if not run.article_text.strip():
             raise _Stop(CheckStatus.ERROR, "Nie udało się wyekstrahować treści z tego artykułu.", "url_no_content")
@@ -251,6 +265,7 @@ class VerificationService:
                 run.usage.add(usage)
                 run.keywords = extraction.keywords[:10]
                 run.main_topic = extraction.main_topic
+                run.summary = extraction.summary
                 if not run.keywords:
                     run.add_warning("Nie udało się wyekstrahować słów kluczowych z artykułu.")
                 return
@@ -262,6 +277,7 @@ class VerificationService:
             run.usage.add(usage)
         run.keywords = extraction.keywords[:10]  # Max 10 słów kluczowych
         run.main_topic = extraction.main_topic
+        run.summary = extraction.summary
 
         if not run.keywords:
             run.add_warning("Nie udało się wyekstrahować słów kluczowych z artykułu.")
@@ -277,14 +293,14 @@ class VerificationService:
         query = " OR ".join(f'"{kw}"' for kw in run.keywords[:5])
         url = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
         params = {
-            "key": api_key.get_secret_value(),
             "query": query,
             "pageSize": 10,
             "languageCode": "pl",
         }
+        headers = {"X-Goog-Api-Key": api_key.get_secret_value()}
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
                 response = await client.get(url, params=params)
         except httpx.HTTPError as exc:
             log.warning("Google Fact Check API błąd połączenia: %s", exc)
@@ -326,6 +342,26 @@ class VerificationService:
         if not run.fact_check_results:
             run.add_warning("Nie znaleziono powiązanych sprawdzeń faktów w Google Fact Check.")
 
+    async def _retrieve_related(self, run: _Run) -> None:
+        """Szuka w lokalnym korpusie artykułów o podobnym znaczeniu (pgvector)."""
+        if self._retriever is None:
+            return
+        if not self._retriever.enabled:
+            run.add_warning(
+                "Wyszukiwanie semantyczne w korpusie jest wyłączone (brak modelu embeddingów)."
+            )
+            return
+        try:
+            run.related = await self._retriever.find_related(
+                keywords=run.keywords,
+                main_topic=run.main_topic,
+                summary=run.summary,
+                exclude_url=run.article_url,
+            )
+        except Exception as exc:
+            log.warning("retrieval nie powiódł się: %s", exc)
+            run.add_warning("Nie udało się przeszukać lokalnego korpusu podobnych materiałów.")
+
     async def _get_verdict(self, run: _Run) -> None:
         """Używa DeepSeek do oceny czy artykuł to fake news na podstawie danych."""
         if self._provider is None:
@@ -345,12 +381,18 @@ class VerificationService:
         else:
             factcheck_context = "\n\nBrak znalezionych sprawdzeń faktów w Google Fact Check Tools."
 
+        related_context = RetrievalService.format_context(run.related)
+        if not related_context:
+            related_context = "Brak dodatkowych materiałów podobnych w lokalnym korpusie."
+
         user_prompt = DEEPSEEK_VERDICT_PROMPT.format(
             title=run.article_title or "Brak tytułu",
+            today=datetime.now(UTC).date().isoformat(),
             text=run.article_text[:10000],
             keywords=", ".join(run.keywords),
             main_topic=run.main_topic,
             factcheck_context=factcheck_context,
+            related_context=related_context,
         )
 
         try:
@@ -370,6 +412,24 @@ class VerificationService:
         run.confidence = verdict.confidence
         run.justification = verdict.justification
 
+    def _related_refs(self, run: _Run) -> list[SourceRef]:
+        refs: list[SourceRef] = []
+        for item in run.related:
+            document = item.document
+            refs.append(
+                SourceRef(
+                    doc_id=document.doc_id,
+                    title=document.title,
+                    publisher=document.publisher,
+                    url=document.url,
+                    published_at=document.published_at.date() if document.published_at else None,
+                    source_type="official",
+                    source_name=document.source_key,
+                    similarity=document.similarity,
+                )
+            )
+        return refs
+
     def _response(
         self,
         run: _Run,
@@ -381,6 +441,13 @@ class VerificationService:
     ) -> CheckResponse:
         provider = self._provider
         override = (self._settings.llm_price_input_per_mtok, self._settings.llm_price_output_per_mtok)
+        limitations = [
+            "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia. Strona mogła się później zmienić.",
+            "Werdykt to interpretacja modelu językowego opartego na dostępnych sprawdzeniach faktów.",
+            "Brak sprawdzeń w Google Fact Check nie oznacza, że informacja jest prawdziwa.",
+            "Materiały podobne pochodzą z automatycznego wyszukiwania semantycznego i są wyłącznie kontekstem, nie dowodem.",
+            *run.warnings,
+        ]
         return CheckResponse(
             id=run.check_id,
             created_at=datetime.now(UTC),
@@ -395,13 +462,11 @@ class VerificationService:
             justification=run.justification,
             keywords=run.keywords,
             main_topic=run.main_topic,
+            summary=run.summary,
             fact_check_results=run.fact_check_results,
             source_articles=[],
-            limitations=[
-                "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia. Strona mogła się później zmienić.",
-                "Werdykt to interpretacja modelu językowego opartego na dostępnych sprawdzeniach faktów.",
-                "Brak sprawdzeń w Google Fact Check nie oznacza, że informacja jest prawdziwa.",
-            ],
+            related_materials=self._related_refs(run),
+            limitations=limitations,
             meta=CheckMeta(
                 duration_ms=int((time.perf_counter() - run.started) * 1000),
                 stages_ms=run.stages_ms,
@@ -414,5 +479,7 @@ class VerificationService:
                 cost_usd=estimate_cost(provider.model, run.usage, override) if provider else None,
                 processing_location=self._settings.processing_location,
                 cached=cached,
+                related_count=len(run.related),
+                embedding_model=self._retriever.model if self._retriever else None,
             ),
         )

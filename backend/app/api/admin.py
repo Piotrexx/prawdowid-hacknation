@@ -4,12 +4,15 @@ import json
 import statistics
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy import select, func
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 
 from app.api.deps import require_admin
+from app.ingest.registry import get_sources
+from app.ingest.run import run_ingest
 from app.schemas import CheckStatus
-from app.store.db import Store, CheckRow
+from app.store.db import CheckRow, Store
 
 router = APIRouter(prefix="/admin", tags=["moderator"], dependencies=[Depends(require_admin)])
 
@@ -125,3 +128,67 @@ def export(request: Request, format: Literal["csv", "json"] = "csv") -> Response
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="prawdowid-export.{format}"'},
     )
+
+
+class IngestRequest(BaseModel):
+    sources: list[str] | None = None
+    max_per_source: int | None = Field(default=None, ge=1, le=50)
+
+
+async def _run_ingest_task(app, only: list[str] | None, max_per_source: int | None) -> None:
+    try:
+        reports = await run_ingest(
+            app.state.settings,
+            app.state.corpus,
+            getattr(app.state, "embedder", None),
+            only=only,
+            max_per_source=max_per_source,
+        )
+        app.state.last_ingest = [report.as_dict() for report in reports]
+    except Exception as exc:  # nie zostawiamy flagi „running” na zawsze
+        app.state.last_ingest = [{"status": "error", "detail": str(exc)[:300]}]
+    finally:
+        app.state.ingest_running = False
+
+
+@router.post("/corpus/ingest", status_code=202, summary="Uruchom ingest źródeł w tle")
+async def trigger_ingest(
+    request: Request,
+    background: BackgroundTasks,
+    payload: IngestRequest | None = None,
+) -> dict:
+    app = request.app
+    if getattr(app.state, "ingest_running", False):
+        raise HTTPException(status_code=409, detail="Ingest już trwa.")
+    only = payload.sources if payload else None
+    try:
+        specs = get_sources(only)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    app.state.ingest_running = True
+    background.add_task(
+        _run_ingest_task,
+        app,
+        only,
+        payload.max_per_source if payload else None,
+    )
+    return {
+        "status": "started",
+        "sources": [spec.key for spec in specs],
+        "max_per_source": (payload.max_per_source if payload else None)
+        or app.state.settings.ingest_max_per_source,
+    }
+
+
+@router.get("/corpus/stats", summary="Stan korpusu i ostatnie przebiegi ingestu")
+def corpus_stats(request: Request) -> dict:
+    app = request.app
+    corpus = getattr(app.state, "corpus", None)
+    if corpus is None:
+        raise HTTPException(status_code=503, detail="Korpus nie jest skonfigurowany.")
+    return {
+        **corpus.stats(),
+        "running": getattr(app.state, "ingest_running", False),
+        "last_ingest": getattr(app.state, "last_ingest", None),
+        "runs": corpus.recent_ingest_runs(20),
+    }

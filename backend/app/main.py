@@ -11,7 +11,11 @@ from app.config import Settings, get_settings
 from app.core.pipeline import VerificationService
 from app.llm.base import LLMProvider
 from app.llm.factory import build_provider
+from app.retrieval.corpus import CorpusStore
+from app.retrieval.embeddings import build_embedder
+from app.retrieval.service import RetrievalService
 from app.store.db import Store
+from app.store.models import EMBEDDING_DIM
 
 log = logging.getLogger("prawdowid")
 _PURGE_INTERVAL_S = 3600
@@ -25,13 +29,26 @@ def build_state(
 ) -> None:
     """Składa zależności aplikacji. Testy podają tu własny model."""
     store = Store(settings.database_url)
+    corpus = CorpusStore(store.engine)
+    if settings.embedding_backend != "none" and settings.embedding_dim != EMBEDDING_DIM:
+        raise ValueError(
+            f"EMBEDDING_DIM={settings.embedding_dim} nie zgadza się z wymiarem kolumny "
+            f"vector({EMBEDDING_DIM}) w bazie. Dla MVP wymiar jest stały."
+        )
+    embedder = build_embedder(settings)
+    retriever = RetrievalService(settings, corpus, embedder)
     app.state.settings = settings
     app.state.store = store
+    app.state.corpus = corpus
+    app.state.retriever = retriever
+    app.state.embedder = embedder
+    app.state.ingest_running = False
     app.state.limiter = None  # Will be set after service creation
     app.state.service = VerificationService(
         settings=settings,
         provider=provider,
         store=store,
+        retriever=retriever,
     )
     # Update limiter with service reference
     from app.security.ratelimit import RateLimiter
@@ -50,6 +67,8 @@ async def _purge_loop(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    # Adresy żądań mogą zawierać parametry; nie logujemy ich na poziomie INFO.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = get_settings()
     provider = await asyncio.to_thread(build_provider, settings)
     await asyncio.to_thread(build_state, app, settings, provider=provider)

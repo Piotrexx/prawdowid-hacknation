@@ -1,20 +1,43 @@
 # Uruchomienie obu projektów naraz: `docker compose up --build`
 # Wymaga pliku backend/.env (wzór: backend/.env.example).
 services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: prawdowid
+      POSTGRES_USER: prawdowid
+      POSTGRES_PASSWORD: prawdowid
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/10-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prawdowid -d prawdowid"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   backend:
     build: ./backend
     env_file: ./backend/.env
     environment:
       CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql+psycopg://prawdowid:prawdowid@postgres:5432/prawdowid
       # Bielik via Ollama (running in separate container)
       BIELIK_BASE_URL: http://ollama:11434/v1
-      BIELIK_MODEL: llama3.2:3b
+      BIELIK_MODEL: bielik:4.5b-instruct
+      FASTEMBED_CACHE_PATH: /app/.cache/fastembed
     ports:
       - "8000:8000"
     volumes:
       - backend-data:/app/data
+      - fastembed-cache:/app/.cache/fastembed
     depends_on:
-      - ollama
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
 
   ollama:
     image: ollama/ollama:latest
@@ -32,7 +55,7 @@ services:
     entrypoint: >
       sh -c "ollama serve &
         until curl -sf http://localhost:11434/ > /dev/null 2>&1; do sleep 2; done &&
-        (ollama list | grep -q 'llama3.2:3b' || ollama pull llama3.2:3b) &&
+        (ollama list | grep -q 'bielik:4.5b-instruct' || ollama pull bielik:4.5b-instruct) &&
         wait"
 
   frontend:
@@ -48,3 +71,5 @@ services:
 volumes:
   backend-data:
   ollama-data:
+  pgdata:
+  fastembed-cache:

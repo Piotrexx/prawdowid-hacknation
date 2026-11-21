@@ -120,17 +120,20 @@ def _extract(html: bytes, url: str) -> FetchedPage:
     return FetchedPage(url=url, title=(getattr(doc, "title", None) or "").strip(), text=text, published=published)
 
 
-async def fetch_page(url: str, settings: Settings) -> FetchedPage:
+async def _fetch_with_redirects(
+    url: str, settings: Settings, *, max_bytes: int | None = None
+) -> tuple[str, _Reply]:
     headers = {"User-Agent": settings.crawler_user_agent, "Accept": "text/html,*/*;q=0.5"}
+    limit = max_bytes or settings.url_fetch_max_bytes
     async with httpx.AsyncClient(headers=headers, timeout=settings.url_fetch_timeout_s) as client:
         try:
             for _ in range(_MAX_REDIRECTS + 1):
                 if not await _robots_allow(client, url, settings.crawler_user_agent):
                     raise UrlFetchError(
                         "url_blocked_by_site",
-                        "Ta strona nie pozwala na automatyczne pobieranie treści. Wklej tekst wiadomości zamiast linku.",
+                        "Ta strona nie pozwala na automatyczne pobieranie treści.",
                     )
-                reply = await _get(client, url, settings.url_fetch_max_bytes)
+                reply = await _get(client, url, limit)
                 if 300 <= reply.status < 400 and reply.headers.get("location"):
                     url = urljoin(url, reply.headers["location"])
                     continue
@@ -141,8 +144,31 @@ async def fetch_page(url: str, settings: Settings) -> FetchedPage:
             raise UrlFetchError("url_unreachable", "Nie udało się połączyć z tą stroną.") from exc
     if reply.status != 200:
         raise UrlFetchError("url_unreachable", f"Strona odpowiedziała błędem (kod {reply.status}).")
+    return url, reply
+
+
+def _check_content_type(reply: _Reply) -> None:
     content_type = reply.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type not in _ALLOWED_TYPES:
         raise UrlFetchError("url_unsupported_type", "Pod tym adresem nie ma strony z tekstem (np. to plik lub wideo).")
+
+
+async def fetch_page(url: str, settings: Settings) -> FetchedPage:
+    url, reply = await _fetch_with_redirects(url, settings)
+    _check_content_type(reply)
     # trafilatura sama rozpoznaje kodowanie znaków, więc dostaje surowe bajty.
     return await asyncio.to_thread(_extract, reply.body, url)
+
+
+async def fetch_html(url: str, settings: Settings) -> tuple[str, str]:
+    """Pobiera surowy HTML (dla list linków w ingeście), z tą samą ochroną SSRF i robots.txt."""
+    final_url, reply = await _fetch_with_redirects(url, settings)
+    _check_content_type(reply)
+    # aiter_bytes() już zdekompresował treść – usuwamy nagłówki, żeby httpx nie próbował tego drugi raz.
+    headers = {
+        key: value
+        for key, value in reply.headers.items()
+        if key.lower() not in ("content-encoding", "content-length")
+    }
+    text = httpx.Response(200, headers=headers, content=reply.body).text
+    return final_url, text

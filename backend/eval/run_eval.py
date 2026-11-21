@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import csv
 import json
+import os
 import statistics
 from collections import defaultdict
 from pathlib import Path
@@ -26,8 +27,7 @@ from app.config import get_settings
 from app.core.pipeline import VerificationService
 from app.llm.factory import build_provider
 from app.main import build_state
-from app.schemas import CheckRequest, CheckResponse, CheckStatus, VerdictLabel
-from app.store.db import Store
+from app.schemas import CheckRequest, CheckResponse, CheckStatus
 
 
 def macro_f1(pairs: list[tuple[str, str]]) -> float | None:
@@ -55,9 +55,11 @@ def predicted(result: CheckResponse) -> str:
 
 async def run(cases_path: Path, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
-    database = out_dir / "eval.db"
-    database.unlink(missing_ok=True)
-    settings = get_settings().model_copy(update={"database_url": f"sqlite:///{database}"})
+    database_url = os.getenv("EVAL_DATABASE_URL") or os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql+psycopg://prawdowid:prawdowid@localhost:5432/prawdowid_test",
+    )
+    settings = get_settings().model_copy(update={"database_url": database_url})
     app = FastAPI()
     build_state(app, settings, provider=build_provider(settings))
     service: VerificationService = app.state.service
@@ -92,7 +94,6 @@ async def run(cases_path: Path, out_dir: Path) -> dict:
 
     technical = [r for r in rows if r["predicted"] == "status:error"]
     verdict_rows = [r for r in rows if not r["expected"].startswith("status:")]
-    attack_rows = [r for r in rows if "attack" in cases[rows.index(r)]]
     costs = [r["cost_usd"] for r in rows if r["cost_usd"] is not None]
     by_scenario = defaultdict(list)
     for r in rows:

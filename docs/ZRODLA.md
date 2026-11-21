@@ -1,83 +1,87 @@
 # Źródła
 
-Jedynym miejscem, przez które dokument może trafić do korpusu, jest katalog
-[`backend/data/sources.yaml`](../backend/data/sources.yaml). Ten sam katalog jest dostępny do audytu
-w interfejsie (`/zrodla`) i przez API (`GET /api/v1/sources`).
+Korpus Prawdowida to **10 polskich źródeł urzędowych**, pobieranych automatycznie przez
+`backend/app/ingest/`. Katalog źródeł jest w kodzie (`backend/app/ingest/registry.py`),
+a stan korpusu i historia pobrań są widoczne w API (`GET /api/v1/admin/corpus/stats`)
+oraz w `ingest_runs`.
 
-## Korpus demonstracyjny
+## Co jest w korpusie
 
-Stan na 2026-11-21 (wersja `10d51f43c4ec`, szczegóły w `backend/data/corpus/manifest.json`):
-**575 dokumentów, 11 domen, 4 typy źródeł** (urzędowe 109, akty prawne 80, fact-checking 271, media 115).
-Korpus jest wyłącznie polskojęzyczny. Wszystkie rekordy zostały pobrane automatycznie z prawdziwych
-serwisów – nie ma w nim treści napisanych przez zespół ani wygenerowanych przez model.
-Domeny liczymy na poziomie serwisu (np. `cyfrowa.rp.pl` i `rp.pl` to jedna domena).
+Stan po uruchomieniu `uv run python -m app.ingest.run --max 10`:
+**10 źródeł, do 10 dokumentów na źródło** (ok. 80–100 dokumentów na przebieg).
+Zapisujemy wyłącznie **tytuł, fragment do ok. 1500 znaków i link do oryginału** —
+nie pełne teksty. Dzięki temu odpowiedź zawsze prowadzi do źródła, a prawo autorskie
+nie jest naruszane.
 
-| Źródło | Typ | Poziom | Dok. | Co przechowujemy | Licencja / podstawa |
-|---|---|---|---|---|---|
-| MSZ – aktualności (gov.pl) | urzędowe | 1 | 59 | pełny tekst | CC BY-SA 4.0 (stopka gov.pl) |
-| Dziennik Ustaw – API ELI Sejmu | akt prawny | 1 | 80 | tytuł, typ, status, daty | materiał urzędowy (art. 4 pr. aut.) |
-| CERT Polska | urzędowe | 1 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Konkret24 | fact-checking | 2 | 30 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Pravda – artykuły | fact-checking | 2 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Pravda – ClaimReview | fact-checking | 2 | 211 | twierdzenie, ocena, link | dane strukturalne opublikowane przez wydawcę |
-| FakeNews.pl | fact-checking | 2 | 10 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Ośrodek Studiów Wschodnich – analizy | urzędowe | 1 | 10 | tytuł, zajawka, link | do potwierdzenia – tylko fragment |
-| Rzeczpospolita | media | 3 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| CyberDefence24 | media | 3 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Defence24 | media | 3 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Niebezpiecznik | media | 3 | 15 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
+| Klucz | Źródło | Co pobieramy | Sposób |
+|---|---|---|---|
+| `rcb-raport-dobowy` | Rządowe Centrum Bezpieczeństwa | dzienny raport dobowy | migawka strony, unikalna po dacie |
+| `gov-ostrzezenia` | gov.pl – system ostrzeżeń (RSO) | komunikaty RSO dla 16 województw | oficjalne API JSON |
+| `imgw-meteo` | IMGW-PIB – meteo | ostrzeżenia meteorologiczne | `danepubliczne.imgw.pl` (JSON) |
+| `imgw-hydro` | IMGW-PIB – hydro | przekroczenia stanów wód; przy braku przekroczeń jawna migawka „brak przekroczeń” | `danepubliczne.imgw.pl` (JSON) |
+| `cert-polska` | CERT Polska | komunikaty o oszustwach i podatnościach | lista HTML |
+| `gddkia` | GDDKiA | aktualności | `gov.pl/web/gddkia/aktualnosci` |
+| `kgpsp` | Komenda Główna PSP | aktualności | `gov.pl/web/kgpsp/aktualnosci` |
+| `policja` | Policja | aktualności | `policja.pl/pol/aktualnosci` |
+| `gis` | Główny Inspektorat Sanitarny | ostrzeżenia publiczne | `gov.pl/web/gis/ostrzezenia` |
+| `paa` | Państwowa Agencja Atomistyki | aktualności | `gov.pl/web/paa/aktualnosci` |
 
-Rekordy ClaimReview pochodzą z publicznego kanału danych Google Fact Check Tools
-(`datacommons-feeds/factcheck`), do którego wydawcy sami zgłaszają oceny w formacie schema.org/ClaimReview.
-Część z nich zawiera adresy, pod którymi pojawiło się sprawdzane twierdzenie (211 rekordów) – to one tworzą
-**katalog incydentów** używany do dopasowań URL/domeny. Plik organizatora z bazą incydentów można dołączyć
-tym samym mechanizmem (rekord z `claim_reviewed`, `rating` i `appearance_urls`).
+### Świadome zamiany
 
-## Zasady kwalifikowania, aktualizowania i wykluczania
+- **GDDKiA** – oryginalne `drogi.gddkia.gov.pl` jest za WAF Incapsula i nie pozwala na
+  stabilne pobieranie bez przeglądarki. Używamy oficjalnych aktualności GDDKiA na gov.pl.
+- **PAA** – `monitoring.paa.gov.pl` to aplikacja Angular bez publicznego API.
+  Używamy oficjalnych aktualności PAA na gov.pl. Monitoring radiacyjny można dodać później
+  przez przeglądarkę headless lub API, jeśli zostanie udostępnione.
+- **IMGW** – `meteo.imgw.pl` i `hydro.imgw.pl` to aplikacje JS; korzystamy z publicznych
+  endpointów JSON IMGW, które zwracają te same dane.
+- **Ostrzeżenia gov.pl** – strona jest aplikacją Vue; dane pobieramy z jej oficjalnego
+  backendu `/api/data/proxy/rso/...`, a nie przez scraping DOM.
 
-Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
+## Zasady pobierania
 
-- **Poziom 1** – źródła pierwotne i urzędowe; **poziom 2** – organizacje fact-checkingowe deklarujące
-  standardy IFCN/EFCSN; **poziom 3** – media, tylko jako kontekst. Reguły werdyktu to wymuszają:
-  cytat z mediów jest zawsze pokazywany jako „kontekst” i sam nie może potwierdzić ani obalić twierdzenia.
-- Każdy wpis ma uzasadnienie kwalifikacji, licencję, politykę przechowywania i politykę aktualizacji.
-- Treści otwarte i urzędowe przechowujemy w całości; treści chronione – tylko tytuł, krótki fragment i link
-  albo dane strukturalne. Odpowiedź zawsze prowadzi do oryginału.
-- Szanujemy `robots.txt` i blokady serwisów. Nie obchodzimy zabezpieczeń ani paywalli.
-- Status źródła (np. sankcje UE – `backend/data/source_status.yaml`) i obecność domeny w katalogu incydentów
-  wywołują najwyżej neutralne ostrzeżenie. Dopasowanie domeny pokazujemy dopiero od 3 opisanych przypadków
-  i nigdy dla platform (Facebook, X, YouTube itd.).
-- Źródło usuwamy z katalogu, gdy traci status będący podstawą kwalifikacji lub zmienia warunki korzystania.
-  Jego dokumenty znikają z korpusu przy następnej aktualizacji.
+- `robots.txt` jest sprawdzany i respektowany; przy 401/403 źródło jest traktowane jako zablokowane.
+- Maks. **10 dokumentów na źródło na jeden przebieg** (`--max`).
+- Throttling **1 żądanie/s na domenę**, User-Agent `fact-check-research-bot/0.1`.
+- Ochrona przed SSRF: wyłącznie publiczne adresy IP, bez przekierowań na sieci prywatne.
+- Upsert po kanonicznym URL; `content_hash` (wydawca + tytuł + fragment) decyduje,
+  czy przeliczać embedding.
+- Migawki dzienne (RCB, hydro) mają URL z datą (`#2026-11-21`), więc historia nie znika.
 
-## Źródła rozważone, ale nieujęte w katalogu
+## Embeddingi i wyszukiwanie
 
-Te serwisy spełniają kryteria merytoryczne, ale nie pozwalają na automatyczne pobieranie, więc nie ma ich
-ani w katalogu, ani w korpusie. Po uzgodnieniu dostępu wystarczy dodać wpis do `sources.yaml`.
+- Model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 wymiary),
+  uruchamiany lokalnie przez `fastembed`/ONNX. Treść nie jest wysyłana do zewnętrznego API.
+- Embedding liczony z: wydawca + tytuł + fragment. Dzięki temu krótkie komunikaty
+  (np. IMGW) zachowują kontekst instytucji.
+- Kandydaci: top 20, ostatnie 90 dni, z wyłączeniem sprawdzanego URL.
+- Rerank hybrydowy: `0.8 * cosine + 0.2 * pokrycie słów kluczowych`.
+- Wynik: maks. 6 materiałów, maks. 2 na źródło, z progiem podobieństwa
+  (`RETRIEVAL_MIN_SIMILARITY`, `RETRIEVAL_STRONG_SIMILARITY`).
 
-| Źródło | Powód |
-|---|---|
-| Demagog | serwis blokuje automatyczne pobieranie (HTTP 403) |
-| AFP Sprawdzam | jw. |
-| Rada UE – komunikaty | kontrola przeglądarki także dla `robots.txt` |
+## Czego nie ma w korpusie
+
+- Fact-checków redakcyjnych (Demagog, Konkret24, AFP) – to osobny kanał danych,
+  planowany jako uzupełnienie, ale nie jest częścią tego MVP.
+- Pełnych tekstów artykułów spoza gov.pl – świadomie tylko fragmenty i link.
+- Platform społecznościowych – nigdy nie trafiają do korpusu.
 
 ## Aktualizacja
 
 ```bash
 cd backend
-uv run python -m app.ingest.run                 # wszystkie źródła z katalogu (kanał ClaimReview to ok. 200 MB)
-uv run python -m app.ingest.run --only konkret24,msz-gov-pl
+uv run python -m app.ingest.run                    # wszystkie źródła
+uv run python -m app.ingest.run --only gis,cert-polska --max 10
+uv run python -m app.ingest.run --list             # lista kluczy
 ```
 
-Przebieg dopisuje nowe dokumenty, zapisuje datę pobrania każdego rekordu i raport w `manifest.json`.
-Zmiana korpusu zmienia jego wersję, co unieważnia pamięć wyników i wymusza przeliczenie indeksu.
-W prototypie aktualizację uruchamia się ręcznie lub z crona; częstotliwości z katalogu są docelowe.
+W Dockerze ingest można uruchomić z panelu moderatora:
+`POST /api/v1/admin/corpus/ingest` (nagłówek `X-Admin-Token`).
 
 ## Do zrobienia przed pilotażem
 
-- Przegląd prawny licencji (zwłaszcza zakres użycia danych ClaimReview i fragmentów treści chronionych).
-- Potwierdzenie statusu IFCN/EFCSN każdej redakcji w oficjalnych rejestrach (w katalogu oznaczone jako deklaracja).
-- Uzgodnienie dostępu do źródeł nieujętych w katalogu oraz dołączenie pakietu źródeł i bazy incydentów organizatora.
-- Rozszerzenie polskich źródeł pierwotnych: dane.gov.pl, GUS, BIP, kolejne urzędy i redakcje fact-checkingowe.
-- OSW zakwalifikowano jako instytucję państwową (poziom 1), choć publikuje analizy, a nie dokumenty urzędowe – do decyzji, czy nie powinien to być poziom 2.
-- Kanał BIP Rzecznika Praw Obywatelskich odrzucono: zawiera głównie wpisy rejestrowe z nazwiskami osób.
+- Dodać kanał fact-checkingowy (ClaimReview / Google Fact Check Tools) jako osobny typ źródła.
+- Potwierdzić licencje fragmentów dla serwisów innych niż gov.pl.
+- Dodać monitoring radiacyjny PAA przez przeglądarkę headless albo oficjalne API.
+- Zbudować ręczny zbiór par „to samo wydarzenie / podobny temat” i dostroić progi retrievalu.
+- Rozważyć mocniejszy model embeddingów (np. e5-large) po pomiarze jakości na polskich tekstach.

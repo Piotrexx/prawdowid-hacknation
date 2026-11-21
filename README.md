@@ -10,7 +10,10 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 ## Co robi
 
 - Wydziela z treści twierdzenia do sprawdzenia i oddziela fakty od opinii oraz prognoz.
-- Szuka wyłącznie w opisanym, polskojęzycznym korpusie (obecnie 575 dokumentów z 11 domen, 4 typy źródeł – [docs/ZRODLA.md](docs/ZRODLA.md)).
+- Szuka w lokalnym, polskojęzycznym korpusie **10 źródeł urzędowych** (maks. 10 dokumentów
+  na źródło na przebieg – [docs/ZRODLA.md](docs/ZRODLA.md)).
+- Po ekstrakcji słów kluczowych przez Bielika przeszukuje **pgvector** i dokłada do kontekstu
+  artykuły o podobnym znaczeniu, które mogą opisywać to samo wydarzenie.
 - Dla każdego twierdzenia zwraca jeden z wyników: **potwierdzone**, **fałszywe**, **wprowadzające w błąd**,
   **brak wystarczających dowodów**, **nie podlega weryfikacji**.
 - Awarię, prośbę o doprecyzowanie i treść poza zakresem komunikuje osobno – to nie są werdykty.
@@ -28,14 +31,15 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 frontend/  Next.js (kanał WWW, katalog źródeł, panel moderatora)
     │  HTTP/JSON
 backend/   FastAPI
-    ├─ api/                 kanał WWW i panel moderatora
+    ├─ api/                 kanał WWW i panel moderatora (+ ingest)
     ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
-    ├─ core/verdict.py      deterministyczne reguły werdyktu i siły podstawy
-    ├─ retrieval/           BM25 + embeddingi (lokalnie), katalog incydentów
+    ├─ core/prompts.py      prompty Bielika i DeepSeeka (kontekst + fact-checki)
+    ├─ ingest/              konektory 10 źródeł → tekst → embedding
+    ├─ retrieval/           pgvector + hybrydowy rerank materiałów podobnych
     ├─ llm/                 wymienny dostawca modelu (API zgodne z OpenAI, domyślnie DeepSeek | Anthropic | brak)
     ├─ security/            PII, prompt injection, SSRF, limity żądań
-    ├─ store/               SQLite: przebieg sprawdzeń, sprawy, zdarzenia
-    └─ ingest/              konektory źródeł → data/corpus/
+    ├─ store/               PostgreSQL: sprawdzenia, korpus, przebiegi ingestu
+    └─ data/                dane lokalne
 ```
 
 `frontend/` i `backend/` to dwa niezależne projekty (osobne zależności, osobne uruchamianie, brak wspólnego
@@ -43,24 +47,29 @@ narzędzia typu monorepo). Szczegóły, przepływ danych i uzasadnienie wyborów
 
 ## Uruchomienie
 
-Wymagania: [uv](https://docs.astral.sh/uv/) (sam pobierze Pythona 3.13), Node.js 20+, klucz API modelu.
+Wymagania: [uv](https://docs.astral.sh/uv/) (sam pobierze Pythona 3.13), Node.js 20+, Docker
+(dla PostgreSQL + pgvector), klucz API modelu.
 
 ```bash
-# 1. Backend – http://localhost:8000 (dokumentacja API: /docs)
+# 1. Baza danych – PostgreSQL z pgvector (port 5432)
+docker compose up -d postgres
+
+# 2. Backend – http://localhost:8000 (dokumentacja API: /docs)
 cd backend
 cp .env.example .env        # uzupełnij LLM_API_KEY (klucz DeepSeek), ADMIN_TOKEN, ID_HASH_SALT
 uv sync
+uv run python -m app.ingest.run --max 10   # opcjonalnie: od razu zbuduj korpus
 uv run uvicorn app.main:app --port 8000
 
-# 2. Frontend – http://localhost:3000
+# 3. Frontend – http://localhost:3000
 cd frontend
 cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-Pierwszy start backendu pobiera lokalny model embeddingów (ok. 220 MB) i liczy indeks (ok. 40 s); kolejne starty
-trwają kilka sekund. Korpus demonstracyjny jest w repozytorium, więc nic nie trzeba pobierać ręcznie.
+Pierwsze uruchomienie pobiera lokalny model embeddingów (ok. 470 MB). Ingest 10 źródeł
+z limitem 10 dokumentów na źródło trwa ok. 2 minuty i tworzy ok. 80–100 dokumentów.
 
 Bez klucza API usługa też się uruchomi: wyszukiwanie działa, a każde sprawdzenie kończy się jawnym
 komunikatem o problemie technicznym (nigdy pozornym werdyktem) wraz z listą znalezionych materiałów.
@@ -77,8 +86,9 @@ Alternatywnie w kontenerach: `docker compose up --build` (wymaga pliku `backend/
 ## Testy i mierniki
 
 ```bash
+docker compose up -d postgres
 cd backend
-uv run pytest                      # 60 testów logiki, bezpieczeństwa, kanałów i dostawców modelu (bez sieci)
+uv run pytest                      # testy bez sieci (fake LLM + FakeEmbedder, realny PostgreSQL)
 uv run python -m eval.run_eval     # mierniki z sekcji 6 na prawdziwym modelu (kosztuje!)
 ```
 

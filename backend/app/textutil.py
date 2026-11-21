@@ -1,6 +1,5 @@
 """Utility functions for text processing."""
 
-import re
 
 # Końcówki, pod którymi instytucje rejestrują własne domeny (np. sejm.gov.pl, pravda.org.pl).
 _SHARED_SUFFIXES = frozenset({"gov.pl", "org.pl", "com.pl", "net.pl", "edu.pl", "waw.pl"})

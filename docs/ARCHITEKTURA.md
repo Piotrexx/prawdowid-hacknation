@@ -10,7 +10,7 @@ kanał (obecnie WWW)
   → 2. kontekst                dopasowanie URL/domeny do katalogu incydentów, status źródła (neutralne ostrzeżenia)
   → 3. pamięć wyników          ta sama treść + ten sam korpus + ten sam model → ten sam wynik (spójność kanałów)
   → 4. wydzielenie twierdzeń   MODEL: twierdzenia, rodzaj (fakt/opinia/prognoza), zapytania, ryzyko
-  → 5. wyszukiwanie            KOD: BM25 + embeddingi, fuzja RRF, preferencja nowszych źródeł
+  → 5. wyszukiwanie            KOD: pgvector (kosinus) + rerank hybrydowy (similarity + pokrycie keywordów)
   → 6. ocena dowodów           MODEL: dla każdego fragmentu stanowisko + DOSŁOWNY cytat, propozycja werdyktu
   → 7. reguły werdyktu         KOD: weryfikacja cytatów, werdykt, siła podstawy, sprzeczności
   → 8. pętla informacji        KOD: sprawa moderatora dla nierozstrzygniętych, grupowanie, powiadomienie
@@ -54,9 +54,9 @@ zgodność źródeł (+0,15 / −0,15). Progi: mocna ≥ 0,75, umiarkowana ≥ 0
 | Element | Domyślnie | Wymiana |
 |---|---|---|
 | Model językowy | DeepSeek `deepseek-flash` (obecnie DeepSeek-V4.1-Flash) przez API zgodne z OpenAI; odpowiedź w trybie `json_object`, walidowana schematem z jedną ponowną próbą | `LLM_BASE_URL` + `LLM_MODEL` – Mistral (UE), Ollama/vLLM (własny serwer, np. Bielik), OpenRouter; `LLM_PROVIDER=anthropic` – Claude |
-| Embeddingi | `paraphrase-multilingual-MiniLM-L12-v2` przez fastembed (ONNX), **lokalnie** | `EMBEDDING_MODEL` lub `EMBEDDINGS=off` (samo BM25) |
-| Wyszukiwanie | BM25 + kosinus w pamięci (numpy), RRF | interfejs `CorpusIndex.search` – można podłączyć bazę wektorową |
-| Baza | SQLite | `DATABASE_URL` (SQLAlchemy – np. Postgres) |
+| Embeddingi | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384) przez fastembed (ONNX), **lokalnie** | `EMBEDDING_MODEL`, `EMBEDDING_DIM`, `EMBEDDING_BACKEND=none` |
+| Wyszukiwanie | PostgreSQL + pgvector (HNSW, cosine), top 20 kandydatów, rerank 0.8×similarity + 0.2×keyword overlap | `RETRIEVAL_*` w konfiguracji |
+| Baza | PostgreSQL + pgvector (`pgvector/pgvector:pg17`) | `DATABASE_URL` (SQLAlchemy + psycopg) |
 | Odczyt obrazu | ten sam model językowy (wizja) | idzie za `LLM_PROVIDER` |
 
 **Miejsce przetwarzania.** Wyszukiwanie, embeddingi, baza i korpus działają na serwerze usługi. Do dostawcy
@@ -67,7 +67,7 @@ Przełączenie na dostawcę z EOG lub model lokalny to zmiana dwóch zmiennych �
 **Zachowanie przy awarii.** Brak klucza, limit, odmowa lub awaria modelu → status `error` z kodem
 (`llm_not_configured`, `llm_unavailable`, `llm_rate_limited`, `llm_refused`, `llm_bad_output`, `ocr_unavailable`,
 `url_*`, `image_*`) i komunikatem „to problem techniczny, a nie wynik sprawdzenia”. Brak modelu embeddingów →
-wyszukiwanie po słowach kluczowych z ostrzeżeniem `retrieval_degraded`.
+materiały podobne są pomijane, a odpowiedź zawiera jawne ostrzeżenie (werdykt nadal powstaje na fact-checkach).
 
 ## Bezpieczeństwo
 

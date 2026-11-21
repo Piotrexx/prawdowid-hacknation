@@ -1,11 +1,11 @@
 """Publiczny kontrakt API. Frontend i adaptery kanałów zależą wyłącznie od tych modeli."""
 
-import datetime as dt
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Literal, Optional
+from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CheckStatus(StrEnum):
@@ -35,6 +35,7 @@ class SourceRef(BaseModel):
     source_type: str
     source_name: str
     rating: str | None = None
+    similarity: float | None = None
 
 
 class FactCheckResult(BaseModel):
@@ -70,6 +71,8 @@ class CheckMeta(BaseModel):
     cost_usd: float | None = None
     processing_location: str = ""
     cached: bool = False
+    related_count: int = 0
+    embedding_model: str | None = None
 
 
 class InputInfo(BaseModel):
@@ -93,8 +96,10 @@ class CheckResponse(BaseModel):
     justification: str | None = None
     keywords: list[str] = []
     main_topic: str = ""
+    summary: str = ""
     fact_check_results: list[FactCheckResult] = []
     source_articles: list[SourceRef] = []
+    related_materials: list[SourceRef] = []
     limitations: list[str] = []
     meta: CheckMeta = CheckMeta()
 
@@ -102,6 +107,14 @@ class CheckResponse(BaseModel):
 class CheckRequest(BaseModel):
     url: str = Field(..., max_length=2000)
     session_id: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError("Podaj poprawny adres strony (http lub https).")
+        return value
 
 
 class HealthResponse(BaseModel):
@@ -114,3 +127,6 @@ class HealthResponse(BaseModel):
     google_factcheck_configured: bool
     processing_location: str
     retention_days: int
+    corpus_ready: bool = False
+    corpus_documents: int = 0
+    embedding_model: str | None = None

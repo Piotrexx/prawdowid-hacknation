@@ -1,46 +1,114 @@
-# Prawdowid – backend (FastAPI)
+# Prawdowid – backend (FastAPI + PostgreSQL/pgvector)
 
-Wykrywanie fake news: **URL → trafilatura → Bielik 4.5B Instruct (keywords) → Google Fact Check Tools → DeepSeek (verdict)**
+Weryfikacja wiarygodności artykułu:
+**URL → trafilatura → Bielik 4.5B (keywords) → [Google Fact Check + pgvector] → DeepSeek (verdict)**
 
-## Uruchomienie (Docker - zalecane)
+Wynik zawiera nie tylko werdykt, ale też **materiały podobne semantycznie** z lokalnego korpusu
+(10 źródeł urzędowych), które trafiają do kontekstu modelu oceniającego.
+
+## Uruchomienie (Docker – zalecane)
 
 ```bash
-cp backend/.env.example backend/.env     # Wypełnij klucze API
+cp backend/.env.example backend/.env     # uzupełnij klucze API
 docker compose up --build
 ```
 
 - Backend API: <http://localhost:8000>
 - Dokumentacja OpenAPI: <http://localhost:8000/docs>
 - Frontend: <http://localhost:3000>
+- PostgreSQL + pgvector: `localhost:5432` (baza `prawdowid`, testowa `prawdowid_test`)
 - Ollama (Bielik): <http://localhost:11434>
 
-## Uruchomienie lokalne (bez Docker)
+## Uruchomienie lokalne (bez Docker dla aplikacji)
 
 ```bash
+# 1. Baza z pgvector
+docker compose up -d postgres
+
+# 2. Konfiguracja
 cd backend
-cp .env.example .env     # Wypełnij: LLM_API_KEY (DeepSeek), GOOGLE_FACTCHECK_API_KEY, ADMIN_TOKEN, ID_HASH_SALT
-# Uruchom Ollama z modelem Bielik:
-ollama pull bielik:4.5b-instruct
-ollama serve
-# W drugim terminalu:
+cp .env.example .env
+# Wypełnij: LLM_API_KEY (DeepSeek), GOOGLE_FACTCHECK_API_KEY, ADMIN_TOKEN, ID_HASH_SALT
+
+# 3. Zależności i serwer
 uv sync
 uv run uvicorn app.main:app --port 8000
 ```
 
-## Konfiguracja
+Bielik działa przez Ollama/vLLM:
 
-Wszystkie ustawienia to zmienne środowiskowe – pełna lista w [.env.example](.env.example) i [app/config.py](app/config.py).
+```bash
+ollama pull bielik:4.5b-instruct
+ollama serve
+```
 
-| Zmienna | Znaczenie |
+Bez klucza API usługa też się uruchomi: wyszukiwanie i korpus działają, a sprawdzenie kończy się
+jawnym komunikatem o problemie technicznym (nigdy pozornym werdyktem).
+
+## Baza danych i korpus
+
+Wymagany jest PostgreSQL z rozszerzeniem `pgvector` (obraz `pgvector/pgvector:pg17`).
+Schemat tworzy się automatycznie przy starcie (`CREATE EXTENSION IF NOT EXISTS vector` + `create_all`).
+
+| Tabela | Zawartość |
 |---|---|
-| `LLM_PROVIDER`, `LLM_MODEL` | `openai_compatible` (domyślnie `deepseek-flash` - DeepSeek V4.1 Flash; także Mistral, Ollama, vLLM) |
-| `LLM_BASE_URL`, `LLM_API_KEY` | Dostęp do modelu DeepSeek |
-| `BIELIK_BASE_URL`, `BIELIK_MODEL` | Ollama/vLLM endpoint dla Bielik 4.5B (domyślnie `http://localhost:11434`, `bielik:4.5b-instruct`) |
-| `GOOGLE_FACTCHECK_API_KEY` | Klucz Google Fact Check Tools API (https://developers.google.com/fact-check/tools/api) |
-| `ADMIN_TOKEN` | Token panelu admina (bez niego panel wyłączony) |
-| `ID_HASH_SALT` | Sól do skracania identyfikatorów (adresy IP w limicie żądań) |
-| `RATE_LIMIT_PER_MINUTE` | Limit żądań na IP |
-| `RETENTION_DAYS` | Retencja danych |
+| `checks` | przebieg sprawdzeń i pełna odpowiedź API |
+| `security_events` | zdarzenia bezpieczeństwa |
+| `articles` | dokumenty korpusu: tytuł, fragment, link, data, `embedding vector(384)` |
+| `ingest_runs` | historia pobrań źródeł |
+
+Embeddingi: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` przez `fastembed`
+(384 wymiary, ok. 470 MB, działa lokalnie na CPU, bez wysyłania treści do zewnętrznego API).
+
+### Ingest źródeł
+
+```bash
+uv run python -m app.ingest.run --list
+uv run python -m app.ingest.run --only gis,cert-polska --max 10
+uv run python -m app.ingest.run --max 10        # wszystkie źródła
+```
+
+Zasady: maks. 10 dokumentów na źródło na przebieg, `robots.txt` respektowany,
+throttling 1 req/s na domenę, zapis tylko tytułu i fragmentu (nie pełnych tekstów),
+upsert po URL i `content_hash` (embedding liczony ponownie tylko przy zmianie treści).
+
+Źródła (szczegóły w [../docs/ZRODLA.md](../docs/ZRODLA.md)):
+
+| Klucz | Źródło | Adapter |
+|---|---|---|
+| `rcb-raport-dobowy` | RCB – raport dobowy | migawka dzienna |
+| `gov-ostrzezenia` | gov.pl – ostrzeżenia (RSO) | API JSON |
+| `imgw-meteo` | IMGW – ostrzeżenia meteo | API JSON |
+| `imgw-hydro` | IMGW – sytuacja hydrologiczna | API JSON |
+| `cert-polska` | CERT Polska – komunikaty | lista HTML |
+| `gddkia` | GDDKiA – aktualności (gov.pl) | lista HTML |
+| `kgpsp` | KG PSP – aktualności | lista HTML |
+| `policja` | Policja – aktualności | lista HTML |
+| `gis` | GIS – ostrzeżenia | lista HTML |
+| `paa` | PAA – aktualności | lista HTML |
+
+Ingest można też uruchomić z panelu admina:
+
+```http
+POST /api/v1/admin/corpus/ingest        # X-Admin-Token, opcjonalnie {"sources": ["gis"], "max_per_source": 10}
+GET  /api/v1/admin/corpus/stats
+```
+
+## Wyszukiwanie semantyczne
+
+Po ekstrakcji słów kluczowych Bielik podaje `keywords`, `main_topic` i `summary`.
+Zapytanie do pgvector powstaje z tych trzech pól. Kandydaci (top 20, ostatnie 90 dni)
+są przenoszani przez hybrydowy rerank:
+
+```
+score = 0.8 * cosine_similarity + 0.2 * keyword_overlap
+```
+
+Wymagane jest podobieństwo ≥ `RETRIEVAL_MIN_SIMILARITY` (domyślnie 0.58) oraz
+albo wspólne słowo kluczowe, albo bardzo wysokie podobieństwo
+(`RETRIEVAL_STRONG_SIMILARITY`, domyślnie 0.82). Wynik: maks. 6 materiałów,
+maks. 2 z jednego źródła. Trafienia trafiają do `related_materials` w odpowiedzi API
+oraz do promptu DeepSeek jako **kontekst, nie dowód**.
 
 ## API (`/api/v1`)
 
@@ -49,131 +117,57 @@ Wszystkie ustawienia to zmienne środowiskowe – pełna lista w [.env.example](
 | POST | `/checks` | Sprawdzenie URL artykułu (`{url, session_id?}`) |
 | GET | `/checks/{id}` | Zapisany wynik |
 | DELETE | `/sessions/{session_id}` | Usunięcie danych sesji |
-| GET | `/health` | Stan usługi, modele, miejsce przetwarzania |
+| GET | `/health` | Stan usługi, modele, liczba dokumentów korpusu |
 | GET | `/admin/metrics`, `/admin/checks`, `/admin/export` | Panel admina (`X-Admin-Token`) |
+| POST | `/admin/corpus/ingest` | Ingest w tle |
+| GET | `/admin/corpus/stats` | Statystyki korpusu i przebiegów |
 
-### Przykład żądania:
+## Testy
 
-```bash
-curl -s localhost:8000/api/v1/checks -H 'Content-Type: application/json' \
-  -d '{"url": "https://example.org/artykul-do-sprawdzenia"}'
-```
-
-### Przykład odpowiedzi:
-
-```json
-{
-  "id": "abc123...",
-  "created_at": "2024-11-21T10:00:00Z",
-  "channel": "web",
-  "status": "completed",
-  "input": {
-    "kind": "url",
-    "text": "Treść artykułu...",
-    "url": "https://example.org/artykul-do-sprawdzenia",
-    "title": "Tytuł artykułu"
-  },
-  "verdict": "fake_news",
-  "verdict_label": "fake_news",
-  "confidence": 0.92,
-  "justification": "Artykuł zawiera fałszywe informacje...",
-  "keywords": ["fake news", "dezinformacja", "weryfikacja", ...],
-  "main_topic": "Artykuł szerzy dezinformację na temat...",
-  "fact_check_results": [
-    {
-      "claim": "Twierdzenie do sprawdzenia",
-      "claimant": "Jan Kowalski",
-      "claim_date": "2024-01-15",
-      "claim_review_url": "https://demagog.org.pl/sprawdzenie/123",
-      "claim_review_title": "Sprawdzenie: Twierdzenie jest fałszywe",
-      "publisher_name": "Demagog",
-      "publisher_site": "demagog.org.pl",
-      "rating": "Fałsz",
-      "textual_rating": "Fałsz",
-      "url": "https://demagog.org.pl/sprawdzenie/123"
-    }
-  ],
-  "limitations": [
-    "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia...",
-    "Werdykt to interpretacja modelu językowego..."
-  ],
-  "meta": {
-    "duration_ms": 3500,
-    "stages_ms": {"fetch": 800, "keywords": 1200, "factcheck": 500, "verdict": 1000},
-    "provider": "openai_compatible",
-    "model": "deepseek-flash",
-    "bielik_model": "bielik:4.5b-instruct",
-    "llm_calls": 2,
-    "tokens_in": 1500,
-    "tokens_out": 300,
-    "cost_usd": 0.0012,
-    "processing_location": "...",
-    "cached": false
-  }
-}
-```
-
-## Pipeline - jak to działa
-
-1. **Pobranie artykułu (trafilatura)** - Użytkownik podaje URL, system pobiera stronę i ekstrahuje czysty tekst (tytuł + treść) używając `trafilatura`.
-
-2. **Ekstrakcja słów kluczowych (Bielik 4.5B Instruct)** - Model Bielik analizuje tytuł i treść, wyciąga do 10 najważniejszych słów kluczowych/fraz do wyszukiwania fact-checków. Prompt **wyłącznie po polsku**.
-
-3. **Google Fact Check Tools API** - Słowa kluczowe wysyłane do Google Fact Check API, pobierane **top 5** najbardziej pasujących sprawdzeń faktów.
-
-4. **Werdykt (DeepSeek)** - DeepSeek analizuje: treść artykułu, słowa kluczowe, znalezione fact-checki i wydaje ostateczny werdykt:
-   - `fake_news` - fałszywe informacje (dezinformacja)
-   - `prawdziwe` - informacje potwierdzone przez źródła
-   - `niepewne` - brak wystarczających dowodów
-   - `satyna` - artykuł satyryczny
-   - `opinia` - wyrażenie opinii, nie faktów
-
-## Testy i ewaluacja
+Testy wymagają PostgreSQL z pgvector (baza `prawdowid_test`, tworzona przez `backend/db/init.sql`):
 
 ```bash
+docker compose up -d postgres
 cd backend
-uv run pytest                       # testy jednostkowe i integracyjne (z mockami)
+uv run pytest
 uv run ruff check .
-uv run python -m eval.run_eval      # ewaluacja na prawdziwym modelu (kosztuje)
 ```
+
+Testy nie łączą się z internetem: adaptery są sprawdzane na fixture'ach HTML/JSON,
+a w pipeline'ie używane są fake providery LLM i `FakeEmbedder`.
 
 ## Struktura projektu
 
 ```
 backend/
 ├── app/
-│   ├── api/              # Endpointy FastAPI
-│   │   ├── checks.py     # POST /checks, GET /health
-│   │   ├── admin.py      # Panel admina
-│   │   └── deps.py       # Rate limiting, auth
-│   ├── core/
-│   │   ├── pipeline.py   # GŁÓWNY PIPELINE: fetch → keywords → factcheck → verdict
-│   │   └── prompts.py    # Prompty dla Bielik i DeepSeek (TYLKO PO POLSKU)
-│   ├── llm/              # Providerzy LLM (DeepSeek, Bielik via OpenAI-compat)
-│   ├── security/         # URL fetch (trafilatura), rate limiting
-│   ├── schemas.py        # Modele Pydantic (API contract)
-│   ├── config.py         # Konfiguracja (pydantic-settings)
-│   ├── store/            # SQLite storage
-│   ├── textutil.py       # Utility functions
-│   └── main.py           # FastAPI app factory
-├── tests/                # Testy (conftest, test_units, test_pipeline)
-├── eval/                 # Ewaluacja na prawdziwym modelu
-├── data/                 # Baza danych SQLite
-├── pyproject.toml        # Zależności
+│   ├── api/              # checks.py, admin.py, deps.py
+│   ├── core/             # pipeline.py, prompts.py
+│   ├── ingest/           # registry.py, adapters.py, http.py, run.py
+│   ├── retrieval/        # embeddings.py, corpus.py, service.py
+│   ├── llm/              # providerzy OpenAI-compatible
+│   ├── security/         # SSRF, robots.txt, rate limiting
+│   ├── store/            # models.py, db.py
+│   ├── config.py
+│   ├── schemas.py
+│   └── main.py
+├── db/init.sql           # CREATE EXTENSION vector + baza testowa
+├── data/                 # dane lokalne
+├── eval/                 # ewaluacja na prawdziwym modelu
+├── tests/
 ├── Dockerfile
-├── .env.example
-└── README.md
+└── pyproject.toml
 ```
 
 ## Wymagane klucze API
 
-1. **DeepSeek API** - https://platform.deepseek.com/ (dla werdyktu)
-2. **Google Fact Check Tools API** - https://developers.google.com/fact-check/tools/api (dla fact-checków)
-3. **Ollama + Bielik 4.5B** - `ollama pull bielik:4.5b-instruct` (dla słów kluczowych)
+1. DeepSeek API – <https://platform.deepseek.com/> (werdykt)
+2. Google Fact Check Tools API – <https://developers.google.com/fact-check/tools/api>
+3. Ollama + Bielik – `ollama pull bielik:4.5b-instruct` (słowa kluczowe)
 
 ## Uwagi
 
-- Backend działa **tylko z URL** (nie ma już endpointu dla czystego tekstu ani obrazów)
-- Wszystkie prompty są **wyłącznie po polsku**
-- System zapisuje wyniki do SQLite (`data/prawdowid.db`)
-- Limity zapytań: domyślnie 10/min na IP
+- Backend przyjmuje **tylko URL** (brak endpointu dla czystego tekstu i obrazów).
+- Prompty są wyłącznie po polsku.
+- Limity zapytań: domyślnie 10/min na IP.
+- Pierwsze sprawdzenie po starcie może potrwać dłużej, jeśli model embeddingów nie jest jeszcze w cache.

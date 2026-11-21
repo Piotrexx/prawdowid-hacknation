@@ -1,57 +1,41 @@
-"""Zapis przebiegu sprawdzeń i zdarzeń bezpieczeństwa (SQLite; URL wymienny na Postgres)."""
+"""Zapis przebiegu sprawdzeń i zdarzeń bezpieczeństwa (PostgreSQL + pgvector)."""
 
 import json
-import statistics
-from collections import Counter
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, String, create_engine, delete, func, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import create_engine, delete, select, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 from app.schemas import CheckResponse, CheckStatus
+from app.store.models import Base, CheckRow, SecurityEventRow
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-class Base(DeclarativeBase):
-    pass
-
-
-class CheckRow(Base):
-    __tablename__ = "checks"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    channel: Mapped[str] = mapped_column(String(32))
-    session_id: Mapped[str | None] = mapped_column(String(80), index=True)
-    cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
-    status: Mapped[str] = mapped_column(String(32))
-    error_code: Mapped[str | None] = mapped_column(String(64))
-    result: Mapped[dict] = mapped_column(JSON)
-
-
-class SecurityEventRow(Base):
-    __tablename__ = "security_events"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    kind: Mapped[str] = mapped_column(String(48))
-    origin: Mapped[str] = mapped_column(String(48))
-    detail: Mapped[str] = mapped_column(String(500))
-    check_id: Mapped[str | None] = mapped_column(String(32))
-
-
 def _aware(value: datetime | None) -> datetime | None:
-    # SQLite gubi strefę czasową; wszystkie znaczniki zapisujemy w UTC.
     return value.replace(tzinfo=UTC) if value and value.tzinfo is None else value
 
 
 class Store:
     def __init__(self, database_url: str):
-        connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-        self._engine = create_engine(database_url, connect_args=connect_args)
+        if not database_url.startswith("postgresql"):
+            raise ValueError(
+                "Prawdowid wymaga PostgreSQL z rozszerzeniem pgvector. "
+                "Ustaw DATABASE_URL na postgresql+psycopg://..."
+            )
+        self._engine = create_engine(database_url, pool_pre_ping=True)
+        self._ensure_schema()
+
+    @property
+    def engine(self) -> Engine:
+        return self._engine
+
+    def _ensure_schema(self) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         Base.metadata.create_all(self._engine)
 
     def _session(self) -> Session:
