@@ -110,6 +110,18 @@ def test_stix_export_is_valid_bundle(client, provider):
     assert any(obj.get("x_prawdowid_check_id") == result["id"] for obj in bundle["objects"])
 
 
+def test_stix_export_handles_technical_error(client, provider):
+    from app.llm.base import LLMUnavailable
+
+    provider.fail = LLMUnavailable("brak modelu")
+    result = client.post(f"{API}/checks", json={"text": VACCINE_CLAIM}).json()
+    assert result["status"] == "error"
+    response = client.get(f"{API}/admin/export/stix", headers=ADMIN)
+    assert response.status_code == 200
+    bundle = json.loads(response.text)
+    assert any(obj["type"] == "report" for obj in bundle["objects"])
+
+
 def test_image_metadata_still_works(client, provider):
     provider.reading = ImageReading(
         text=VACCINE_CLAIM, visible_dates=["1 marca"], description="zrzut ekranu", readable=True, injection_detected=False

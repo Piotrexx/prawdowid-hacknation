@@ -52,7 +52,7 @@ def stix_bundle(results: list[CheckResponse]) -> str:
                     object_refs=[identity.id],
                     created=created,
                     modified=created,
-                    external_references=refs or None,
+                    **({"external_references": refs} if refs else {}),
                     x_prawdowid_claim_id=claim.id,
                     x_prawdowid_verdict=claim.verdict.value,
                     x_prawdowid_risk=claim.risk,
@@ -74,6 +74,16 @@ def stix_bundle(results: list[CheckResponse]) -> str:
             )
             notes.append(note)
             objects.append(note)
+        external = [
+            ExternalReference(source_name="Prawdowid sprawdzenie", url=source.url)
+            for source in result.source_articles[:20]
+        ]
+        custom: dict = {
+            "x_prawdowid_check_id": result.id,
+            "x_prawdowid_status": result.status.value,
+        }
+        if result.verdict is not None:
+            custom["x_prawdowid_summary_verdict"] = result.verdict.value
         report = Report(
             allow_custom=True,
             name=f"Prawdowid – sprawdzenie {result.id}",
@@ -83,14 +93,8 @@ def stix_bundle(results: list[CheckResponse]) -> str:
             modified=created,
             report_types=["threat-report"],
             object_refs=[note.id for note in notes] or [identity.id],
-            external_references=[
-                ExternalReference(source_name="Prawdowid sprawdzenie", url=source.url)
-                for source in result.source_articles[:20]
-            ]
-            or None,
-            x_prawdowid_check_id=result.id,
-            x_prawdowid_status=result.status.value,
-            x_prawdowid_summary_verdict=result.verdict.value if result.verdict else None,
+            **( {"external_references": external} if external else {} ),
+            **custom,
         )
         objects.append(report)
     return Bundle(objects=objects, allow_custom=True).serialize(pretty=True)

@@ -31,9 +31,12 @@ class ClaimRetriever:
 
     @property
     def mode(self) -> str:
-        if self._corpus.count() == 0:
+        stats = self._corpus.stats()
+        if int(stats.get("documents", 0)) == 0:
             return "none"
-        return "hybrid" if self._embedder is not None else "bm25"
+        if self._embedder is not None and int(stats.get("with_embedding", 0)) > 0:
+            return "hybrid"
+        return "bm25"
 
     @property
     def embedder(self) -> Embedder | None:
