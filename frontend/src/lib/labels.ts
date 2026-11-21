@@ -90,13 +90,3 @@ export function channelLabel(channel: string): string {
 export function inputKindLabel(kind: string): string {
   return labelFor(INPUT_KIND_LABELS, kind);
 }
-
-export function languageLabel(code: string): string {
-  try {
-    const name = new Intl.DisplayNames("pl", { type: "language" }).of(code);
-    if (name && name !== code) return name;
-  } catch {
-    // Unknown or malformed language tag: show the code itself.
-  }
-  return code.toUpperCase();
-}

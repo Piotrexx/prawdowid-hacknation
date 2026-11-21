@@ -16,7 +16,6 @@ class CatalogSource(BaseModel):
     homepage: str
     source_type: SourceType
     tier: int
-    language: str
     license: str
     storage: Literal["full_text", "excerpt", "structured"]
     qualification: str
@@ -43,7 +42,6 @@ class Document(BaseModel):
     title: str
     publisher: str
     url: str
-    language: str
     source_type: SourceType
     tier: int
     license: str

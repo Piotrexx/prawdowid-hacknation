@@ -47,7 +47,6 @@ class SourceRef(BaseModel):
     retrieved_at: datetime | None = None
     source_type: SourceType
     source_name: str
-    language: str = "pl"
     license: str = ""
     # Tylko dla rekordów fact-checkingowych: twierdzenie sprawdzone przez redakcję i jej ocena.
     claim_reviewed: str | None = None
@@ -178,7 +177,6 @@ class SourceCatalogEntry(BaseModel):
     homepage: str
     source_type: SourceType
     tier: int
-    language: str
     license: str
     storage: Literal["full_text", "excerpt", "structured"]
     qualification: str

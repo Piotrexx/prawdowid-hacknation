@@ -1,8 +1,8 @@
-import { Archive, Languages } from "lucide-react";
+import { Archive } from "lucide-react";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate } from "@/lib/format";
-import { SOURCE_TYPE_LABELS, languageLabel } from "@/lib/labels";
+import { SOURCE_TYPE_LABELS } from "@/lib/labels";
 import type { SourceRef } from "@/lib/types";
 
 interface SourceMetaProps {
@@ -36,9 +36,6 @@ export function SourceMeta({ source, archival = false }: SourceMetaProps) {
       </p>
       <p className="flex flex-wrap gap-1.5">
         <Tag>{typeLabel}</Tag>
-        {source.language && source.language.toLowerCase() !== "pl" ? (
-          <Tag icon={Languages}>Język: {languageLabel(source.language)}</Tag>
-        ) : null}
         {archival ? (
           <Tag tone="warn" icon={Archive}>
             Materiał archiwalny

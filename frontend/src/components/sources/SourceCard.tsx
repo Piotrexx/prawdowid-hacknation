@@ -3,7 +3,7 @@ import { ExternalLink } from "@/components/ui/ExternalLink";
 import { Tag } from "@/components/ui/Tag";
 import { cx } from "@/lib/cx";
 import { formatDate, formatInteger } from "@/lib/format";
-import { SOURCE_TYPE_LABELS, STORAGE_LABELS, languageLabel } from "@/lib/labels";
+import { SOURCE_TYPE_LABELS, STORAGE_LABELS } from "@/lib/labels";
 import type { SourceCatalogEntry } from "@/lib/types";
 
 export function SourceCard({ source }: { source: SourceCatalogEntry }) {
@@ -36,7 +36,6 @@ export function SourceCard({ source }: { source: SourceCatalogEntry }) {
       <p className="mt-2 flex flex-wrap gap-1.5">
         <Tag>{SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}</Tag>
         <Tag>Poziom {source.tier}</Tag>
-        <Tag>Język: {languageLabel(source.language)}</Tag>
         {source.enabled ? null : (
           <Tag tone="warn" icon={Ban}>
             Wyłączone

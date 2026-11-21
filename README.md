@@ -10,7 +10,7 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 ## Co robi
 
 - Wydziela z treści twierdzenia do sprawdzenia i oddziela fakty od opinii oraz prognoz.
-- Szuka wyłącznie w opisanym korpusie (obecnie 830 dokumentów z 11 domen, 4 typy źródeł – [docs/ZRODLA.md](docs/ZRODLA.md)).
+- Szuka wyłącznie w opisanym, polskojęzycznym korpusie (obecnie 450 dokumentów z 6 domen, 3 typy źródeł – [docs/ZRODLA.md](docs/ZRODLA.md)).
 - Dla każdego twierdzenia zwraca jeden z wyników: **potwierdzone**, **fałszywe**, **wprowadzające w błąd**,
   **brak wystarczających dowodów**, **nie podlega weryfikacji**.
 - Awarię, prośbę o doprecyzowanie i treść poza zakresem komunikuje osobno – to nie są werdykty.
@@ -19,8 +19,8 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 - Nierozstrzygnięte zgłoszenia trafiają do kolejki moderatora; podobne zgłoszenia są grupowane w jedną sprawę.
 - Ignoruje i odnotowuje próby prompt injection, maskuje dane osobowe, nie zapisuje obrazów.
 
-> **Uwaga:** obecnie działa tylko kanał WWW. Wymagania konkursu przewidują drugi kanał albo adapter
-> demonstracyjny – trzeba go dodać przed oceną.
+> **Uwaga:** obecnie działa tylko kanał WWW, a korpus obejmuje 6 domen. Wymagania konkursu przewidują drugi
+> kanał (albo adapter demonstracyjny) oraz co najmniej 10 domen – trzeba to uzupełnić przed oceną.
 
 ## Architektura w skrócie
 
@@ -31,7 +31,7 @@ backend/   FastAPI
     ├─ api/                 kanał WWW i panel moderatora
     ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
     ├─ core/verdict.py      deterministyczne reguły werdyktu i siły podstawy
-    ├─ retrieval/           BM25 + embeddingi wielojęzyczne (lokalnie), katalog incydentów
+    ├─ retrieval/           BM25 + embeddingi (lokalnie), katalog incydentów
     ├─ llm/                 wymienny dostawca modelu (API zgodne z OpenAI, domyślnie DeepSeek | Anthropic | brak)
     ├─ security/            PII, prompt injection, SSRF, limity żądań
     ├─ store/               SQLite: przebieg sprawdzeń, sprawy, zdarzenia

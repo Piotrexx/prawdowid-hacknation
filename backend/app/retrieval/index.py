@@ -1,4 +1,4 @@
-"""Indeks korpusu w pamięci: BM25 + (opcjonalnie) embeddingi wielojęzyczne, łączone przez RRF.
+"""Indeks korpusu w pamięci: BM25 + (opcjonalnie) embeddingi, łączone przez RRF.
 
 Przy kilku tysiącach fragmentów macierz numpy jest szybsza i prostsza w utrzymaniu
 niż osobna baza wektorowa; interfejs `CorpusIndex.search` pozwala ją podmienić.

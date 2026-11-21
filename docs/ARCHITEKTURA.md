@@ -9,8 +9,8 @@ kanał (obecnie WWW)
                                maskowanie danych osobowych, wykrycie prób prompt injection
   → 2. kontekst                dopasowanie URL/domeny do katalogu incydentów, status źródła (neutralne ostrzeżenia)
   → 3. pamięć wyników          ta sama treść + ten sam korpus + ten sam model → ten sam wynik (spójność kanałów)
-  → 4. wydzielenie twierdzeń   MODEL: twierdzenia, rodzaj (fakt/opinia/prognoza), zapytania PL+EN, ryzyko
-  → 5. wyszukiwanie            KOD: BM25 + embeddingi wielojęzyczne, fuzja RRF, preferencja nowszych źródeł
+  → 4. wydzielenie twierdzeń   MODEL: twierdzenia, rodzaj (fakt/opinia/prognoza), zapytania, ryzyko
+  → 5. wyszukiwanie            KOD: BM25 + embeddingi, fuzja RRF, preferencja nowszych źródeł
   → 6. ocena dowodów           MODEL: dla każdego fragmentu stanowisko + DOSŁOWNY cytat, propozycja werdyktu
   → 7. reguły werdyktu         KOD: weryfikacja cytatów, werdykt, siła podstawy, sprzeczności
   → 8. pętla informacji        KOD: sprawa moderatora dla nierozstrzygniętych, grupowanie, powiadomienie
@@ -44,7 +44,7 @@ Model językowy rozumie pytanie, porównuje materiały i formułuje uzasadnienie
 5. Gdy reguły korygują propozycję modelu, uzasadnienie modelu jest zastępowane stałym komunikatem.
 
 **Siła podstawy** to suma jawnych przesłanek (każda jest pokazywana użytkownikowi):
-jakość najlepszego źródła (pierwotne/urzędowe 0,35; fact-checking/organizacja międzynarodowa 0,28; media 0,12),
+jakość najlepszego źródła (pierwotne/urzędowe 0,35; fact-checking 0,28; media 0,12),
 liczba niezależnych wydawców (0,10 / 0,20 / 0,30), aktualność (0,20 → 0,05 dla materiału archiwalnego),
 zgodność źródeł (+0,15 / −0,15). Progi: mocna ≥ 0,75, umiarkowana ≥ 0,5, poniżej słaba.
 
@@ -72,7 +72,7 @@ wyszukiwanie po słowach kluczowych z ostrzeżeniem `retrieval_degraded`.
 
 - **Prompt injection.** Instrukcje są tylko w roli `system`. Treść użytkownika, pobrana strona, tekst z obrazu
   i fragmenty źródeł trafiają do wiadomości jako dane w blokach o losowej nazwie znacznika (treść nie może
-  „zamknąć” bloku). Znaki niewidoczne są usuwane. Heurystyki PL/EN oraz flaga zwracana przez model powodują
+  „zamknąć” bloku). Znaki niewidoczne są usuwane. Heurystyki (polskie i angielskie wzorce ataków) oraz flaga zwracana przez model powodują
   ostrzeżenie dla użytkownika i wpis w `security_events`. Nawet skuteczne przekonanie modelu nie wystarczy:
   werdykt wymaga cytatu obecnego w źródle z korpusu.
 - **Pobieranie URL.** Tylko http/https i porty 80/443; adres jest rozwiązywany i odrzucany, jeśli którykolwiek
@@ -115,10 +115,11 @@ To założenia, nie pomiar: faktyczne zużycie tokenów podaje `meta` każdej od
 Powtórzone zgłoszenia (24 h) są obsługiwane z pamięci wyników bez kosztu modelu.
 
 Większy ruch: wąskim gardłem jest model. Usługa jest bezstanowa poza bazą – można uruchomić wiele instancji
-po przeniesieniu limitu żądań do Redis i bazy do Postgresa. Indeks (ok. 1 100 fragmentów) odpowiada w ~20 ms.
+po przeniesieniu limitu żądań do Redis i bazy do Postgresa. Indeks (kilkaset fragmentów) odpowiada w ~20 ms.
 
 ## Najważniejsze ograniczenia
 
+- Usługa działa wyłącznie po polsku: interfejs, odpowiedzi, zapytania do wyszukiwarki i wszystkie źródła.
 - Odpowiedź jest tak dobra, jak korpus: poza jego zakresem system zawsze się wstrzymuje.
 - Jakość ocen zależy od modelu; reguły gwarantują istnienie cytatu, a nie to, że cytat został dobrze zrozumiany.
   Poprawność cytowań trzeba mierzyć przeglądem ludzkim (`eval/out/citations_to_review.csv`).

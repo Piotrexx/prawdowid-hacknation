@@ -17,9 +17,7 @@ STOPWORDS = frozenset(
     gdy gdzie go i ich im ile ja jak jako je jego jej jest jeszcze juz ktora ktore ktory
     ktorzy lub ma maja mi mnie moze mozna na nad nam nas nie nich nim niz o od on ona one
     oni oraz po pod przez przy sa sie sobie ta tak takze tam te tego tej ten to tu tym tylko
-    u w we wiec wszystko z za ze zeby
-    the of and to in is are was were be been for on with as by at from that this it an or
-    not has have had its their his her they you we which who will would can could about""".split()
+    u w we wiec wszystko z za ze zeby""".split()
 )
 
 

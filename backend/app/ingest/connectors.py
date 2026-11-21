@@ -105,7 +105,6 @@ def _make(
         title=collapse_ws(title),
         publisher=src.publisher,
         url=url,
-        language=src.language,
         source_type=src.source_type,
         tier=src.tier,
         license=src.license,

@@ -36,7 +36,6 @@ export interface SourceRef {
   retrieved_at: string | null;
   source_type: SourceType;
   source_name: string;
-  language: string;
   license: string;
   claim_reviewed: string | null;
   rating: string | null;
@@ -169,7 +168,6 @@ export interface SourceCatalogEntry {
   homepage: string;
   source_type: SourceType;
   tier: number;
-  language: string;
   license: string;
   storage: StoragePolicy;
   qualification: string;

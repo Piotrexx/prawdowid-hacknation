@@ -32,7 +32,6 @@ def make_doc(doc_id: str, text: str, *, source_type="official", tier=1, age_days
         title=f"Dokument {doc_id}",
         publisher=publisher,
         url=f"https://example.org/{doc_id}",
-        language="pl",
         source_type=source_type,
         tier=tier,
         license="fikstura testowa",

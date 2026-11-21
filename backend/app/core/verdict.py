@@ -51,7 +51,6 @@ def source_ref(doc: Document, source_name: str) -> SourceRef:
         retrieved_at=doc.retrieved_at,
         source_type=doc.source_type,
         source_name=source_name,
-        language=doc.language,
         license=doc.license,
         claim_reviewed=doc.claim_reviewed,
         rating=doc.rating,

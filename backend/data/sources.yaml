@@ -2,8 +2,8 @@
 # Zmiana katalogu = zmiana w repozytorium (audytowalna historia w git).
 
 rules:
-  - "Do korpusu trafiają wyłącznie źródła wpisane do tego katalogu wraz z uzasadnieniem kwalifikacji."
-  - "Poziom 1: źródła pierwotne i urzędowe (organy państwa, instytucje UE, akty prawne, dane publiczne). Poziom 2: organizacje fact-checkingowe deklarujące standardy IFCN/EFCSN oraz organizacje międzynarodowe. Poziom 3: media – tylko jako kontekst."
+  - "Do korpusu trafiają wyłącznie polskojęzyczne źródła wpisane do tego katalogu wraz z uzasadnieniem kwalifikacji."
+  - "Poziom 1: źródła pierwotne i urzędowe (organy państwa, instytucje UE, akty prawne, dane publiczne). Poziom 2: organizacje fact-checkingowe deklarujące standardy IFCN/EFCSN. Poziom 3: media – tylko jako kontekst."
   - "Każdy dokument ma zapisany adres, wydawcę, datę publikacji (jeśli podana) i datę pobrania."
   - "Szanujemy robots.txt i blokady serwisów. Źródło, które blokuje automatyczne pobieranie, jest wyłączone do czasu uzgodnienia dostępu – nie obchodzimy zabezpieczeń ani paywalli."
   - "Treści na otwartych licencjach i materiały urzędowe przechowujemy w pełnym tekście. Dla treści chronionych prawem autorskim przechowujemy tylko tytuł, krótki fragment i link albo dane strukturalne (twierdzenie, ocena, link)."
@@ -18,7 +18,6 @@ sources:
     homepage: "https://www.gov.pl/web/dyplomacja/aktualnosci"
     source_type: official
     tier: 1
-    language: pl
     license: "CC BY-SA 4.0 (stopka serwisu gov.pl)"
     storage: full_text
     qualification: "Źródło pierwotne: oficjalny serwis ministra właściwego do spraw zagranicznych."
@@ -32,7 +31,6 @@ sources:
     homepage: "https://isap.sejm.gov.pl"
     source_type: legal
     tier: 1
-    language: pl
     license: "Materiały urzędowe – nie są przedmiotem prawa autorskiego (art. 4 ustawy o prawie autorskim)"
     storage: structured
     qualification: "Źródło pierwotne: urzędowy rejestr aktów prawnych (tytuł, status, daty ogłoszenia i wejścia w życie)."
@@ -40,27 +38,12 @@ sources:
     connector: sejm_eli
     params: { publisher: DU, year: 2026, limit: 80, types: ["Ustawa", "Umowa międzynarodowa", "Oświadczenie rządowe"] }
 
-  - id: ec-presscorner
-    name: "Komisja Europejska – Press Corner"
-    publisher: "Komisja Europejska"
-    homepage: "https://ec.europa.eu/commission/presscorner/home/pl"
-    source_type: official
-    tier: 1
-    language: en
-    license: "CC BY 4.0 (polityka ponownego wykorzystywania dokumentów Komisji, decyzja 2011/833/UE)"
-    storage: excerpt
-    qualification: "Źródło pierwotne: oficjalne komunikaty instytucji UE."
-    update_policy: "Codziennie; kanał RSS."
-    connector: rss
-    params: { feed: "https://ec.europa.eu/commission/presscorner/api/rss?language=pl", max_items: 40 }
-
   - id: consilium
     name: "Rada UE i Rada Europejska – komunikaty prasowe"
     publisher: "Rada Unii Europejskiej"
     homepage: "https://www.consilium.europa.eu/pl/press/press-releases/"
     source_type: official
     tier: 1
-    language: pl
     license: "Do potwierdzenia w nocie prawnej serwisu"
     storage: excerpt
     qualification: "Źródło pierwotne: oficjalne komunikaty instytucji UE (m.in. sankcje, konkluzje)."
@@ -74,7 +57,6 @@ sources:
     homepage: "https://cert.pl"
     source_type: official
     tier: 1
-    language: pl
     license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
     storage: excerpt
     qualification: "Zespół CSIRT poziomu krajowego (ustawa o krajowym systemie cyberbezpieczeństwa)."
@@ -82,41 +64,12 @@ sources:
     connector: rss
     params: { feed: "https://cert.pl/rss.xml", max_items: 40 }
 
-  - id: who-news
-    name: "WHO – News"
-    publisher: "Światowa Organizacja Zdrowia"
-    homepage: "https://www.who.int/news"
-    source_type: international
-    tier: 2
-    language: en
-    license: "CC BY-NC-SA 3.0 IGO – przechowujemy fragment i link"
-    storage: excerpt
-    qualification: "Wyspecjalizowana agenda ONZ; źródło pierwotne dla zaleceń zdrowotnych."
-    update_policy: "Codziennie; kanał RSS."
-    connector: rss
-    params: { feed: "https://www.who.int/rss-feeds/news-english.xml", max_items: 60, excerpt_chars: 900 }
-
-  - id: ecdc-news
-    name: "ECDC – News"
-    publisher: "Europejskie Centrum ds. Zapobiegania i Kontroli Chorób"
-    homepage: "https://www.ecdc.europa.eu/en/news-events"
-    source_type: international
-    tier: 2
-    language: en
-    license: "Ponowne wykorzystanie dozwolone z podaniem źródła (nota prawna ECDC)"
-    storage: excerpt
-    qualification: "Agencja UE; źródło pierwotne dla danych epidemiologicznych."
-    update_policy: "Codziennie; kanał RSS."
-    connector: rss
-    params: { feed: "https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed", max_items: 20, excerpt_chars: 900 }
-
   - id: konkret24
     name: "Konkret24"
     publisher: "TVN24 – Konkret24"
     homepage: "https://konkret24.tvn24.pl"
     source_type: factcheck
     tier: 2
-    language: pl
     license: "Prawa zastrzeżone (TVN) – przechowujemy tylko tytuł, zajawkę i link"
     storage: excerpt
     qualification: "Redakcja fact-checkingowa deklarująca przestrzeganie kodeksu IFCN (do potwierdzenia w rejestrze ifcncodeofprinciples.poynter.org)."
@@ -130,7 +83,6 @@ sources:
     homepage: "https://pravda.org.pl"
     source_type: factcheck
     tier: 2
-    language: pl
     license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
     storage: excerpt
     qualification: "Organizacja fact-checkingowa deklarująca standardy IFCN/EFCSN (do potwierdzenia w rejestrach)."
@@ -144,7 +96,6 @@ sources:
     homepage: "https://pravda.org.pl"
     source_type: factcheck
     tier: 2
-    language: pl
     license: "Dane strukturalne ClaimReview opublikowane przez wydawcę w Google Fact Check Tools – przechowujemy twierdzenie, ocenę i link"
     storage: structured
     qualification: "Korpus zweryfikowanych twierdzeń organizacji fact-checkingowej (schema.org/ClaimReview)."
@@ -158,41 +109,12 @@ sources:
     homepage: "https://fakenews.pl"
     source_type: factcheck
     tier: 2
-    language: pl
     license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
     storage: excerpt
     qualification: "Organizacja fact-checkingowa deklarująca standardy EFCSN (do potwierdzenia w rejestrze efcsn.com)."
     update_policy: "Codziennie; kanał RSS."
     connector: rss
     params: { feed: "https://fakenews.pl/feed/", max_items: 20 }
-
-  - id: factcheck-org
-    name: "FactCheck.org – zweryfikowane twierdzenia (ClaimReview)"
-    publisher: "FactCheck.org (Annenberg Public Policy Center)"
-    homepage: "https://www.factcheck.org"
-    source_type: factcheck
-    tier: 2
-    language: en
-    license: "Dane strukturalne ClaimReview opublikowane przez wydawcę w Google Fact Check Tools – przechowujemy twierdzenie, ocenę i link"
-    storage: structured
-    qualification: "Organizacja fact-checkingowa deklarująca kodeks IFCN; źródło anglojęzyczne do wyszukiwania wielojęzycznego."
-    update_policy: "Codziennie; publiczny kanał danych Fact Check Tools."
-    connector: claimreview
-    params: { domain: "factcheck.org", max_items: 150 }
-
-  - id: politifact
-    name: "PolitiFact – zweryfikowane twierdzenia (ClaimReview)"
-    publisher: "PolitiFact (Poynter Institute)"
-    homepage: "https://www.politifact.com"
-    source_type: factcheck
-    tier: 2
-    language: en
-    license: "Dane strukturalne ClaimReview opublikowane przez wydawcę w Google Fact Check Tools – przechowujemy twierdzenie, ocenę i link"
-    storage: structured
-    qualification: "Organizacja fact-checkingowa deklarująca kodeks IFCN; źródło anglojęzyczne do wyszukiwania wielojęzycznego."
-    update_policy: "Codziennie; publiczny kanał danych Fact Check Tools."
-    connector: claimreview
-    params: { domain: "politifact.com", max_items: 150 }
 
   # --- źródła zakwalifikowane merytorycznie, ale wyłączone z automatycznego pobierania ---
   - id: demagog
@@ -201,7 +123,6 @@ sources:
     homepage: "https://demagog.org.pl"
     source_type: factcheck
     tier: 2
-    language: pl
     license: "Prawa zastrzeżone; robots.txt: Content-Signal search=yes, ai-train=no"
     storage: excerpt
     qualification: "Organizacja fact-checkingowa deklarująca standardy IFCN/EFCSN."
@@ -215,38 +136,9 @@ sources:
     homepage: "https://sprawdzam.afp.com"
     source_type: factcheck
     tier: 2
-    language: pl
     license: "Prawa zastrzeżone (AFP)"
     storage: excerpt
     qualification: "Redakcja fact-checkingowa deklarująca kodeks IFCN."
     update_policy: "Po uzgodnieniu dostępu."
     enabled: false
     disabled_reason: "Serwis blokuje automatyczne pobieranie (HTTP 403). Potrzebne uzgodnienie dostępu."
-
-  - id: euvsdisinfo
-    name: "EUvsDisinfo – baza przypadków dezinformacji"
-    publisher: "Europejska Służba Działań Zewnętrznych (East StratCom Task Force)"
-    homepage: "https://euvsdisinfo.eu"
-    source_type: factcheck
-    tier: 2
-    language: en
-    license: "Do potwierdzenia w nocie prawnej serwisu"
-    storage: excerpt
-    qualification: "Projekt ESDZ dokumentujący prokremlowską dezinformację; rekomendowany punkt odniesienia."
-    update_policy: "Po uzgodnieniu eksportu bazy."
-    enabled: false
-    disabled_reason: "robots.txt zabrania pobierania kanału /feed/. Czekamy na eksport bazy lub pakiet organizatora."
-
-  - id: edmo
-    name: "EDMO – European Digital Media Observatory"
-    publisher: "EDMO"
-    homepage: "https://edmo.eu"
-    source_type: factcheck
-    tier: 2
-    language: en
-    license: "Do potwierdzenia"
-    storage: excerpt
-    qualification: "Europejska sieć obserwatoriów dezinformacji; rekomendowany punkt odniesienia."
-    update_policy: "Po uzgodnieniu dostępu."
-    enabled: false
-    disabled_reason: "Serwis blokuje automatyczne pobieranie (HTTP 403)."

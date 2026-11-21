@@ -6,29 +6,27 @@ w interfejsie (`/zrodla`) i przez API (`GET /api/v1/sources`).
 
 ## Korpus demonstracyjny
 
-Stan na 2026-11-21 (wersja `b5bc0340bb68`, szczegóły w `backend/data/corpus/manifest.json`):
-**830 dokumentów, 11 domen, 4 typy źródeł** (urzędowe 109, akty prawne 80, organizacje międzynarodowe 70,
-fact-checking 571). Wszystkie rekordy zostały pobrane automatycznie z prawdziwych serwisów – w korpusie
-nie ma treści napisanych przez zespół ani wygenerowanych przez model.
+Stan na 2026-11-21 (wersja `9bf4998aa9b3`, szczegóły w `backend/data/corpus/manifest.json`):
+**450 dokumentów, 6 domen, 3 typy źródeł** (urzędowe 99, akty prawne 80, fact-checking 271).
+Korpus jest wyłącznie polskojęzyczny. Wszystkie rekordy zostały pobrane automatycznie z prawdziwych
+serwisów – nie ma w nim treści napisanych przez zespół ani wygenerowanych przez model.
+
+> Wymagania konkursu mówią o co najmniej 10 domenach. Po rezygnacji ze źródeł w innych językach jest ich 6 –
+> przed oceną trzeba dodać kolejne polskie źródła (wpis w katalogu i ponowne `app.ingest.run`).
 
 | Źródło | Typ | Poziom | Dok. | Co przechowujemy | Licencja / podstawa |
 |---|---|---|---|---|---|
 | MSZ – aktualności (gov.pl) | urzędowe | 1 | 59 | pełny tekst | CC BY-SA 4.0 (stopka gov.pl) |
 | Dziennik Ustaw – API ELI Sejmu | akt prawny | 1 | 80 | tytuł, typ, status, daty | materiał urzędowy (art. 4 pr. aut.) |
-| Komisja Europejska – Press Corner | urzędowe | 1 | 10 | tytuł, zajawka, link | CC BY 4.0 (decyzja 2011/833/UE) |
 | CERT Polska | urzędowe | 1 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| WHO – News | org. międzynarodowa | 2 | 60 | fragment, link | CC BY-NC-SA 3.0 IGO |
-| ECDC – News | org. międzynarodowa | 2 | 10 | fragment, link | ponowne użycie z podaniem źródła |
 | Konkret24 | fact-checking | 2 | 30 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
 | Pravda – artykuły | fact-checking | 2 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
 | Pravda – ClaimReview | fact-checking | 2 | 211 | twierdzenie, ocena, link | dane strukturalne opublikowane przez wydawcę |
 | FakeNews.pl | fact-checking | 2 | 10 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| FactCheck.org – ClaimReview (EN) | fact-checking | 2 | 150 | twierdzenie, ocena, link | dane strukturalne opublikowane przez wydawcę |
-| PolitiFact – ClaimReview (EN) | fact-checking | 2 | 150 | twierdzenie, ocena, link | dane strukturalne opublikowane przez wydawcę |
 
 Rekordy ClaimReview pochodzą z publicznego kanału danych Google Fact Check Tools
 (`datacommons-feeds/factcheck`), do którego wydawcy sami zgłaszają oceny w formacie schema.org/ClaimReview.
-Część z nich zawiera adresy, pod którymi pojawiło się sprawdzane twierdzenie (406 rekordów) – to one tworzą
+Część z nich zawiera adresy, pod którymi pojawiło się sprawdzane twierdzenie (211 rekordów) – to one tworzą
 **katalog incydentów** używany do dopasowań URL/domeny. Plik organizatora z bazą incydentów można dołączyć
 tym samym mechanizmem (rekord z `claim_reviewed`, `rating` i `appearance_urls`).
 
@@ -37,7 +35,7 @@ tym samym mechanizmem (rekord z `claim_reviewed`, `rating` i `appearance_urls`).
 Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
 
 - **Poziom 1** – źródła pierwotne i urzędowe; **poziom 2** – organizacje fact-checkingowe deklarujące
-  standardy IFCN/EFCSN oraz organizacje międzynarodowe; **poziom 3** – media, tylko jako kontekst.
+  standardy IFCN/EFCSN; **poziom 3** – media, tylko jako kontekst.
 - Każdy wpis ma uzasadnienie kwalifikacji, licencję, politykę przechowywania i politykę aktualizacji.
 - Treści otwarte i urzędowe przechowujemy w całości; treści chronione – tylko tytuł, krótki fragment i link
   albo dane strukturalne. Odpowiedź zawsze prowadzi do oryginału.
@@ -54,9 +52,7 @@ Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
 |---|---|
 | Demagog | serwis blokuje automatyczne pobieranie (HTTP 403) – potrzebne uzgodnienie dostępu |
 | AFP Sprawdzam | jw. |
-| EDMO | jw. |
 | Rada UE – komunikaty | kontrola przeglądarki także dla `robots.txt` |
-| EUvsDisinfo | `robots.txt` zabrania pobierania kanału `/feed/` – czekamy na eksport bazy lub pakiet organizatora |
 
 ## Aktualizacja
 
@@ -75,4 +71,4 @@ W prototypie aktualizację uruchamia się ręcznie lub z crona; częstotliwości
 - Przegląd prawny licencji (zwłaszcza zakres użycia danych ClaimReview i fragmentów treści chronionych).
 - Potwierdzenie statusu IFCN/EFCSN każdej redakcji w oficjalnych rejestrach (w katalogu oznaczone jako deklaracja).
 - Uzgodnienie dostępu do źródeł wyłączonych oraz dołączenie pakietu źródeł i bazy incydentów organizatora.
-- Rozszerzenie źródeł pierwotnych: dane.gov.pl, EUR-Lex, GUS, BIP.
+- Rozszerzenie polskich źródeł do co najmniej 10 domen: dane.gov.pl, GUS, BIP, kolejne urzędy i redakcje fact-checkingowe.
