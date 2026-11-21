@@ -47,14 +47,17 @@ Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
 - Status źródła (np. sankcje UE – `backend/data/source_status.yaml`) i obecność domeny w katalogu incydentów
   wywołują najwyżej neutralne ostrzeżenie. Dopasowanie domeny pokazujemy dopiero od 3 opisanych przypadków
   i nigdy dla platform (Facebook, X, YouTube itd.).
-- Źródło wyłączamy, gdy traci status będący podstawą kwalifikacji lub zmienia warunki korzystania. Wyłączenie
-  usuwa jego dokumenty z korpusu przy następnej aktualizacji.
+- Źródło usuwamy z katalogu, gdy traci status będący podstawą kwalifikacji lub zmienia warunki korzystania.
+  Jego dokumenty znikają z korpusu przy następnej aktualizacji.
 
-## Źródła zakwalifikowane, ale wyłączone
+## Źródła rozważone, ale nieujęte w katalogu
+
+Te serwisy spełniają kryteria merytoryczne, ale nie pozwalają na automatyczne pobieranie, więc nie ma ich
+ani w katalogu, ani w korpusie. Po uzgodnieniu dostępu wystarczy dodać wpis do `sources.yaml`.
 
 | Źródło | Powód |
 |---|---|
-| Demagog | serwis blokuje automatyczne pobieranie (HTTP 403) – potrzebne uzgodnienie dostępu |
+| Demagog | serwis blokuje automatyczne pobieranie (HTTP 403) |
 | AFP Sprawdzam | jw. |
 | Rada UE – komunikaty | kontrola przeglądarki także dla `robots.txt` |
 
@@ -62,7 +65,7 @@ Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
 
 ```bash
 cd backend
-uv run python -m app.ingest.run                 # wszystkie włączone źródła (kanał ClaimReview to ok. 200 MB)
+uv run python -m app.ingest.run                 # wszystkie źródła z katalogu (kanał ClaimReview to ok. 200 MB)
 uv run python -m app.ingest.run --only konkret24,msz-gov-pl
 ```
 
@@ -74,7 +77,7 @@ W prototypie aktualizację uruchamia się ręcznie lub z crona; częstotliwości
 
 - Przegląd prawny licencji (zwłaszcza zakres użycia danych ClaimReview i fragmentów treści chronionych).
 - Potwierdzenie statusu IFCN/EFCSN każdej redakcji w oficjalnych rejestrach (w katalogu oznaczone jako deklaracja).
-- Uzgodnienie dostępu do źródeł wyłączonych oraz dołączenie pakietu źródeł i bazy incydentów organizatora.
+- Uzgodnienie dostępu do źródeł nieujętych w katalogu oraz dołączenie pakietu źródeł i bazy incydentów organizatora.
 - Rozszerzenie polskich źródeł pierwotnych: dane.gov.pl, GUS, BIP, kolejne urzędy i redakcje fact-checkingowe.
 - OSW zakwalifikowano jako instytucję państwową (poziom 1), choć publikuje analizy, a nie dokumenty urzędowe – do decyzji, czy nie powinien to być poziom 2.
 - Kanał BIP Rzecznika Praw Obywatelskich odrzucono: zawiera głównie wpisy rejestrowe z nazwiskami osób.

@@ -172,8 +172,6 @@ export interface SourceCatalogEntry {
   storage: StoragePolicy;
   qualification: string;
   update_policy: string;
-  enabled: boolean;
-  disabled_reason: string | null;
   documents: number;
   newest: string | null;
 }

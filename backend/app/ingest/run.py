@@ -53,11 +53,10 @@ def main() -> None:
     out_path = settings.corpus_dir / "documents.jsonl"
     documents = load_documents(out_path)
     known = set(catalog.by_id())
-    # Dokumenty źródeł usuniętych z katalogu lub wyłączonych nie mogą zostać w korpusie.
-    enabled = {s.id for s in catalog.sources if s.enabled}
-    documents = {k: d for k, d in documents.items() if d.source_id in known & enabled}
+    # Dokumenty źródeł usuniętych z katalogu nie mogą zostać w korpusie.
+    documents = {k: d for k, d in documents.items() if d.source_id in known}
 
-    selected = [s for s in catalog.sources if s.enabled and s.connector and (not only or s.id in only)]
+    selected = [s for s in catalog.sources if s.connector and (not only or s.id in only)]
     claim_sources = [s for s in selected if s.connector == "claimreview"]
     claim_items: dict[str, list[dict]] = {}
     if claim_sources:

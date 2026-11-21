@@ -20,8 +20,6 @@ class CatalogSource(BaseModel):
     storage: Literal["full_text", "excerpt", "structured"]
     qualification: str
     update_policy: str
-    enabled: bool = True
-    disabled_reason: str | None = None
     connector: str | None = None
     params: dict[str, Any] = {}
 
