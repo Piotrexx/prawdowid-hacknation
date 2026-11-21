@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import admin, checks
 from app.catalog import load_catalog
-from app.channels import sms
 from app.config import Settings, get_settings
 from app.core.cases import CaseLoop
 from app.core.pipeline import VerificationService
@@ -111,7 +110,7 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    for router in (checks.router, sms.router, admin.router):
+    for router in (checks.router, admin.router):
         app.include_router(router, prefix="/api/v1")
     return app
 

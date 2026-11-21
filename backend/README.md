@@ -22,10 +22,9 @@ i [app/config.py](app/config.py). Najważniejsze:
 | `LLM_PROVIDER`, `LLM_MODEL` | `openai_compatible` (domyślnie `deepseek-flash`, czyli DeepSeek V4.1 Flash; także Mistral, Ollama, vLLM), `anthropic`, `none` |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_JSON_MODE` / `ANTHROPIC_API_KEY` | dostęp do modelu |
 | `ADMIN_TOKEN` | token panelu moderatora (bez niego panel jest wyłączony) |
-| `ID_HASH_SALT` | sól do skracania identyfikatorów (telefony, IP) |
+| `ID_HASH_SALT` | sól do skracania identyfikatorów (adresy IP w limicie żądań) |
 | `EMBEDDINGS` | `fastembed` (lokalny model) lub `off` |
 | `RETENTION_DAYS`, `RATE_LIMIT_PER_MINUTE` | retencja i limit żądań |
-| `SMS_MODE` | `demo` (symulator SMS w interfejsie), `off` |
 | `MODERATOR_WEBHOOK_URL` | powiadomienia o sprawach (Slack / Discord) |
 
 ## API (`/api/v1`)
@@ -38,8 +37,6 @@ i [app/config.py](app/config.py). Najważniejsze:
 | DELETE | `/sessions/{session_id}` | usunięcie danych sesji |
 | GET | `/sources` | katalog źródeł, statystyki korpusu, zasady |
 | GET | `/health` | stan usługi, model, miejsce przetwarzania |
-| POST | `/channels/sms/messages` | wiadomość z symulatora SMS (`{phone, text}`), odpowiedź `202` |
-| GET | `/channels/sms/demo/thread?phone=` | rozmowa w symulatorze (tylko `SMS_MODE=demo`) |
 | GET | `/admin/metrics`, `/admin/cases`, `/admin/events`, `/admin/checks` | panel moderatora (`X-Admin-Token`) |
 | PATCH | `/admin/cases/{id}` | zmiana statusu / notatki sprawy |
 | GET | `/admin/export?format=csv\|json` | eksport przebiegu sprawdzeń |
@@ -62,7 +59,7 @@ uv run python -m eval.run_eval      # mierniki na prawdziwym modelu (kosztuje)
 
 ## Dodawanie elementów
 
-- **Kanał:** nowy plik w `app/channels/` – zamień wiadomość na `Submission`, wywołaj `service.check()`,
-  wyrenderuj `render_text()`; dołącz router w `app/main.py`.
+- **Kanał:** nowy router, który zamienia wiadomość na `Submission` (`Submission.from_message`), woła
+  `service.check()` i przedstawia `CheckResponse` w formie właściwej dla kanału; dołącz go w `app/main.py`.
 - **Dostawca modelu:** klasa z metodą `structured()` zgodną z `app/llm/base.py::LLMProvider`, wpis w `app/llm/factory.py`.
 - **Źródło:** wpis w `data/sources.yaml` (z uzasadnieniem i licencją); nowy typ źródła = funkcja w `app/ingest/connectors.py`.

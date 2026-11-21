@@ -61,10 +61,6 @@ class Settings(BaseSettings):
     case_notify_threshold: int = 2
     moderator_webhook_url: str | None = None
 
-    # --- demonstracyjny kanał SMS (symulator w interfejsie WWW) ---
-    sms_mode: Literal["demo", "off"] = "demo"
-    public_web_url: str = "http://localhost:3000"
-
     database_url: str = f"sqlite:///{DATA_DIR / 'prawdowid.db'}"
     corpus_dir: Path = DATA_DIR / "corpus"
     index_dir: Path = DATA_DIR / "index"

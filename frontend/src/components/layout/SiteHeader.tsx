@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { href: "/", label: "Sprawdź" },
   { href: "/zrodla", label: "Źródła" },
   { href: "/o-systemie", label: "Jak to działa" },
-  { href: "/sms", label: "Symulator SMS" },
   { href: "/moderator", label: "Moderator" },
 ];
 

@@ -215,23 +215,6 @@ class HealthResponse(BaseModel):
     retention_days: int
 
 
-class SmsInbound(BaseModel):
-    phone: str = Field(min_length=3, max_length=64)
-    text: str = Field(max_length=4000)
-
-
-class SmsMessage(BaseModel):
-    id: int
-    direction: Literal["in", "out"]
-    body: str
-    created_at: datetime
-    check_id: str | None = None
-
-
-class SmsThread(BaseModel):
-    messages: list[SmsMessage]
-
-
 class CaseOut(BaseModel):
     id: int
     created_at: datetime

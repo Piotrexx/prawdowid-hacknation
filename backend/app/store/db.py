@@ -15,7 +15,6 @@ from app.schemas import (
     CheckStatus,
     MetricsResponse,
     SecurityEventOut,
-    SmsMessage,
     Verdict,
 )
 
@@ -73,17 +72,6 @@ class SecurityEventRow(Base):
     kind: Mapped[str] = mapped_column(String(48))
     origin: Mapped[str] = mapped_column(String(48))
     detail: Mapped[str] = mapped_column(Text)
-    check_id: Mapped[str | None] = mapped_column(String(32))
-
-
-class SmsRow(Base):
-    __tablename__ = "sms_messages"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    peer: Mapped[str] = mapped_column(String(80), index=True)
-    direction: Mapped[str] = mapped_column(String(3))
-    body: Mapped[str] = mapped_column(Text)
     check_id: Mapped[str | None] = mapped_column(String(32))
 
 
@@ -156,21 +144,18 @@ class Store:
         if ids:
             db.execute(delete(CaseLinkRow).where(CaseLinkRow.check_id.in_(ids)))
             db.execute(delete(SecurityEventRow).where(SecurityEventRow.check_id.in_(ids)))
-            db.execute(delete(SmsRow).where(SmsRow.check_id.in_(ids)))
             db.execute(delete(CheckRow).where(CheckRow.id.in_(ids)))
         return len(ids)
 
     def delete_session(self, session_id: str) -> int:
         with self._session() as db:
             deleted = self._forget_checks(db, CheckRow.session_id == session_id)
-            db.execute(delete(SmsRow).where(SmsRow.peer == session_id))
             db.commit()
             return deleted
 
     def purge_older_than(self, cutoff: datetime) -> int:
         with self._session() as db:
             deleted = self._forget_checks(db, CheckRow.created_at < cutoff)
-            db.execute(delete(SmsRow).where(SmsRow.created_at < cutoff))
             db.execute(delete(SecurityEventRow).where(SecurityEventRow.created_at < cutoff))
             db.commit()
             return deleted
@@ -268,21 +253,6 @@ class Store:
             row.updated_at = _now()
             db.commit()
             return _case_out(row)
-
-    # --- kanał SMS (skrzynka demonstracyjna) ---
-
-    def add_sms(self, peer: str, direction: str, body: str, check_id: str | None = None) -> None:
-        with self._session() as db:
-            db.add(SmsRow(created_at=_now(), peer=peer, direction=direction, body=body, check_id=check_id))
-            db.commit()
-
-    def sms_thread(self, peer: str) -> list[SmsMessage]:
-        with self._session() as db:
-            rows = db.scalars(select(SmsRow).where(SmsRow.peer == peer).order_by(SmsRow.id))
-            return [
-                SmsMessage(id=r.id, direction=r.direction, body=r.body, created_at=_aware(r.created_at), check_id=r.check_id)
-                for r in rows
-            ]
 
     # --- obserwowalność ---
 

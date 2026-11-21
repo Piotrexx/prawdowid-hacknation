@@ -3,7 +3,7 @@
 ## Przepływ jednego zgłoszenia
 
 ```
-kanał (WWW / SMS / …)
+kanał (obecnie WWW)
   → Submission(tekst | URL | obraz)
   → 1. przygotowanie wejścia   walidacja, pobranie strony (ochrona SSRF, robots.txt) lub odczyt obrazu,
                                maskowanie danych osobowych, wykrycie prób prompt injection
@@ -17,8 +17,9 @@ kanał (WWW / SMS / …)
   → CheckResponse → zapis przebiegu → odpowiedź w formie właściwej dla kanału
 ```
 
-Kanały znają tylko `VerificationService.check()` i model `CheckResponse`. Nowy kanał to jeden plik w
-`backend/app/channels/`, który zamienia wiadomość na `Submission` i wynik na tekst (`render_text`).
+Kanał zna tylko `VerificationService.check()` i model `CheckResponse`. Obecnie jedynym kanałem jest WWW.
+Kolejny kanał to jeden router, który zamienia wiadomość na `Submission` i przedstawia wynik w swojej formie –
+logika weryfikacji się nie zmienia.
 
 ## Dlaczego werdykt nie jest „etykietą modelu”
 
@@ -87,7 +88,7 @@ wyszukiwanie po słowach kluczowych z ostrzeżeniem `retrieval_degraded`.
 
 - Maskowanie e-maili, telefonów, numerów PESEL (z sumą kontrolną), kont i kart **przed** wysłaniem do modelu i zapisem.
 - Obrazów nie zapisujemy; przed wysłaniem do modelu usuwamy EXIF (w tym GPS).
-- Numerów telefonów nie zapisujemy – rozmowę SMS identyfikuje skrót z solą. Adresy IP służą tylko do limitu żądań w pamięci.
+- Adresy IP służą tylko do limitu żądań w pamięci (w postaci skrótu z solą) i nie są zapisywane.
 - Dla linków zapisujemy tylko początek pobranej treści.
 - Wynik jest dostępny pod losowym, niezgadywalnym adresem (`/sprawdzenie/{id}`) – każdy, kto zna link, może go otworzyć.
 - Retencja: `RETENTION_DAYS` (domyślnie 30), czyszczenie co godzinę. `DELETE /api/v1/sessions/{id}` usuwa dane sesji.
@@ -112,10 +113,6 @@ Jedno zgłoszenie to 1 wywołanie modelu na wydzielenie twierdzeń + 1 na każde
 
 To założenia, nie pomiar: faktyczne zużycie tokenów podaje `meta` każdej odpowiedzi i raport ewaluacji.
 Powtórzone zgłoszenia (24 h) są obsługiwane z pamięci wyników bez kosztu modelu.
-
-Kanał SMS to adapter demonstracyjny (symulator w interfejsie WWW) – nic nie kosztuje i nie łączy się
-z żadnym operatorem. Podłączenie prawdziwego operatora SMS oznacza nowy adapter w `app/channels/`
-oraz opłaty według jego cennika; na razie nie jest zaimplementowane.
 
 Większy ruch: wąskim gardłem jest model. Usługa jest bezstanowa poza bazą – można uruchomić wiele instancji
 po przeniesieniu limitu żądań do Redis i bazy do Postgresa. Indeks (ok. 1 100 fragmentów) odpowiada w ~20 ms.

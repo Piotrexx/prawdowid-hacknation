@@ -206,18 +206,6 @@ export interface HealthResponse {
   retention_days: number;
 }
 
-export interface SmsMessage {
-  id: number;
-  direction: "in" | "out";
-  body: string;
-  created_at: string;
-  check_id: string | null;
-}
-
-export interface SmsThread {
-  messages: SmsMessage[];
-}
-
 export type CaseStatus = "open" | "in_review" | "resolved";
 
 export interface CaseOut {

@@ -9,7 +9,6 @@ import type {
   MetricsResponse,
   SecurityEventOut,
   SessionDeleteResponse,
-  SmsThread,
   SourcesResponse,
 } from "./types";
 
@@ -186,21 +185,6 @@ export function deleteSession(sessionId: string): Promise<SessionDeleteResponse>
 
 export function getSources(signal?: AbortSignal): Promise<SourcesResponse> {
   return getJson("/sources", { signal });
-}
-
-export async function sendSms(phone: string, text: string): Promise<void> {
-  // The server only acknowledges receipt; the reply shows up in the thread endpoint.
-  await send("/channels/sms/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone, text }),
-    timeoutMs: CHECK_TIMEOUT_MS,
-  });
-}
-
-export function getSmsThread(phone: string, signal?: AbortSignal): Promise<SmsThread> {
-  const query = new URLSearchParams({ phone });
-  return getJson(`/channels/sms/demo/thread?${query}`, { signal });
 }
 
 function adminHeaders(token: string): HeadersInit {

@@ -1,7 +1,7 @@
 # Prawdowid
 
 Szybka i prosta weryfikacja informacji oparta na jawnym katalogu wiarygodnych źródeł.
-Obywatel wkleja wiadomość, link albo zrzut ekranu – na stronie WWW lub SMS-em – i dostaje
+Obywatel wkleja wiadomość, link albo zrzut ekranu na stronie WWW i dostaje
 zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą informacją, czego nie udało się ustalić.
 
 > Prototyp hackathonowy (wyzwanie MSZ „Prawdowid”). Nie jest oficjalną usługą.
@@ -19,14 +19,17 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 - Nierozstrzygnięte zgłoszenia trafiają do kolejki moderatora; podobne zgłoszenia są grupowane w jedną sprawę.
 - Ignoruje i odnotowuje próby prompt injection, maskuje dane osobowe, nie zapisuje obrazów.
 
+> **Uwaga:** obecnie działa tylko kanał WWW. Wymagania konkursu przewidują drugi kanał albo adapter
+> demonstracyjny – trzeba go dodać przed oceną.
+
 ## Architektura w skrócie
 
 ```
-frontend/  Next.js (kanał WWW, symulator SMS, katalog źródeł, panel moderatora)
+frontend/  Next.js (kanał WWW, katalog źródeł, panel moderatora)
     │  HTTP/JSON
 backend/   FastAPI
-    ├─ api/ + channels/     adaptery kanałów (WWW, demonstracyjny SMS)
-    ├─ core/pipeline.py     JEDNA logika weryfikacji dla wszystkich kanałów
+    ├─ api/                 kanał WWW i panel moderatora
+    ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
     ├─ core/verdict.py      deterministyczne reguły werdyktu i siły podstawy
     ├─ retrieval/           BM25 + embeddingi wielojęzyczne (lokalnie), katalog incydentów
     ├─ llm/                 wymienny dostawca modelu (API zgodne z OpenAI, domyślnie DeepSeek | Anthropic | brak)
@@ -67,9 +70,8 @@ Alternatywnie w kontenerach: `docker compose up --build` (wymaga pliku `backend/
 ### Scenariusz demonstracyjny
 
 1. `http://localhost:3000` – wklej treść lub link, kliknij „Sprawdź”.
-2. `http://localhost:3000/sms` – to samo zgłoszenie przez symulator SMS (adapter demonstracyjny, ta sama logika weryfikacji).
-3. `http://localhost:3000/zrodla` – katalog źródeł z licencjami i zasadami kwalifikacji.
-4. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa, eksport CSV/JSON
+2. `http://localhost:3000/zrodla` – katalog źródeł z licencjami i zasadami kwalifikacji.
+3. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa, eksport CSV/JSON
    (token = `ADMIN_TOKEN`).
 
 ## Testy i mierniki

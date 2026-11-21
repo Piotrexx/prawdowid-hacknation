@@ -175,20 +175,15 @@ def test_clarification_and_out_of_scope_are_separate_from_verdicts(client, provi
     assert check(client, "   ")["status"] == "needs_clarification"
 
 
-def test_same_report_gives_same_result_on_web_and_sms(client, provider):
+def test_repeated_report_gives_the_same_result_without_calling_the_model(client, provider):
     confirm_vaccines(provider)
-    web = check(client, VACCINE_CLAIM)
-    sent = client.post(f"{API}/channels/sms/messages", json={"phone": "+48500100200", "text": VACCINE_CLAIM})
-    assert sent.status_code == 202 and sent.json() == {"accepted": True}
+    first = check(client, VACCINE_CLAIM)
+    calls = len(provider.calls)
+    second = check(client, VACCINE_CLAIM)
 
-    thread = client.get(f"{API}/channels/sms/demo/thread", params={"phone": "+48500100200"}).json()["messages"]
-    assert [m["direction"] for m in thread] == ["in", "out"]
-    reply = thread[1]
-    via_sms = client.get(f"{API}/checks/{reply['check_id']}").json()
-    assert via_sms["channel"] == "sms" and via_sms["meta"]["cached"] is True
-    assert via_sms["claims"] == web["claims"]
-    assert "POTWIERDZONE" in reply["body"] and "https://example.org/szczepienia" in reply["body"]
-    assert f"/sprawdzenie/{reply['check_id']}" in reply["body"]
+    assert second["id"] != first["id"] and second["meta"]["cached"] is True
+    assert second["claims"] == first["claims"]
+    assert len(provider.calls) == calls
 
 
 def test_personal_data_is_masked_before_model_and_storage(client, provider):

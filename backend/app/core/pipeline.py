@@ -1,4 +1,4 @@
-"""Jedyna ścieżka weryfikacji. Wszystkie kanały (WWW, SMS, kolejne) wołają `VerificationService.check`,
+"""Jedyna ścieżka weryfikacji. Każdy kanał (obecnie WWW) woła `VerificationService.check`,
 więc ten sam materiał daje ten sam wynik merytoryczny niezależnie od kanału."""
 
 import asyncio

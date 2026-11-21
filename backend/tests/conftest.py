@@ -128,7 +128,6 @@ def settings(tmp_path) -> Settings:
         admin_token="test-token",
         embeddings="off",
         rate_limit_per_minute=1000,
-        sms_mode="demo",
     )
 
 

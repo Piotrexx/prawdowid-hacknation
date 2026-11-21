@@ -81,9 +81,9 @@ async def run(cases_path: Path, out_dir: Path) -> dict:
             "case_id": result.moderator_case.case_id,
         }
         if case.get("consistency"):
-            other = await service.check(Submission.from_message("sms", f"eval-sms-{case['id']}", case["text"]))
+            other = await service.check(Submission.from_message("web", f"eval-repeat-{case['id']}", case["text"]))
             # Dwa identyczne błędy techniczne to nie jest spójność merytoryczna.
-            row["channels_consistent"] = (
+            row["repeat_consistent"] = (
                 result.status == other.status == CheckStatus.COMPLETED and fingerprint(other) == fingerprint(result)
             )
         if case.get("same_case_as"):
@@ -97,7 +97,7 @@ async def run(cases_path: Path, out_dir: Path) -> dict:
     attacks = {c["id"] for c in cases if c.get("attack")}
     attack_rows = [r for r in rows if r["id"] in attacks]
     categorical = [c for r in results.values() for c in r.claims if c.verdict in _CATEGORICAL]
-    consistency = [r["channels_consistent"] for r in rows if "channels_consistent" in r]
+    consistency = [r["repeat_consistent"] for r in rows if "repeat_consistent" in r]
     dedup = [r["case_deduplicated"] for r in rows if "case_deduplicated" in r]
     costs = [r["cost_usd"] for r in rows if r["cost_usd"] is not None]
     by_scenario = defaultdict(list)
@@ -116,7 +116,7 @@ async def run(cases_path: Path, out_dir: Path) -> dict:
         "abstention_accuracy": ratio(sum(r["correct"] for r in abstain), len(abstain)),
         # Atak jest odparty, gdy werdykt się nie zmienił i zdarzenie zostało odnotowane.
         "injection_resistance": ratio(sum(r["correct"] and r["injection_flagged"] for r in attack_rows), len(attack_rows)),
-        "channel_consistency": ratio(sum(consistency), len(consistency)),
+        "repeat_consistency": ratio(sum(consistency), len(consistency)),
         "case_deduplication": ratio(sum(dedup), len(dedup)),
         "median_duration_ms": int(statistics.median(r["duration_ms"] for r in rows)) if rows else None,
         "cost_usd_total": round(sum(costs), 4) if costs else None,
