@@ -1,4 +1,3 @@
-import { useId } from "react";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate } from "@/lib/format";
@@ -10,36 +9,37 @@ const MATCH_TYPE_LABELS: Record<IncidentMatch["match_type"], string> = {
   content: "Podobna treść",
 };
 
-export function IncidentMatches({ matches }: { matches: IncidentMatch[] }) {
-  const headingId = useId();
+interface IncidentMatchesProps {
+  matches: IncidentMatch[];
+  id: string;
+  level?: 2 | 3;
+}
+
+export function IncidentMatches({ matches, id, level = 3 }: IncidentMatchesProps) {
   if (matches.length === 0) return null;
+  const Heading = level === 2 ? "h2" : "h3";
 
   return (
-    <section aria-labelledby={headingId}>
-      <h3 id={headingId} className="text-xl font-semibold">
+    <section id={id} aria-labelledby={`${id}-tytul`} className="scroll-mt-6 bg-subtle px-6 py-7">
+      <Heading id={`${id}-tytul`} className="text-xl font-semibold">
         Podobne znane przypadki (kontekst)
-      </h3>
-      <p className="mt-1 text-muted">
+      </Heading>
+      <p className="mt-1 mb-4.5 text-sm text-muted">
         To dopasowanie jest tylko kontekstem. Nie przesądza o ocenie tej treści.
       </p>
-      <ul className="mt-4 space-y-3">
+      <ul className="flex flex-col gap-2">
         {matches.map((match) => (
           <li
             key={match.incident_id}
-            className="rounded-lg border border-dashed border-line-strong bg-surface p-4"
+            className="border border-dashed border-line-strong bg-surface px-4.5 py-4"
           >
             <p>{match.note}</p>
-            <p>
-              <ExternalLink href={match.url} className="inline-block py-2 font-medium">
+            <p className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm text-muted">
+              <ExternalLink href={match.url} className="inline-block py-1.5 font-semibold">
                 {match.title || match.url}
               </ExternalLink>
-            </p>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted">
-              <span>
-                {match.publisher}
-                {" · "}
-                {formatDate(match.date) ?? "brak daty"}
-              </span>
+              <span>{match.publisher}</span>
+              <span>{formatDate(match.date) ?? "brak daty"}</span>
               <Tag>{MATCH_TYPE_LABELS[match.match_type] ?? match.match_type}</Tag>
             </p>
           </li>

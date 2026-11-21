@@ -3,7 +3,7 @@ import { formatDateTime, formatInteger, formatSeconds, formatUsd } from "@/lib/f
 import { RETRIEVAL_LABELS, channelLabel } from "@/lib/labels";
 import type { CheckResponse } from "@/lib/types";
 
-export function TechnicalDetails({ result }: { result: CheckResponse }) {
+export function TechnicalDetails({ result, id }: { result: CheckResponse; id?: string }) {
   const { meta } = result;
   const model = [meta.provider, meta.model].filter(Boolean).join(" / ");
   const imageMetadata = Object.entries(result.input.image_metadata ?? {});
@@ -30,7 +30,7 @@ export function TechnicalDetails({ result }: { result: CheckResponse }) {
   for (const [key, value] of imageMetadata) rows.push([`Obraz: ${key}`, value]);
 
   return (
-    <Disclosure summary="Szczegóły techniczne">
+    <Disclosure summary="Szczegóły techniczne" id={id} className="scroll-mt-6">
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
         {rows.map(([label, value]) => (
           <div key={label} className="sm:contents">

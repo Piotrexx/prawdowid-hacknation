@@ -1,7 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { SiteFooter } from "@/components/layout/SiteFooter";
-import { SiteHeader } from "@/components/layout/SiteHeader";
+import { Open_Sans } from "next/font/google";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { APPLY_SETTINGS_SCRIPT } from "@/lib/a11ySettings";
 import "./globals.css";
+
+const openSans = Open_Sans({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-open-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -18,25 +25,27 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#171d25" },
-  ],
+  colorScheme: "light",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pl">
-      <body className="flex min-h-dvh flex-col antialiased">
+    // The pre-paint script sets data attributes for the accessibility settings.
+    <html lang="pl" className={openSans.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: APPLY_SETTINGS_SCRIPT }} />
+      </head>
+      <body className="min-h-dvh bg-surface antialiased">
         <a href="#tresc" className="skip-link">
           Przejdź do treści
         </a>
-        <SiteHeader />
-        <main id="tresc" tabIndex={-1} className="flex-1">
-          {children}
-        </main>
-        <SiteFooter />
+        <div className="flex min-h-dvh flex-col bg-surface lg:flex-row">
+          <AppSidebar />
+          <main id="tresc" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
+            {children}
+          </main>
+        </div>
       </body>
     </html>
   );

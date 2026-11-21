@@ -10,12 +10,17 @@ interface PageShellProps {
 
 export function PageShell({ title, lead, wide = false, children }: PageShellProps) {
   return (
-    <div className={cx("mx-auto w-full px-4 py-8 sm:py-10", wide ? "max-w-5xl" : "max-w-[46rem]")}>
-      <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-        {title}
-      </h1>
-      {lead ? <p className="mt-3 max-w-[40rem] text-lg text-muted">{lead}</p> : null}
-      <div className="mt-8">{children}</div>
+    <div className="px-5 py-8 sm:p-10">
+      <div className={cx("w-full", wide ? "max-w-none" : "max-w-[52rem]")}>
+        <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.01em] text-balance sm:text-[1.875rem]">
+          {title}
+        </h1>
+        <span aria-hidden="true" className="title-rule my-4" />
+        {lead ? (
+          <p className="max-w-[44rem] text-base leading-relaxed text-ink-soft">{lead}</p>
+        ) : null}
+        <div className="mt-8">{children}</div>
+      </div>
     </div>
   );
 }

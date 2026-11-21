@@ -1,72 +1,72 @@
 @import "tailwindcss";
 
-/* Every text/background pair below meets WCAG AA (4.5:1); borders and focus meet 3:1. */
 :root {
   color-scheme: light;
 
-  --page: #f6f7f9;
+  --page: #eef1f5;
   --surface: #ffffff;
-  --subtle: #eef1f4;
-  --line: #d3d9e0;
-  --line-strong: #7b8696;
-  --ink: #17212b;
-  --muted: #4b5766;
-  --accent: #0f2747;
-  --accent-hover: #1c3f70;
+  --subtle: #f4f6f9;
+  --line: #dde3ea;
+  --line-mid: #c9d2dc;
+  --line-strong: #767676;
+  --ink: #1b1b1b;
+  --ink-soft: #4a525c;
+  --muted: #59626d;
+  --accent: #0052a5;
+  --accent-hover: #003b77;
   --on-accent: #ffffff;
-  --link: #17498a;
-  --focus: #1b6fd1;
+  --link: #0052a5;
+  --focus: #003b77;
 
-  --ok-fg: #17573a;
-  --ok-bg: #e8f5ed;
-  --ok-line: #3a9463;
-  --bad-fg: #94201a;
-  --bad-bg: #fdecea;
-  --bad-line: #cf4a3c;
-  --warn-fg: #6f4700;
-  --warn-bg: #fdf2d3;
+  --ok-fg: #2f5410;
+  --ok-bg: #eef5e5;
+  --ok-line: #4d8a1f;
+  --bad-fg: #a7162d;
+  --bad-bg: #fbeaed;
+  --bad-line: #d5233f;
+  --warn-fg: #6b4a00;
+  --warn-bg: #fdf4dd;
   --warn-line: #b98212;
-  --calm-fg: #36414f;
-  --calm-bg: #eef1f4;
-  --calm-line: #7b8696;
-  --info-fg: #343190;
-  --info-bg: #ecedfc;
-  --info-line: #6a6ed6;
+  --calm-fg: #4a4a4a;
+  --calm-bg: #f1f1f1;
+  --calm-line: #8a8a8a;
+  --info-fg: #003b77;
+  --info-bg: #e3edf8;
+  --info-line: #0052a5;
+
+  --card-shadow: 0 10px 30px rgba(11, 42, 74, 0.12);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+/* "Wysoki kontrast" from the accessibility settings. */
+:root[data-contrast="high"] {
+  --subtle: #ffffff;
+  --line: #1b1b1b;
+  --line-mid: #1b1b1b;
+  --line-strong: #000000;
+  --ink: #000000;
+  --ink-soft: #000000;
+  --muted: #1b1b1b;
+  --accent: #003b77;
+  --accent-hover: #00264d;
+  --link: #003b77;
+  --focus: #000000;
+  --card-shadow: none;
+}
 
-    --page: #10151b;
-    --surface: #171d25;
-    --subtle: #1f2731;
-    --line: #313b47;
-    --line-strong: #71808f;
-    --ink: #e8ecf1;
-    --muted: #a9b4c0;
-    --accent: #a9c8f5;
-    --accent-hover: #c4dafa;
-    --on-accent: #0f2747;
-    --link: #9cc4ff;
-    --focus: #8fc0ff;
+:root[data-text-size="large"] {
+  font-size: 112.5%;
+}
 
-    --ok-fg: #8fdfae;
-    --ok-bg: #12291d;
-    --ok-line: #3a9463;
-    --bad-fg: #ffb1a8;
-    --bad-bg: #341715;
-    --bad-line: #cf4a3c;
-    --warn-fg: #f3cf78;
-    --warn-bg: #2f250b;
-    --warn-line: #b98212;
-    --calm-fg: #c8d1dc;
-    --calm-bg: #1f2731;
-    --calm-line: #71808f;
-    --info-fg: #c0c3fc;
-    --info-bg: #1e1f42;
-    --info-line: #6a6ed6;
-  }
+:root[data-text-size="larger"] {
+  font-size: 125%;
+}
+
+@theme {
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
 }
 
 @theme inline {
@@ -74,8 +74,10 @@
   --color-surface: var(--surface);
   --color-subtle: var(--subtle);
   --color-line: var(--line);
+  --color-line-mid: var(--line-mid);
   --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
@@ -99,14 +101,29 @@
   --color-info-bg: var(--info-bg);
   --color-info-line: var(--info-line);
 
+  --shadow-card: var(--card-shadow);
+
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
-    "Helvetica Neue", Arial, sans-serif;
+    var(--font-open-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Noto Sans", "Helvetica Neue", Arial, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {
+  /* Tailwind resets buttons to the default arrow; everything clickable shows a hand. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label:has(input:not(:disabled)),
+  label[for],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled) {
+    cursor: pointer;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -126,7 +143,6 @@
     outline-offset: 2px;
   }
 
-  /* Headings that receive focus programmatically still need a visible indicator. */
   [tabindex="-1"]:focus {
     outline: 3px solid var(--focus);
     outline-offset: 4px;
@@ -155,7 +171,23 @@
   }
 
   .link:hover {
+    color: var(--accent-hover);
     text-decoration-thickness: 0.14em;
+  }
+
+  .eyebrow {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .title-rule {
+    display: block;
+    width: 4rem;
+    height: 0.25rem;
+    background: var(--accent);
   }
 
   .skip-link {
@@ -164,7 +196,7 @@
     top: 0.5rem;
     z-index: 50;
     transform: translateY(-200%);
-    border-radius: 0.5rem;
+    border-radius: 4px;
     background: var(--accent);
     color: var(--on-accent);
     padding: 0.75rem 1rem;

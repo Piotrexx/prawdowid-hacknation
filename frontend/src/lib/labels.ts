@@ -17,6 +17,15 @@ export const VERDICT_LABELS: Record<Verdict, string> = {
   nie_podlega_weryfikacji: "Nie podlega weryfikacji",
 };
 
+/** Compact labels for badges in lists and the result table of contents. */
+export const SHORT_VERDICT_LABELS: Record<Verdict, string> = {
+  potwierdzone: "Potwierdzone",
+  falszywe: "Fałszywe",
+  wprowadzajace_w_blad: "Wprowadza w błąd",
+  brak_wystarczajacych_dowodow: "Brak dowodów",
+  nie_podlega_weryfikacji: "Nie do weryfikacji",
+};
+
 export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   official: "Źródło urzędowe",
   legal: "Akt prawny",
