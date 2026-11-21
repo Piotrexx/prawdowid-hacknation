@@ -87,8 +87,9 @@ Przełączenie na dostawcę z EOG lub model lokalny to zmiana dwóch zmiennych �
 
 **Zachowanie przy awarii.** Brak klucza, limit, odmowa lub awaria modelu → status `error` z kodem
 (`llm_not_configured`, `llm_unavailable`, `llm_rate_limited`, `llm_refused`, `llm_bad_output`, `ocr_unavailable`,
-`url_*`, `image_*`) i komunikatem „to problem techniczny, a nie wynik sprawdzenia”. Brak modelu embeddingów →
-materiały podobne są pomijane, a odpowiedź zawiera jawne ostrzeżenie (werdykt nadal powstaje na fact-checkach).
+`transcription_unavailable`, `url_*`, `image_*`, `audio_*`) i komunikatem „to problem techniczny, a nie wynik
+sprawdzenia”. Brak modelu embeddingów → wyszukiwanie przechodzi w jawny tryb leksykalny z ostrzeżeniem
+`retrieval_degraded`; werdykt nadal wymaga cytatu z korpusu.
 
 ## Bezpieczeństwo
 
