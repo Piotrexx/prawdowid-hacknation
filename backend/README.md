@@ -41,12 +41,15 @@ Wszystkie ustawienia to zmienne środowiskowe – pełna lista w [.env.example](
 | `ID_HASH_SALT` | Sól do skracania identyfikatorów (adresy IP w limicie żądań) |
 | `RATE_LIMIT_PER_MINUTE` | Limit żądań na IP |
 | `RETENTION_DAYS` | Retencja danych |
+| `IMAGE_SEARCH_ENGINES` | Silniki odwrotnego wyszukiwania obrazu (domyślnie `yandex,tineye`; dostępny też `bing`) |
+| `IMAGE_SEARCH_TIMEOUT_S`, `IMAGE_CACHE_HOURS` | Limit czasu na silnik; jak długo wynik dla tych samych bajtów zdjęcia jest brany z bazy |
 
 ## API (`/api/v1`)
 
 | Metoda | Ścieżka | Opis |
 |---|---|---|
 | POST | `/checks` | Sprawdzenie URL artykułu (`{url, session_id?}`) |
+| POST | `/checks/image` | Sprawdzenie, czy zdjęcie nie zostało zmienione (multipart: `file`, `session_id?`) |
 | GET | `/checks/{id}` | Zapisany wynik |
 | DELETE | `/sessions/{session_id}` | Usunięcie danych sesji |
 | GET | `/health` | Stan usługi, modele, miejsce przetwarzania |
@@ -128,6 +131,38 @@ curl -s localhost:8000/api/v1/checks -H 'Content-Type: application/json' \
    - `satyna` - artykuł satyryczny
    - `opinia` - wyrażenie opinii, nie faktów
 
+## Weryfikacja zdjęć – jak to działa
+
+`POST /checks/image` nie używa modelu językowego ani płatnych API:
+
+1. **Przygotowanie** – walidacja (JPEG/PNG/WebP/GIF, max 10 MB, max 40 Mpx), odczyt EXIF (bez GPS), kopia JPEG **bez metadanych** do wysłania dalej.
+2. **Odwrotne wyszukiwanie** ([PicImageSearch](https://github.com/kitUIN/PicImageSearch), scraping) – Yandex i TinEye równolegle. Awaria jednego silnika daje ostrzeżenie, awaria wszystkich – błąd (nie werdykt).
+3. **Pobranie kopii** – do 10 kopii, pełny obraz ze strony źródłowej (z ochroną SSRF jak przy artykułach), w razie błędu miniatura z wyszukiwarki.
+4. **Porównanie** ([app/core/image_compare.py](app/core/image_compare.py)) – dopasowanie kopii do zdjęcia (SIFT + RANSAC, obsługuje kadrowanie i skalowanie), dopasowanie jasności/kontrastu z pominięciem odstających pikseli, różnica w siatce 8×8. Globalny hash (pHash) **nie wystarcza** – doklejony obiekt zmienia go o 1–2 bity.
+5. **Ocena** – zdjęcie jest podejrzane, gdy **w tym samym miejscu** różni się od większości (≥60%, min. 2) kopii. Różnice tylko w pojedynczych kopiach (podpisy, znaki wodne) nie są brane pod uwagę.
+
+| `image_analysis.assessment` | Werdykt | Znaczenie |
+|---|---|---|
+| `manipulation_suspected` | `fake_news` | Fragment różni się od większości kopii; `changed_regions` wskazuje gdzie (współrzędne 0–1) |
+| `consistent_with_copies` | `prawdziwe` | Co najmniej jedna kopia zgodna w całości, brak wspólnej różnicy |
+| `insufficient_copies` | `niepewne` | Znaleziono obrazy, ale za mało kopii tego samego ujęcia do porównania |
+| `no_matches` | `niepewne` | Zdjęcia nie ma w indeksach wyszukiwarek |
+
+**Ślady AI w samym pliku** ([app/core/image_provenance.py](app/core/image_provenance.py)) – odczytywane z oryginalnych bajtów, zanim usuniemy metadane:
+
+| Źródło | Co sprawdzamy | Pewność |
+|---|---|---|
+| C2PA / Content Credentials (`c2pa-python`) | `digitalSourceType` w akcjach manifestu (także składników) i stan podpisu | najwyższa przy nienaruszonym podpisie (OpenAI, Adobe Firefly, Microsoft) |
+| IPTC w XMP | `DigitalSourceType = trainedAlgorithmicMedia` / `compositeWithTrainedAlgorithmicMedia` | wysoka, ale bez podpisu |
+| Parametry generatorów | PNG `parameters` (A1111), `prompt`/`workflow` (ComfyUI), InvokeAI, EXIF `UserComment`; nazwy generatorów tylko w polach „program” | wysoka, bez podpisu |
+| Data najstarszej kopii | kopia w sieci sprzed 2022 r. → `predates_generative_ai` | tylko wskazówka, nie zmienia werdyktu |
+
+`image_analysis.ai.result`: `ai_generated` → werdykt `fake_news` (pewność 0.95 z ważnym podpisem C2PA, 0.85 bez), `ai_edited` → werdykt `prawdziwe` obniżany do `niepewne`, `predates_generative_ai` / `no_signals` → bez zmian. Brak śladów niczego nie dowodzi – media społecznościowe i zrzuty ekranu usuwają metadane.
+
+Dodatkowo: data najstarszej kopii z TinEye (`earliest_seen`, ostrzeżenie `archival_material` dla zdjęć starszych niż rok) i program do edycji z EXIF (`image_edit_software`). Wynik dla tych samych bajtów jest cache'owany (domyślnie 24 h), żeby nie odpytywać wyszukiwarek ponownie.
+
+**Ograniczenia:** obrazy z AI bez metadanych (np. po zrzucie ekranu) nie zostaną rozpoznane; zdjęcia spoza indeksów wyszukiwarek nie zostaną porównane; subtelne zmiany o niskim kontraście mogą umknąć; scraping może przestać działać po zmianie stron wyszukiwarek. Zdjęcie trafia do Yandex (Rosja) i TinEye (Kanada).
+
 ## Testy i ewaluacja
 
 ```bash
@@ -173,7 +208,8 @@ backend/
 
 ## Uwagi
 
-- Backend działa **tylko z URL** (nie ma już endpointu dla czystego tekstu ani obrazów)
+- Backend sprawdza artykuły z URL oraz zdjęcia (`/checks/image`); nie ma endpointu dla czystego tekstu
+- `pyproject.toml` nadpisuje wymaganie `lxml<6` z PicImageSearch (`override-dependencies`), bo trafilatura 2.3 wymaga lxml 6; PicImageSearch działa z lxml 6 poprawnie
 - Wszystkie prompty są **wyłącznie po polsku**
 - System zapisuje wyniki do SQLite (`data/prawdowid.db`)
 - Limity zapytań: domyślnie 10/min na IP

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import admin, checks
 from app.config import Settings, get_settings
+from app.core.image_check import ImageCheckService
 from app.core.pipeline import VerificationService
 from app.llm.base import LLMProvider
 from app.llm.factory import build_provider
@@ -33,6 +34,7 @@ def build_state(
         provider=provider,
         store=store,
     )
+    app.state.image_service = ImageCheckService(settings, store)
     # Update limiter with service reference
     from app.security.ratelimit import RateLimiter
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute)

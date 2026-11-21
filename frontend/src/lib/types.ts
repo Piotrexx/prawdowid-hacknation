@@ -25,6 +25,11 @@ export type WarningCode =
   | "source_status"
   | "retrieval_degraded"
   | "image_limits"
+  | "image_manipulation"
+  | "image_edit_software"
+  | "ai_generated"
+  | "ai_edited"
+  | "content_credentials"
   | "input_truncated";
 
 export interface Warning {

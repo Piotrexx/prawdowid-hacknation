@@ -49,9 +49,21 @@ class Settings(BaseSettings):
     crawler_user_agent: str = "fact-check-research-bot/0.1"
     url_fetch_timeout_s: float = 10.0
     url_fetch_max_bytes: int = 2_000_000
-    image_max_bytes: int = 5_000_000
+    image_max_bytes: int = 10 * 1024 * 1024  # tyle samo co limit we frontendzie (10 MB)
+
+    # --- Odwrotne wyszukiwanie obrazu (PicImageSearch, bez kluczy API) ---
+    # Dostępne: yandex, tineye, bing (bing domyślnie wyłączony – nie działa w PicImageSearch 3.12.11).
+    image_search_engines: str = "yandex,tineye"
+    image_search_timeout_s: float = 25.0
+    image_compare_max_candidates: int = 10
+    image_candidate_max_bytes: int = 8_000_000
+    image_cache_hours: int = 24
 
     database_url: str = f"sqlite:///{DATA_DIR / 'prawdowid.db'}"
+
+    @property
+    def image_engine_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.image_search_engines.split(",") if e.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

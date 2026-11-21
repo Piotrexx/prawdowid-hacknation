@@ -120,6 +120,29 @@ def _extract(html: bytes, url: str) -> FetchedPage:
     return FetchedPage(url=url, title=(getattr(doc, "title", None) or "").strip(), text=text, published=published)
 
 
+async def fetch_image(url: str, settings: Settings, max_bytes: int) -> bytes:
+    """Pobiera pojedynczy plik obrazu (kopię znalezioną przez wyszukiwarkę) z tą samą ochroną przed SSRF.
+    robots.txt pomijamy: to jednorazowe pobranie jednego pliku, jak przy wyświetleniu go w przeglądarce."""
+    headers = {"User-Agent": settings.crawler_user_agent, "Accept": "image/*"}
+    async with httpx.AsyncClient(headers=headers, timeout=settings.url_fetch_timeout_s) as client:
+        try:
+            for _ in range(_MAX_REDIRECTS + 1):
+                reply = await _get(client, url, max_bytes)
+                if 300 <= reply.status < 400 and reply.headers.get("location"):
+                    url = urljoin(url, reply.headers["location"])
+                    continue
+                break
+            else:
+                raise UrlFetchError("url_unreachable", "Zbyt wiele przekierowań.")
+        except httpx.HTTPError as exc:
+            raise UrlFetchError("url_unreachable", "Nie udało się pobrać obrazu.") from exc
+    if reply.status != 200:
+        raise UrlFetchError("url_unreachable", f"Serwer odpowiedział błędem (kod {reply.status}).")
+    if not reply.headers.get("content-type", "").lower().startswith("image/"):
+        raise UrlFetchError("url_unsupported_type", "Pod tym adresem nie ma obrazu.")
+    return reply.body
+
+
 async def fetch_page(url: str, settings: Settings) -> FetchedPage:
     headers = {"User-Agent": settings.crawler_user_agent, "Accept": "text/html,*/*;q=0.5"}
     async with httpx.AsyncClient(headers=headers, timeout=settings.url_fetch_timeout_s) as client:
