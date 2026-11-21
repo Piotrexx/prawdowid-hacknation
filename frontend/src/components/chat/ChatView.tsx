@@ -2,6 +2,7 @@
 
 import { EyeOff, Quote, Scale } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useImageAttachment } from "@/components/check/useImageAttachment";
 import { ApiError, createCheck, createImageCheck, isAbort } from "@/lib/api";
 import { cx } from "@/lib/cx";
@@ -26,23 +27,25 @@ interface Turn {
   state: TurnState;
 }
 
-function announce(result: CheckResponse): string {
+function announce(result: CheckResponse, t: ReturnType<typeof import("react-i18next").useTranslation>["t"]): string {
   if (result.status !== "completed")
     return result.status_message || "Nie udało się ocenić tej treści.";
   const verdicts = result.claims.map(
     (claim) => SHORT_VERDICT_LABELS[claim.verdict] ?? claim.verdict,
   );
   const count = result.claims.length;
-  return `Wynik gotowy: ${count} ${plural(count, "twierdzenie", "twierdzenia", "twierdzeń")}. ${verdicts.join(", ")}.`;
+  const countKey = count === 1 ? "chat.resultReady" : count < 5 ? "chat.resultReady_few" : "chat.resultReady_many";
+  return t(countKey, { count, verdicts: verdicts.join(", ") });
 }
 
 function UserMessage({ turn }: { turn: Turn }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const long = turn.text.length > 400 || turn.text.split("\n").length > 6;
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-subtle px-4.5 py-3 sm:max-w-[75%]">
-        <h2 className="sr-only">Twoja wiadomość</h2>
+        <h2 className="sr-only">{t("chat.myMessage")}</h2>
         {turn.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
           <img
@@ -68,7 +71,7 @@ function UserMessage({ turn }: { turn: Turn }) {
                 onClick={() => setExpanded((value) => !value)}
                 className="link mt-1 inline-flex min-h-11 items-center text-sm font-semibold"
               >
-                {expanded ? "Zwiń" : "Pokaż całość"}
+                {expanded ? t("chat.collapse") : t("chat.expand")}
               </button>
             ) : null}
           </>
@@ -88,17 +91,18 @@ function Highlight({ children }: { children: ReactNode }) {
 }
 
 function Welcome({ title }: { title: ReactNode }) {
+  const { t } = useTranslation();
   const facts = [
-    { icon: EyeOff, text: "Przed sprawdzeniem ukrywamy dane osobowe." },
-    { icon: Quote, text: "Pokazujemy dosłowne cytaty i linki do źródeł." },
-    { icon: Scale, text: "Ocena należy do Ciebie – system tylko porządkuje dowody." },
+    { icon: EyeOff, text: t("welcome.privacy") },
+    { icon: Quote, text: t("welcome.quotes") },
+    { icon: Scale, text: t("welcome.judgment") },
   ];
   return (
     <div className="flex flex-1 flex-col justify-center py-10">
       {title}
       <span aria-hidden="true" className="title-rule my-5" />
       <p className="text-lg leading-relaxed text-ink-soft">
-        Wklej <Highlight>wiadomość</Highlight>, <Highlight>link</Highlight> albo{" "}
+        Wklej <Highlight>{t("nav.check").toLowerCase() === "sprawdź" ? "wiadomość" : "wiadomość"}</Highlight>, <Highlight>link</Highlight> albo{" "}
         <Highlight>zrzut ekranu</Highlight>. Zobaczysz, co mówią o tym źródła i czego nie udało się
         ustalić.
       </p>
@@ -115,6 +119,7 @@ function Welcome({ title }: { title: ReactNode }) {
 }
 
 function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
+  const { t } = useTranslation();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -174,7 +179,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     const controller = new AbortController();
     controllers.current.add(controller);
     update(id, { kind: "loading" });
-    setStatus("Sprawdzam w źródłach…");
+    setStatus(t("chat.checkingStatus"));
     try {
       const sessionId = ensureSessionId();
       const result = payload.file
@@ -194,7 +199,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         setText(result.input.text);
       }
       update(id, { kind: "result", result });
-      setStatus(announce(result));
+      setStatus(announce(result, t));
     } catch (error) {
       if (isAbort(error)) return;
       if (error instanceof ApiError && error.kind === "rate_limit") {
@@ -214,12 +219,12 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     const trimmed = text.trim();
     const file = image.attachment?.file ?? null;
     if (!file && !trimmed) {
-      setFormError("Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zrzut ekranu.");
+      setFormError(t("composer.errorEmpty"));
       textareaRef.current?.focus();
       return;
     }
     if (!file && trimmed.length > TEXT_LIMIT) {
-      setFormError("Tekst jest za długi. Skróć go i spróbuj ponownie.");
+      setFormError(t("composer.errorTooLong"));
       textareaRef.current?.focus();
       return;
     }
@@ -267,7 +272,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
           : "text-[1.75rem] leading-tight font-bold tracking-[-0.01em] sm:text-[2.25rem]"
       }
     >
-      Sprawdź informację w źródłach
+      {t("welcome.title")}
     </h1>
   );
 

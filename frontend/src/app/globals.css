@@ -37,20 +37,42 @@
   --card-shadow: 0 10px 30px rgba(11, 42, 74, 0.12);
 }
 
-/* "Wysoki kontrast" from the accessibility settings. */
+/* "Wysoki kontrast" from the accessibility settings: black ground, white text,
+   yellow interactive elements. Every pair here clears WCAG AAA (7:1). */
 :root[data-contrast="high"] {
-  --subtle: #ffffff;
-  --line: #1b1b1b;
-  --line-mid: #1b1b1b;
-  --line-strong: #000000;
-  --ink: #000000;
-  --ink-soft: #000000;
-  --muted: #1b1b1b;
-  --accent: #003b77;
-  --accent-hover: #00264d;
-  --link: #003b77;
-  --focus: #000000;
+  color-scheme: dark;
+
+  --page: #000000;
+  --surface: #000000;
+  --subtle: #141414;
+  --line: #ffffff;
+  --line-mid: #ffffff;
+  --line-strong: #ffffff;
+  --ink: #ffffff;
+  --ink-soft: #ffffff;
+  --muted: #ffffff;
+  --accent: #ffff00;
+  --accent-hover: #ffffa0;
+  --on-accent: #000000;
+  --link: #ffff00;
+  --focus: #ffff00;
   --card-shadow: none;
+
+  --ok-fg: #7cff7c;
+  --ok-bg: #000000;
+  --ok-line: #7cff7c;
+  --bad-fg: #ff9a9a;
+  --bad-bg: #000000;
+  --bad-line: #ff9a9a;
+  --warn-fg: #ffd24d;
+  --warn-bg: #000000;
+  --warn-line: #ffd24d;
+  --calm-fg: #ffffff;
+  --calm-bg: #000000;
+  --calm-line: #ffffff;
+  --info-fg: #8cd3ff;
+  --info-bg: #000000;
+  --info-line: #8cd3ff;
 }
 
 :root[data-text-size="large"] {

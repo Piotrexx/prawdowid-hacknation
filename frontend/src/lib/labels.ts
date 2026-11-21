@@ -1,11 +1,10 @@
 import type {
-  CaseStatus,
   CheckStatus,
   RetrievalMode,
-  SourceType,
   Stance,
   StoragePolicy,
   StrengthLevel,
+  SourceType,
   Verdict,
 } from "./types";
 
@@ -69,22 +68,14 @@ export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
   error: "Problem techniczny",
 };
 
-export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
-  open: "Otwarta",
-  in_review: "W trakcie",
-  resolved: "Zamknięta",
-};
-
-export const CASE_STATUSES = Object.keys(CASE_STATUS_LABELS) as CaseStatus[];
-
 const CHANNEL_LABELS: Record<string, string> = {
   web: "Strona WWW",
 };
 
 const INPUT_KIND_LABELS: Record<string, string> = {
-  text: "Tekst",
   url: "Link",
-  image: "Obraz",
+  text: "Tekst",
+  image: "Zdjęcie",
 };
 
 /** Labels for open-ended backend keys: fall back to the raw key instead of guessing. */

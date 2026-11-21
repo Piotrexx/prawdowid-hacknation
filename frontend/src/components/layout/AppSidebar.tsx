@@ -14,15 +14,16 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { HistoryList } from "@/components/chat/HistoryList";
 import { cx } from "@/lib/cx";
 import { requestNewCheck } from "@/lib/newCheck";
 import { setSidebarCollapsed, useSidebarCollapsed } from "@/lib/sidebar";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
-const NAV_ITEMS: Array<{ href: string; label: string; icon: LucideIcon }> = [
-  { href: "/", label: "Sprawdź", icon: MessageSquareText },
-  { href: "/zrodla", label: "Źródła", icon: BookOpen },
+const NAV_ITEMS: Array<{ href: string; labelKey: string; icon: LucideIcon }> = [
+  { href: "/", labelKey: "nav.check", icon: MessageSquareText },
+  { href: "/zrodla", labelKey: "nav.sources", icon: BookOpen },
 ];
 
 function isCurrent(pathname: string | null, href: string): boolean {
@@ -32,9 +33,11 @@ function isCurrent(pathname: string | null, href: string): boolean {
 }
 
 function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
+  const { t } = useTranslation();
   return (
     <ul className="flex flex-col gap-0.5">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {NAV_ITEMS.map(({ href, labelKey, icon: Icon }) => {
+        const label = t(labelKey);
         const current = isCurrent(pathname, href);
         return (
           <li key={href}>
@@ -65,6 +68,7 @@ function CurrentNavList({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Brand({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslation();
   return (
     <Link
       href="/"
@@ -72,7 +76,7 @@ function Brand({ onNavigate }: { onNavigate?: () => void }) {
       className="inline-flex min-h-11 items-center text-[1.625rem] leading-none font-bold tracking-[-0.02em] text-ink"
     >
       Prawdowid
-      <span className="sr-only"> – strona główna</span>
+      <span className="sr-only">{t("nav.homeLink")}</span>
     </Link>
   );
 }
@@ -88,20 +92,22 @@ function useStartNewCheck(onNavigate?: () => void) {
 }
 
 function CollapseToggle() {
+  const { t } = useTranslation();
   const collapsed = useSidebarCollapsed();
+  const label = collapsed ? t("sidebar.expand") : t("sidebar.collapse");
   return (
     <button
       type="button"
       aria-expanded={!collapsed}
       aria-controls="menu-boczne-desktop"
       onClick={() => setSidebarCollapsed(!collapsed)}
-      title={collapsed ? "Rozwiń menu" : "Zwiń menu"}
+      title={label}
       className="grid size-11 shrink-0 place-items-center text-muted transition-colors hover:bg-surface hover:text-accent"
     >
       {/* Icons follow the CSS state, so a saved collapsed rail is right before hydration. */}
       <PanelLeftClose aria-hidden="true" className="size-5.5 collapsed:hidden" />
       <PanelLeftOpen aria-hidden="true" className="hidden size-5.5 collapsed:block" />
-      <span className="sr-only">{collapsed ? "Rozwiń menu" : "Zwiń menu"}</span>
+      <span className="sr-only">{label}</span>
     </button>
   );
 }
@@ -113,6 +119,7 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
+  const { t } = useTranslation();
   const startNewCheck = useStartNewCheck(onNavigate);
   const historyId = `${idPrefix}-historia`;
 
@@ -125,7 +132,7 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
           </span>
           {idPrefix === "boczny" ? <CollapseToggle /> : null}
         </div>
-        <nav aria-label="Główna nawigacja" className="-mx-4 collapsed:mx-0">
+        <nav aria-label={t("nav.mainNav")} className="-mx-4 collapsed:mx-0">
           {/* On routes with a dynamic segment the pathname is unknown while prerendering. */}
           <Suspense fallback={<NavList pathname={null} onNavigate={onNavigate} />}>
             <CurrentNavList onNavigate={onNavigate} />
@@ -138,7 +145,7 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
         className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
       >
         <h2 id={historyId} className="eyebrow mb-2 px-5 collapsed:sr-only">
-          Twoje sesje
+          {t("sidebar.sessions")}
         </h2>
         {/* The list shrinks and scrolls, so the button under it stays in view. */}
         <div className="min-h-0 shrink overflow-y-auto px-2 collapsed:hidden">
@@ -148,11 +155,11 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
           <button
             type="button"
             onClick={startNewCheck}
-            title="Nowa sesja"
+            title={t("sidebar.newSession")}
             className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent collapsed:justify-center collapsed:px-0"
           >
             <Plus aria-hidden="true" className="size-5 shrink-0" />
-            <span className="collapsed:sr-only">Nowa sesja</span>
+            <span className="collapsed:sr-only">{t("sidebar.newSession")}</span>
           </button>
         </div>
       </section>
@@ -165,6 +172,7 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
 }
 
 function MobileBar() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -203,7 +211,7 @@ function MobileBar() {
           className="grid size-11 place-items-center text-ink hover:bg-subtle"
         >
           <Menu aria-hidden="true" className="size-6" />
-          <span className="sr-only">Otwórz menu</span>
+          <span className="sr-only">{t("sidebar.openMenu")}</span>
         </button>
         <Brand />
         <span className="flex-1" />
@@ -213,7 +221,7 @@ function MobileBar() {
           className="grid size-11 place-items-center text-accent hover:bg-subtle"
         >
           <SquarePen aria-hidden="true" className="size-5.5" />
-          <span className="sr-only">Nowa sesja</span>
+          <span className="sr-only">{t("sidebar.newSession")}</span>
         </button>
       </div>
 
@@ -230,7 +238,7 @@ function MobileBar() {
             id="menu-boczne"
             role="dialog"
             aria-modal="true"
-            aria-label="Menu"
+            aria-label={t("sidebar.menu")}
             className="absolute inset-y-0 left-0 flex w-[min(20rem,88vw)] flex-col bg-subtle shadow-card"
           >
             <div className="flex items-center justify-between border-b border-line py-1.5 pr-2 pl-5">
@@ -242,7 +250,7 @@ function MobileBar() {
                 className="grid size-11 place-items-center text-ink hover:bg-surface"
               >
                 <X aria-hidden="true" className="size-6" />
-                <span className="sr-only">Zamknij menu</span>
+                <span className="sr-only">{t("sidebar.closeMenu")}</span>
               </button>
             </div>
             <SidebarContent idPrefix="szuflada" onNavigate={close} />
@@ -254,12 +262,13 @@ function MobileBar() {
 }
 
 export function AppSidebar() {
+  const { t } = useTranslation();
   return (
     <>
       <MobileBar />
       <aside
         id="menu-boczne-desktop"
-        aria-label="Menu boczne"
+        aria-label={t("sidebar.menuLabel")}
         data-rail
         className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col border-r border-line bg-subtle transition-[width] duration-200 lg:flex rail-collapsed:w-16"
       >

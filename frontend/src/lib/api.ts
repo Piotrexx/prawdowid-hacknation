@@ -1,16 +1,23 @@
 import type {
-  CaseOut,
-  CaseStatus,
-  CaseUpdate,
-  CheckListItem,
+  AdminCheckItem,
+  AdminMetrics,
   CheckRequest,
   CheckResponse,
+  ClaimResult,
+  Evidence,
+  FactCheckResult,
   HealthResponse,
-  MetricsResponse,
-  SecurityEventOut,
-  SessionDeleteResponse,
-  SourcesResponse,
+  IncidentMatch,
+  ModeratorCaseInfo,
+  SourceRef,
+  StrengthLevel,
+  Verdict,
+  Warning,
 } from "./types";
+
+interface SessionDeleteResponse {
+  deleted: number;
+}
 
 const API_ROOT = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -30,7 +37,6 @@ export type ApiErrorKind =
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status?: number;
-  /** Polish message supplied by the backend, when it sent one as a plain string. */
   readonly detail?: string;
   readonly retryAfterSeconds?: number;
 
@@ -48,7 +54,6 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-// A check normally takes up to ~30 s; leave generous headroom before giving up.
 const CHECK_TIMEOUT_MS = 120_000;
 
 interface RequestOptions extends RequestInit {
@@ -118,7 +123,6 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
     return response;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    // A caller-initiated abort is not a failure to report; let it surface as-is.
     if (signal?.aborted) throw error;
     throw new ApiError(timedOut ? "timeout" : "network");
   } finally {
@@ -140,41 +144,183 @@ export function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
+// --- Backend response → frontend shape adapter ---
+
+/** Backend returns old verdict codes; map them to the frontend's Verdict type. */
+function mapVerdict(raw: string | null | undefined): Verdict | null {
+  if (!raw) return null;
+  const MAP: Record<string, Verdict> = {
+    fake_news: "falszywe",
+    prawdziwe: "potwierdzone",
+    niepewne: "brak_wystarczajacych_dowodow",
+    satyna: "nie_podlega_weryfikacji",
+    opinia: "nie_podlega_weryfikacji",
+    // new values pass through if they already match
+    falszywe: "falszywe",
+    potwierdzone: "potwierdzone",
+    wprowadzajace_w_blad: "wprowadzajace_w_blad",
+    brak_wystarczajacych_dowodow: "brak_wystarczajacych_dowodow",
+    nie_podlega_weryfikacji: "nie_podlega_weryfikacji",
+  };
+  return MAP[raw] ?? "brak_wystarczajacych_dowodow";
+}
+
+function confidenceToLevel(c: number | null): StrengthLevel {
+  if (c === null) return "brak";
+  if (c >= 0.75) return "mocna";
+  if (c >= 0.5) return "umiarkowana";
+  return "slaba";
+}
+
+function factCheckToEvidence(fc: FactCheckResult, index: number): Evidence {
+  const r = (fc.rating ?? "").toLowerCase();
+  const stance =
+    r.includes("false") || r.includes("fałsz") || r.includes("nieprawda")
+      ? "refutes"
+      : r.includes("true") || r.includes("prawda") || r.includes("potwierdz")
+        ? "supports"
+        : "context";
+  return {
+    id: `fc-${index}`,
+    stance,
+    source: {
+      doc_id: `fc-${index}`,
+      title: fc.claim_review_title || fc.claim,
+      publisher: fc.publisher_name,
+      url: fc.claim_review_url,
+      published_at: fc.claim_date,
+      retrieved_at: null,
+      source_type: "factcheck",
+      source_name: fc.publisher_site,
+      rating: fc.rating,
+    },
+  };
+}
+
+/** Adapt a raw backend CheckResponse into the shape the UI expects. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function adaptResponse(raw: any): CheckResponse {
+  const verdict = mapVerdict(raw.verdict ?? raw.verdict_label);
+  const confidence: number | null = raw.confidence ?? null;
+  const justification: string | null = raw.justification ?? null;
+  const factChecks: FactCheckResult[] = raw.fact_check_results ?? [];
+  const sourceArticles: SourceRef[] = raw.source_articles ?? [];
+
+  const claims: ClaimResult[] =
+    raw.claims && Array.isArray(raw.claims) && raw.claims.length > 0
+      ? raw.claims
+      : verdict
+        ? [
+            {
+              id: raw.id,
+              text: raw.input?.title ?? raw.input?.url ?? "Artykuł",
+              verdict,
+              confidence: confidence ?? 0,
+              strength: {
+                level: confidenceToLevel(confidence),
+                score: confidence ?? 0,
+                factors: [],
+              },
+              risk: confidence !== null && confidence < 0.5 ? "high" : "low",
+              justification: justification ?? "",
+              evidence: factChecks.map(factCheckToEvidence),
+            },
+          ]
+        : [];
+
+  const warnings: Warning[] =
+    raw.warnings && Array.isArray(raw.warnings) ? raw.warnings : [];
+
+  const moderatorCase: ModeratorCaseInfo = raw.moderator_case ?? { state: "none" };
+
+  const relatedMaterials: SourceRef[] =
+    raw.related_materials && Array.isArray(raw.related_materials)
+      ? raw.related_materials
+      : sourceArticles;
+
+  const incidentMatches: IncidentMatch[] = raw.incident_matches ?? [];
+
+  return {
+    id: raw.id,
+    created_at: raw.created_at,
+    channel: raw.channel,
+    status: raw.status,
+    status_message: raw.status_message ?? null,
+    error_code: raw.error_code ?? null,
+    input: { ...raw.input, kind: raw.input?.kind ?? "url" },
+    claims,
+    verdict,
+    verdict_label: verdict,
+    confidence,
+    justification,
+    summary: raw.summary ?? justification,
+    keywords: raw.keywords ?? [],
+    main_topic: raw.main_topic ?? "",
+    fact_check_results: factChecks,
+    source_articles: sourceArticles,
+    related_materials: relatedMaterials,
+    incident_matches: incidentMatches,
+    limitations: raw.limitations ?? [],
+    warnings,
+    moderator_case: moderatorCase,
+    meta: raw.meta ?? {
+      duration_ms: 0,
+      stages_ms: {},
+      provider: null,
+      model: null,
+      bielik_model: null,
+      llm_calls: 0,
+      tokens_in: 0,
+      tokens_out: 0,
+      cost_usd: null,
+      processing_location: "",
+      cached: false,
+    },
+  };
+}
+
+async function getAdapted(path: string, options?: RequestOptions): Promise<CheckResponse> {
+  const raw = await getJson<unknown>(path, options);
+  return adaptResponse(raw);
+}
+
+// --- Public API ---
+
 export function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
   return getJson("/health", { signal });
 }
 
-export function createCheck(
+export async function createCheck(
   body: CheckRequest,
   signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  return getJson("/checks", {
+  // Backend only accepts URL checks; if only text was provided without a URL, return a helpful error.
+  if (!body.url) {
+    throw new ApiError("validation", {
+      detail: "Podaj link do artykułu, który chcesz sprawdzić.",
+    });
+  }
+  return getAdapted("/checks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ url: body.url, session_id: body.session_id }),
     timeoutMs: CHECK_TIMEOUT_MS,
     signal,
   });
 }
 
-export function createImageCheck(
-  file: File,
-  sessionId: string | null,
-  signal?: AbortSignal,
+export async function createImageCheck(
+  _file: File,
+  _sessionId: string | undefined,
+  _signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  const form = new FormData();
-  form.append("file", file);
-  if (sessionId) form.append("session_id", sessionId);
-  return getJson("/checks/image", {
-    method: "POST",
-    body: form,
-    timeoutMs: CHECK_TIMEOUT_MS,
-    signal,
+  throw new ApiError("validation", {
+    detail: "Sprawdzanie zdjęć nie jest jeszcze dostępne. Wklej link do artykułu.",
   });
 }
 
 export function getCheck(id: string, signal?: AbortSignal): Promise<CheckResponse> {
-  return getJson(`/checks/${encodeURIComponent(id)}`, { signal });
+  return getAdapted(`/checks/${encodeURIComponent(id)}`, { signal });
 }
 
 export function deleteSession(sessionId: string): Promise<SessionDeleteResponse> {
@@ -183,55 +329,19 @@ export function deleteSession(sessionId: string): Promise<SessionDeleteResponse>
   });
 }
 
-export function getSources(signal?: AbortSignal): Promise<SourcesResponse> {
-  return getJson("/sources", { signal });
-}
-
 function adminHeaders(token: string): HeadersInit {
   return { "X-Admin-Token": token };
 }
 
-export function getMetrics(token: string, signal?: AbortSignal): Promise<MetricsResponse> {
+export function getMetrics(token: string, signal?: AbortSignal): Promise<AdminMetrics> {
   return getJson("/admin/metrics", { headers: adminHeaders(token), signal });
-}
-
-export function getCases(
-  token: string,
-  status: CaseStatus | null,
-  signal?: AbortSignal,
-): Promise<CaseOut[]> {
-  const query = status ? `?${new URLSearchParams({ status })}` : "";
-  return getJson(`/admin/cases${query}`, { headers: adminHeaders(token), signal });
-}
-
-export function updateCase(
-  token: string,
-  id: number,
-  update: CaseUpdate,
-): Promise<CaseOut> {
-  return getJson(`/admin/cases/${id}`, {
-    method: "PATCH",
-    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
-    body: JSON.stringify(update),
-  });
-}
-
-export function getSecurityEvents(
-  token: string,
-  signal?: AbortSignal,
-  limit = 50,
-): Promise<SecurityEventOut[]> {
-  return getJson(`/admin/events?limit=${limit}`, {
-    headers: adminHeaders(token),
-    signal,
-  });
 }
 
 export function getRecentChecks(
   token: string,
   signal?: AbortSignal,
   limit = 50,
-): Promise<CheckListItem[]> {
+): Promise<AdminCheckItem[]> {
   return getJson(`/admin/checks?limit=${limit}`, {
     headers: adminHeaders(token),
     signal,
@@ -246,7 +356,6 @@ export async function downloadExport(
     headers: adminHeaders(token),
     timeoutMs: 60_000,
   });
-  // Readable only when the server exposes the header to cross-origin scripts.
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
   return { blob: await response.blob(), filename };

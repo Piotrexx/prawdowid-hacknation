@@ -1,19 +1,21 @@
-import { GitCompareArrows, ShieldAlert } from "lucide-react";
-import { Notice } from "@/components/ui/Notice";
+import { ShieldAlert } from "lucide-react";
+import { ExternalLink } from "@/components/ui/ExternalLink";
 import { Tag } from "@/components/ui/Tag";
+import { cx } from "@/lib/cx";
+import { plural } from "@/lib/format";
+import { STANCE_LABELS } from "@/lib/labels";
 import type { ClaimResult } from "@/lib/types";
-import { EvidenceChain } from "./EvidenceChain";
 import { StrengthMeter } from "./StrengthMeter";
-import { VerdictBanner } from "./VerdictBadge";
+import { VerdictChip, verdictStripe } from "./VerdictBadge";
 
 interface ClaimCardProps {
   claim: ClaimResult;
   index: number;
   total: number;
-  /** Prefix for the anchors the result's table of contents links to. */
   anchor: string;
 }
 
+/** Returns the sub-anchor IDs used by ResultView's table of contents. */
 export function claimAnchors(anchor: string) {
   return {
     claim: anchor,
@@ -24,73 +26,81 @@ export function claimAnchors(anchor: string) {
 
 export function ClaimCard({ claim, index, total, anchor }: ClaimCardProps) {
   const ids = claimAnchors(anchor);
-  const headingId = `${anchor}-tytul`;
 
   return (
     <article
       id={ids.claim}
-      aria-labelledby={headingId}
-      data-claim-anchor={ids.claim}
-      className="flex scroll-mt-6 flex-col gap-7"
+      data-claim-anchor={anchor}
+      aria-labelledby={`${ids.claim}-tytul`}
+      className={cx("scroll-mt-6 border-l-4 bg-surface px-6 py-6 shadow-card", verdictStripe(claim.verdict))}
     >
-      <div className="bg-subtle">
-        <header className="px-5 pt-8 pb-6 sm:px-10 sm:pt-9">
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
-            {total > 1 ? `Twierdzenie ${index} z ${total}` : "Sprawdzane twierdzenie"}
-            {claim.risk === "high" ? (
-              <Tag tone="warn" icon={ShieldAlert}>
-                Temat wysokiego ryzyka
-              </Tag>
-            ) : null}
-          </p>
-          <h2 id={headingId} className="mt-1.5 text-[1.5rem] leading-snug font-bold sm:text-[1.625rem]">
-            {claim.text}
-          </h2>
-        </header>
+      {total > 1 ? (
+        <p className="eyebrow mb-2">Twierdzenie {index} z {total}</p>
+      ) : null}
 
-        <VerdictBanner verdict={claim.verdict} label={claim.verdict_label} />
+      <h2 id={`${ids.claim}-tytul`} className="text-xl font-bold leading-snug">
+        {claim.text}
+      </h2>
 
-        <div className="flex flex-col gap-6 px-5 pt-7 pb-9 sm:px-10">
-          {claim.conflict ? (
-            <Notice tone="warn" icon={GitCompareArrows} title="Źródła podają rozbieżne informacje">
-              <p>Przeczytaj materiały z obu stron, zanim wyrobisz sobie zdanie.</p>
-            </Notice>
-          ) : null}
+      <p className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-2">
+        <VerdictChip verdict={claim.verdict} />
+        {claim.risk === "high" ? (
+          <Tag tone="warn" icon={ShieldAlert}>
+            Wysokie ryzyko
+          </Tag>
+        ) : null}
+      </p>
 
-          <section id={ids.assessment} className="scroll-mt-6">
-            <h3 className="text-[1.0625rem] font-bold">Interpretacja systemu</h3>
-            <p className="mt-1 text-sm text-muted">
-              Opis przygotował model językowy na podstawie źródeł poniżej. Może zawierać
-              błędy.
-            </p>
-            <p className="mt-3 leading-relaxed whitespace-pre-line">{claim.justification}</p>
-          </section>
-
-          <StrengthMeter strength={claim.strength} />
-
-          {claim.missing ? (
-            <section>
-              <h3 className="text-[1.0625rem] font-bold">Czego nie udało się ustalić</h3>
-              <p className="mt-1.5 leading-relaxed whitespace-pre-line">{claim.missing}</p>
-            </section>
-          ) : null}
-        </div>
-      </div>
-
-      <section
-        id={ids.evidence}
-        aria-labelledby={`${ids.evidence}-tytul`}
-        className="scroll-mt-6 bg-subtle px-6 py-7"
-      >
-        <h3 id={`${ids.evidence}-tytul`} className="text-xl font-semibold">
-          Materiały źródłowe
-          {total > 1 ? <span className="sr-only"> do twierdzenia {index}</span> : null}
+      <section id={ids.assessment} aria-labelledby={`${ids.assessment}-tytul`} className="mt-6 scroll-mt-6">
+        <h3 id={`${ids.assessment}-tytul`} className="text-lg font-semibold">
+          Interpretacja i siła podstawy
         </h3>
-        <p className="mt-1 mb-4.5 text-sm text-muted">
-          Dosłowne cytaty ze źródeł. Otwórz źródło, aby przeczytać całość.
-        </p>
-        <EvidenceChain evidence={claim.evidence} />
+        {claim.justification ? (
+          <p className="mt-2 leading-relaxed whitespace-pre-line">{claim.justification}</p>
+        ) : null}
+        <div className="mt-4">
+          <StrengthMeter strength={claim.strength} id={`${ids.assessment}-sila`} />
+        </div>
       </section>
+
+      {claim.evidence.length > 0 ? (
+        <section id={ids.evidence} aria-labelledby={`${ids.evidence}-tytul`} className="mt-6 scroll-mt-6">
+          <h3 id={`${ids.evidence}-tytul`} className="text-lg font-semibold">
+            Materiały źródłowe{" "}
+            <span className="font-normal text-muted">
+              ({claim.evidence.length}{" "}
+              {plural(claim.evidence.length, "materiał", "materiały", "materiałów")})
+            </span>
+          </h3>
+          <ul className="mt-3 flex flex-col gap-3">
+            {claim.evidence.map((item) => (
+              <li
+                key={item.id}
+                className="border border-line bg-subtle px-4.5 py-3.5 text-sm"
+              >
+                <p className="mb-1 flex items-center gap-2">
+                  <Tag tone={item.stance === "refutes" ? "bad" : item.stance === "supports" ? "ok" : undefined}>
+                    {STANCE_LABELS[item.stance] ?? item.stance}
+                  </Tag>
+                  <span className="text-muted">{item.source.publisher}</span>
+                </p>
+                <ExternalLink href={item.source.url} className="inline-block py-1 font-semibold">
+                  {item.source.title || item.source.url}
+                </ExternalLink>
+                {item.source.rating ? (
+                  <p className="mt-0.5 text-muted">Ocena: {item.source.rating}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <section id={ids.evidence} className="mt-6 scroll-mt-6">
+          <p className="text-sm text-muted">
+            Brak materiałów źródłowych dla tego twierdzenia w Google Fact Check.
+          </p>
+        </section>
+      )}
     </article>
   );
 }

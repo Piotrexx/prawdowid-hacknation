@@ -6,10 +6,34 @@ services:
     env_file: ./backend/.env
     environment:
       CORS_ORIGINS: http://localhost:3000
+      # Bielik via Ollama (running in separate container)
+      BIELIK_BASE_URL: http://ollama:11434/v1
+      BIELIK_MODEL: llama3.2:3b
     ports:
       - "8000:8000"
     volumes:
-      - backend-var:/app/var
+      - backend-data:/app/data
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # Pre-pull Bielik model on startup.
+    # Waits for Ollama to be ready before pulling (fixes the race condition
+    # the original `sleep 5` had — on slow machines the pull started too early).
+    # Model is cached in the ollama-data volume, so once pulled it survives
+    # container recreation/rebuilds (only `docker compose down -v` clears it);
+    # skipping `ollama pull` entirely when it's already present avoids an
+    # extra registry round-trip on every restart.
+    entrypoint: >
+      sh -c "ollama serve &
+        until curl -sf http://localhost:11434/ > /dev/null 2>&1; do sleep 2; done &&
+        (ollama list | grep -q 'llama3.2:3b' || ollama pull llama3.2:3b) &&
+        wait"
 
   frontend:
     build:
@@ -22,4 +46,5 @@ services:
       - backend
 
 volumes:
-  backend-var:
+  backend-data:
+  ollama-data:
