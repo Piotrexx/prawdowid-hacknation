@@ -1,12 +1,23 @@
 "use client";
 
-import { BookOpen, Menu, MessageSquareText, Plus, SquarePen, X, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  Menu,
+  MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  SquarePen,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { HistoryList } from "@/components/chat/HistoryList";
 import { cx } from "@/lib/cx";
 import { requestNewCheck } from "@/lib/newCheck";
+import { setSidebarCollapsed, useSidebarCollapsed } from "@/lib/sidebar";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
 const NAV_ITEMS: Array<{ href: string; label: string; icon: LucideIcon }> = [
@@ -31,15 +42,16 @@ function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate
               href={href}
               aria-current={current ? "page" : undefined}
               onClick={onNavigate}
+              title={label}
               className={cx(
-                "flex min-h-11 items-center gap-3 border-l-[3px] px-3 transition-colors",
+                "flex min-h-11 items-center gap-3 border-l-[3px] px-3 transition-colors collapsed:justify-center collapsed:px-0",
                 current
                   ? "border-accent bg-surface font-bold text-accent"
                   : "border-transparent text-ink hover:bg-surface hover:text-accent",
               )}
             >
               <Icon aria-hidden="true" className="size-5 shrink-0" />
-              {label}
+              <span className="collapsed:sr-only">{label}</span>
             </Link>
           </li>
         );
@@ -75,6 +87,25 @@ function useStartNewCheck(onNavigate?: () => void) {
   };
 }
 
+function CollapseToggle() {
+  const collapsed = useSidebarCollapsed();
+  return (
+    <button
+      type="button"
+      aria-expanded={!collapsed}
+      aria-controls="menu-boczne-desktop"
+      onClick={() => setSidebarCollapsed(!collapsed)}
+      title={collapsed ? "Rozwiń menu" : "Zwiń menu"}
+      className="grid size-11 shrink-0 place-items-center text-muted transition-colors hover:bg-surface hover:text-accent"
+    >
+      {/* Icons follow the CSS state, so a saved collapsed rail is right before hydration. */}
+      <PanelLeftClose aria-hidden="true" className="size-5.5 collapsed:hidden" />
+      <PanelLeftOpen aria-hidden="true" className="hidden size-5.5 collapsed:block" />
+      <span className="sr-only">{collapsed ? "Rozwiń menu" : "Zwiń menu"}</span>
+    </button>
+  );
+}
+
 interface SidebarContentProps {
   /** Keeps ids unique between the desktop sidebar and the phone drawer. */
   idPrefix: string;
@@ -87,11 +118,14 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
 
   return (
     <>
-      <div className="flex flex-col gap-4 px-4 pt-5">
-        <div className="hidden px-1 lg:block">
-          <Brand onNavigate={onNavigate} />
+      <div className="flex flex-col gap-4 px-4 pt-5 collapsed:px-0 collapsed:pt-3">
+        <div className="hidden items-center justify-between gap-2 pl-1 lg:flex collapsed:justify-center collapsed:pl-0">
+          <span className="collapsed:hidden">
+            <Brand onNavigate={onNavigate} />
+          </span>
+          {idPrefix === "boczny" ? <CollapseToggle /> : null}
         </div>
-        <nav aria-label="Główna nawigacja" className="-mx-4">
+        <nav aria-label="Główna nawigacja" className="-mx-4 collapsed:mx-0">
           {/* On routes with a dynamic segment the pathname is unknown while prerendering. */}
           <Suspense fallback={<NavList pathname={null} onNavigate={onNavigate} />}>
             <CurrentNavList onNavigate={onNavigate} />
@@ -103,26 +137,27 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
         aria-labelledby={historyId}
         className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
       >
-        <h2 id={historyId} className="eyebrow mb-2 px-5">
+        <h2 id={historyId} className="eyebrow mb-2 px-5 collapsed:sr-only">
           Twoje sesje
         </h2>
         {/* The list shrinks and scrolls, so the button under it stays in view. */}
-        <div className="min-h-0 shrink overflow-y-auto px-2">
+        <div className="min-h-0 shrink overflow-y-auto px-2 collapsed:hidden">
           <HistoryList onNavigate={onNavigate} />
         </div>
         <div className="shrink-0 pt-1 pb-2">
           <button
             type="button"
             onClick={startNewCheck}
-            className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent"
+            title="Nowa sesja"
+            className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent collapsed:justify-center collapsed:px-0"
           >
             <Plus aria-hidden="true" className="size-5 shrink-0" />
-            Nowa sesja
+            <span className="collapsed:sr-only">Nowa sesja</span>
           </button>
         </div>
       </section>
 
-      <div className="border-t border-line px-4 pt-3 pb-4">
+      <div className="border-t border-line px-4 pt-3 pb-4 collapsed:px-2">
         <AccessibilitySettings placement="above" />
       </div>
     </>
@@ -223,8 +258,10 @@ export function AppSidebar() {
     <>
       <MobileBar />
       <aside
+        id="menu-boczne-desktop"
         aria-label="Menu boczne"
-        className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col border-r border-line bg-subtle lg:flex"
+        data-rail
+        className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col border-r border-line bg-subtle transition-[width] duration-200 lg:flex rail-collapsed:w-16"
       >
         <SidebarContent idPrefix="boczny" />
       </aside>
