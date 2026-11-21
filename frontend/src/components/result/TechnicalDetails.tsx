@@ -3,7 +3,7 @@ import { formatDateTime, formatInteger, formatSeconds, formatUsd } from "@/lib/f
 import { channelLabel } from "@/lib/labels";
 import type { CheckResponse } from "@/lib/types";
 
-export function TechnicalDetails({ result }: { result: CheckResponse }) {
+export function TechnicalDetails({ result, id }: { result: CheckResponse; id?: string }) {
   const { meta } = result;
 
   const rows: Array<[string, string]> = [
@@ -33,7 +33,7 @@ export function TechnicalDetails({ result }: { result: CheckResponse }) {
   }
 
   return (
-    <Disclosure summary="Szczegóły techniczne">
+    <Disclosure summary="Szczegóły techniczne" id={id} className="scroll-mt-6">
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
         {rows.map(([label, value], index) => (
           <div key={`${label}-${index}`} className="sm:contents">

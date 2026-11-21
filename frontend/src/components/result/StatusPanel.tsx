@@ -38,7 +38,7 @@ export function StatusPanel({ result, actions }: StatusPanelProps) {
   const Icon = panel.icon;
 
   return (
-    <div className="flex gap-4 rounded-xl border-2 border-dashed border-line-strong bg-surface p-5">
+    <div className="flex gap-4 border-2 border-dashed border-line-strong bg-surface p-5">
       <Icon aria-hidden="true" className="mt-1 size-7 shrink-0 text-muted" />
       <div className="min-w-0 space-y-3">
         <p className="text-lg leading-relaxed whitespace-pre-line">
