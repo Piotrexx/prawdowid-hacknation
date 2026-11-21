@@ -1,173 +1,132 @@
-# Prawdowid – backend (FastAPI + PostgreSQL/pgvector)
+# Prawdowid — backend
 
-Weryfikacja wiarygodności artykułu:
-**URL → trafilatura → Bielik 4.5B (keywords) → [Google Fact Check + pgvector] → DeepSeek (verdict)**
+Weryfikacja informacji oparta na jawnym korpusie źródeł i cytatach. Każde twierdzenie
+jest oceniane osobno; werdykt wynika z cytatów zweryfikowanych automatycznie w źródle
+(`app/core/verdict.py`). Model językowy proponuje ocenę, ale nie jest jedyną podstawą
+werdyktu. Gdy brakuje dowodów, usługa wstrzymuje się od rozstrzygnięcia.
 
-Wynik zawiera nie tylko werdykt, ale też **materiały podobne semantycznie** z lokalnego korpusu
-(10 źródeł urzędowych), które trafiają do kontekstu modelu oceniającego.
+## Architektura
 
-## Uruchomienie (Docker – zalecane)
+- **FastAPI** — jeden kontrakt API dla WWW, obrazów i nagrań.
+- **PostgreSQL + pgvector** — jedyne źródło prawdy dla przebiegu sprawdzeń, spraw
+  moderatora, zgód, archiwum, korpusu i przebiegów ingestu.
+- **Ingest w kodzie** (`app/ingest/registry.py`) — źródła urzędowe, prawne i
+  fact-checkingowe są pobierane na bieżąco i zapisywane w tabeli `articles`.
+  Nie ma pliku `sources.yaml` ani statycznego korpusu JSONL.
+- **Wyszukiwanie** — embeddingi fastembed + pgvector; przy braku embeddingów działa
+  uczciwy fallback leksykalny.
+- **Model językowy** — wymienny dostawca (`openai_compatible` lub `anthropic`);
+  Bielik lokalnie odpowiada za słowa kluczowe.
+- **Głos** — nagranie jest przesyłane na serwer i transkrybowane lokalnie przez
+  faster-whisper; dźwięk nie jest zapisywany.
+- **Archiwum** — kontrolowana, ograniczona retencją kopia fragmentu materiału,
+  wyłącznie na wyraźne żądanie użytkownika i po zgodzie na politykę prywatności.
+- **Eksport** — CSV, JSON i bundle STIX 2.1 z przybliżonym mapowaniem DISARM.
 
-```bash
-cp backend/.env.example backend/.env     # uzupełnij klucze API
-docker compose up --build
-```
-
-- Backend API: <http://localhost:8000>
-- Dokumentacja OpenAPI: <http://localhost:8000/docs>
-- Frontend: <http://localhost:3000>
-- PostgreSQL + pgvector: `localhost:5432` (baza `prawdowid`, testowa `prawdowid_test`)
-- Ollama (Bielik): <http://localhost:11434>
-
-## Uruchomienie lokalne (bez Docker dla aplikacji)
+## Uruchomienie
 
 ```bash
 # 1. Baza z pgvector
 docker compose up -d postgres
 
-# 2. Konfiguracja
+# 2. Zależności
 cd backend
-cp .env.example .env
-# Wypełnij: LLM_API_KEY (DeepSeek), GOOGLE_FACTCHECK_API_KEY, ADMIN_TOKEN, ID_HASH_SALT
-
-# 3. Zależności i serwer
 uv sync
-uv run uvicorn app.main:app --port 8000
+
+# 3. Konfiguracja
+cp .env.example .env
+# uzupełnij LLM_API_KEY (opcjonalnie GOOGLE_FACTCHECK_API_KEY, ADMIN_TOKEN)
+
+# 4. Ingest źródeł (wymaga sieci)
+uv run python -m app.ingest.run --max 10
+
+# 5. Usługa
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
-Bielik działa przez Ollama/vLLM:
+Bez ingestu usługa odpowiada, ale korpus jest pusty i twierdzenia kończą się
+„brak wystarczających dowodów”. To poprawne zachowanie, nie werdykt.
+
+### Docker
 
 ```bash
-ollama pull bielik:4.5b-instruct
-ollama serve
+docker compose up --build
 ```
 
-Bez klucza API usługa też się uruchomi: wyszukiwanie i korpus działają, a sprawdzenie kończy się
-jawnym komunikatem o problemie technicznym (nigdy pozornym werdyktem).
+`docker-compose.yml` uruchamia PostgreSQL/pgvector, backend, Ollamę z Bielikiem i
+frontend. Modele embeddingów i Whisper są cache'owane w wolumenie `backend-var`.
 
-## Baza danych i korpus
+## Endpointy
 
-Wymagany jest PostgreSQL z rozszerzeniem `pgvector` (obraz `pgvector/pgvector:pg17`).
-Schemat tworzy się automatycznie przy starcie (`CREATE EXTENSION IF NOT EXISTS vector` + `create_all`).
+Publiczne:
 
-| Tabela | Zawartość |
-|---|---|
-| `checks` | przebieg sprawdzeń i pełna odpowiedź API |
-| `security_events` | zdarzenia bezpieczeństwa |
-| `articles` | dokumenty korpusu: tytuł, fragment, link, data, `embedding vector(384)` |
-| `ingest_runs` | historia pobrań źródeł |
+- `POST /api/v1/checks` — tekst lub URL
+- `POST /api/v1/checks/image` — zrzut ekranu/zdjęcie
+- `POST /api/v1/checks/audio` — nagranie (webm/wav/ogg)
+- `GET /api/v1/checks/{id}`
+- `GET /api/v1/health`
+- `POST /api/v1/consent`, `GET /api/v1/consent/{session_id}`
+- `DELETE /api/v1/sessions/{session_id}`
+- `POST /api/v1/archive`, `GET /api/v1/archive/{id}`, `DELETE /api/v1/archive/{id}`
 
-Embeddingi: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` przez `fastembed`
-(384 wymiary, ok. 470 MB, działa lokalnie na CPU, bez wysyłania treści do zewnętrznego API).
+Wszystkie zapisy sprawdzeń i archiwum wymagają aktywnej zgody na aktualną wersję
+polityki prywatności (ciasteczko + wpis w bazie). Brak zgody to `428`, nie werdykt.
 
-### Ingest źródeł
+Panel moderatora (`X-Admin-Token`):
 
-```bash
-uv run python -m app.ingest.run --list
-uv run python -m app.ingest.run --only gis,cert-polska --max 10
-uv run python -m app.ingest.run --max 10        # wszystkie źródła
-```
+- `GET /api/v1/admin/metrics`
+- `GET /api/v1/admin/checks`, `GET /api/v1/admin/events`
+- `GET/PATCH /api/v1/admin/cases`
+- `GET /api/v1/admin/export?format=csv|json`
+- `GET /api/v1/admin/export/stix`
+- `POST /api/v1/admin/corpus/ingest`, `GET /api/v1/admin/corpus/stats`
+- `GET/DELETE /api/v1/admin/archive`
 
-Zasady: maks. 10 dokumentów na źródło na przebieg, `robots.txt` respektowany,
-throttling 1 req/s na domenę, zapis tylko tytułu i fragmentu (nie pełnych tekstów),
-upsert po URL i `content_hash` (embedding liczony ponownie tylko przy zmianie treści).
+Nie ma publicznego endpointu `/sources`; katalog źródeł jest w kodzie i służy do
+audytu oraz metadanych cytowań.
 
-Źródła (szczegóły w [../docs/ZRODLA.md](../docs/ZRODLA.md)):
+## Źródła i aktualizacja
 
-| Klucz | Źródło | Adapter |
-|---|---|---|
-| `rcb-raport-dobowy` | RCB – raport dobowy | migawka dzienna |
-| `gov-ostrzezenia` | gov.pl – ostrzeżenia (RSO) | API JSON |
-| `imgw-meteo` | IMGW – ostrzeżenia meteo | API JSON |
-| `imgw-hydro` | IMGW – sytuacja hydrologiczna | API JSON |
-| `cert-polska` | CERT Polska – komunikaty | lista HTML |
-| `gddkia` | GDDKiA – aktualności (gov.pl) | lista HTML |
-| `kgpsp` | KG PSP – aktualności | lista HTML |
-| `policja` | Policja – aktualności | lista HTML |
-| `gis` | GIS – ostrzeżenia | lista HTML |
-| `paa` | PAA – aktualności | lista HTML |
+Katalog źródeł znajduje się w `app/ingest/registry.py`. Każdy wpis ma nazwę,
+wydawcę, typ, poziom (1–3), licencję, politykę przechowywania, uzasadnienie
+kwalifikacji i sposób aktualizacji. Ingest respektuje robots.txt i nie obchodzi
+zabezpieczeń serwisów. Źródła fact-checkingowe (ClaimReview) trafiają do korpusu
+jako dane strukturalne: twierdzenie, ocena i link.
 
-Ingest można też uruchomić z panelu admina:
+Status źródła (np. sankcje UE) jest osobnym, neutralnym ostrzeżeniem w
+`app/security/source_status.py`; nigdy nie przesądza o prawdziwości treści.
 
-```http
-POST /api/v1/admin/corpus/ingest        # X-Admin-Token, opcjonalnie {"sources": ["gis"], "max_per_source": 10}
-GET  /api/v1/admin/corpus/stats
-```
+## Prywatność i bezpieczeństwo
 
-## Wyszukiwanie semantyczne
-
-Po ekstrakcji słów kluczowych Bielik podaje `keywords`, `main_topic` i `summary`.
-Zapytanie do pgvector powstaje z tych trzech pól. Kandydaci (top 20, ostatnie 90 dni)
-są przenoszani przez hybrydowy rerank:
-
-```
-score = 0.8 * cosine_similarity + 0.2 * keyword_overlap
-```
-
-Wymagane jest podobieństwo ≥ `RETRIEVAL_MIN_SIMILARITY` (domyślnie 0.58) oraz
-albo wspólne słowo kluczowe, albo bardzo wysokie podobieństwo
-(`RETRIEVAL_STRONG_SIMILARITY`, domyślnie 0.82). Wynik: maks. 6 materiałów,
-maks. 2 z jednego źródła. Trafienia trafiają do `related_materials` w odpowiedzi API
-oraz do promptu DeepSeek jako **kontekst, nie dowód**.
-
-## API (`/api/v1`)
-
-| Metoda | Ścieżka | Opis |
-|---|---|---|
-| POST | `/checks` | Sprawdzenie URL artykułu (`{url, session_id?}`) |
-| GET | `/checks/{id}` | Zapisany wynik |
-| DELETE | `/sessions/{session_id}` | Usunięcie danych sesji |
-| GET | `/health` | Stan usługi, modele, liczba dokumentów korpusu |
-| GET | `/admin/metrics`, `/admin/checks`, `/admin/export` | Panel admina (`X-Admin-Token`) |
-| POST | `/admin/corpus/ingest` | Ingest w tle |
-| GET | `/admin/corpus/stats` | Statystyki korpusu i przebiegów |
+- Maskowanie oczywistych danych osobowych przed wysłaniem do modelu.
+- Minimalizacja: dla stron zapisujemy tylko początek treści; nagrań nie zapisujemy.
+- Retencja sprawdzeń `RETENTION_DAYS`, archiwum `ARCHIVE_RETENTION_DAYS`; usuwanie
+  sesji usuwa sprawdzenia, zgodę, powiązania spraw i archiwum.
+- Instrukcje w treści i źródłach są traktowane jako dane; prompt injection jest
+  wykrywany i logowany, ale nigdy nie zmienia zasad systemu.
+- Sekrety wyłącznie w `.env`; `.env` nie trafia do repozytorium.
 
 ## Testy
-
-Testy wymagają PostgreSQL z pgvector (baza `prawdowid_test`, tworzona przez `backend/db/init.sql`):
 
 ```bash
 docker compose up -d postgres
 cd backend
 uv run pytest
-uv run ruff check .
+uv run ruff check app tests
 ```
 
-Testy nie łączą się z internetem: adaptery są sprawdzane na fixture'ach HTML/JSON,
-a w pipeline'ie używane są fake providery LLM i `FakeEmbedder`.
+Testy wymagają PostgreSQL z pgvector (`prawdowid_test`). `backend/eval/cases.jsonl`
+zawiera ≥30 przypadków referencyjnych; `uv run python -m eval.run_eval` mierzy
+macro-F1, pokrycie cytowań, wstrzymanie się, odporność na prompt injection,
+spójność i czas odpowiedzi.
 
-## Struktura projektu
+## Ograniczenia
 
-```
-backend/
-├── app/
-│   ├── api/              # checks.py, admin.py, deps.py
-│   ├── core/             # pipeline.py, prompts.py
-│   ├── ingest/           # registry.py, adapters.py, http.py, run.py
-│   ├── retrieval/        # embeddings.py, corpus.py, service.py
-│   ├── llm/              # providerzy OpenAI-compatible
-│   ├── security/         # SSRF, robots.txt, rate limiting
-│   ├── store/            # models.py, db.py
-│   ├── config.py
-│   ├── schemas.py
-│   └── main.py
-├── db/init.sql           # CREATE EXTENSION vector + baza testowa
-├── data/                 # dane lokalne
-├── eval/                 # ewaluacja na prawdziwym modelu
-├── tests/
-├── Dockerfile
-└── pyproject.toml
-```
-
-## Wymagane klucze API
-
-1. DeepSeek API – <https://platform.deepseek.com/> (werdykt)
-2. Google Fact Check Tools API – <https://developers.google.com/fact-check/tools/api>
-3. Ollama + Bielik – `ollama pull bielik:4.5b-instruct` (słowa kluczowe)
-
-## Uwagi
-
-- Backend przyjmuje **tylko URL** (brak endpointu dla czystego tekstu i obrazów).
-- Prompty są wyłącznie po polsku.
-- Limity zapytań: domyślnie 10/min na IP.
-- Pierwsze sprawdzenie po starcie może potrwać dłużej, jeśli model embeddingów nie jest jeszcze w cache.
+- Korpus zależy od dostępności źródeł i działania ingestu.
+- Model językowy może się mylić; cytaty są weryfikowane, ale interpretacja nie jest
+  nieomylna.
+- Transkrypcja lokalna może zawierać błędy; nie oceniamy autentyczności nagrania.
+- Archiwum przechowuje tylko fragment i metadane, nie pełne treści chronione prawem
+  autorskim.
+- Integracja z OpenCTI jest eksportem STIX (plik), nie synchronicznym push do
+  instancji.

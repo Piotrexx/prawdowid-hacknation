@@ -1,70 +1,66 @@
 # Źródła
 
-Korpus Prawdowida to **10 polskich źródeł urzędowych**, pobieranych automatycznie przez
-`backend/app/ingest/`. Katalog źródeł jest w kodzie (`backend/app/ingest/registry.py`),
-a stan korpusu i historia pobrań są widoczne w API (`GET /api/v1/admin/corpus/stats`)
-oraz w `ingest_runs`.
+Korpus Prawdowida jest budowany na bieżąco przez `backend/app/ingest/` i zapisywany
+w PostgreSQL (tabela `articles`). Katalog źródeł jest **w kodzie**
+(`backend/app/ingest/registry.py`) — nie ma pliku `sources.yaml` ani statycznego
+korpusu JSONL. Stan korpusu i historia pobrań są widoczne w
+`GET /api/v1/admin/corpus/stats` (nagłówek `X-Admin-Token`).
+
+## Typy źródeł i poziomy
+
+- **Poziom 1 — źródła pierwotne/urzędowe:** RCB, RSO gov.pl, IMGW, CERT Polska,
+  GDDKiA, KG PSP, Policja, GIS, PAA, MSZ, Sejm ELI, OSW. Mają największą wagę w
+  ocenie siły dowodów.
+- **Poziom 2 — fact-checking:** Konkret24 (RSS), Pravda (RSS i rekordy ClaimReview),
+  FakeNews.pl (RSS). Records ClaimReview zapisują twierdzenie, ocenę redakcji,
+  link i adresy wcześniejszych wystąpień.
+- **Poziom 3 — media:** Rzeczpospolita. Mogą dawać wyłącznie kontekst; nigdy same
+  nie rozstrzygają werdyktu.
+
+Każdy wpis `SourceSpec` zawiera nazwę, wydawcę, typ, poziom, licencję, politykę
+przechowywania (`full_text`, `excerpt`, `structured`), uzasadnienie kwalifikacji i
+sposób aktualizacji. Dzięki temu lista źródeł jest audytowalna w repozytorium.
 
 ## Co jest w korpusie
 
-Stan po uruchomieniu `uv run python -m app.ingest.run --max 10`:
-**10 źródeł, do 10 dokumentów na źródło** (ok. 80–100 dokumentów na przebieg).
-Zapisujemy wyłącznie **tytuł, fragment do ok. 1500 znaków i link do oryginału** —
-nie pełne teksty. Dzięki temu odpowiedź zawsze prowadzi do źródła, a prawo autorskie
-nie jest naruszane.
+- Tytuł, treść lub fragment zależnie od licencji, wydawca, data publikacji, data
+  pobrania i link do oryginału.
+- Dla źródeł na otwartych licencjach i materiałów urzędowych — pełny tekst.
+- Dla treści chronionych prawem autorskim — tylko tytuł, krótki fragment i link.
+- Dla ClaimReview — dane strukturalne: twierdzenie, ocena, link, `appearance_urls`.
 
-| Klucz | Źródło | Co pobieramy | Sposób |
-|---|---|---|---|
-| `rcb-raport-dobowy` | Rządowe Centrum Bezpieczeństwa | dzienny raport dobowy | migawka strony, unikalna po dacie |
-| `gov-ostrzezenia` | gov.pl – system ostrzeżeń (RSO) | komunikaty RSO dla 16 województw | oficjalne API JSON |
-| `imgw-meteo` | IMGW-PIB – meteo | ostrzeżenia meteorologiczne | `danepubliczne.imgw.pl` (JSON) |
-| `imgw-hydro` | IMGW-PIB – hydro | przekroczenia stanów wód; przy braku przekroczeń jawna migawka „brak przekroczeń” | `danepubliczne.imgw.pl` (JSON) |
-| `cert-polska` | CERT Polska | komunikaty o oszustwach i podatnościach | lista HTML |
-| `gddkia` | GDDKiA | aktualności | `gov.pl/web/gddkia/aktualnosci` |
-| `kgpsp` | Komenda Główna PSP | aktualności | `gov.pl/web/kgpsp/aktualnosci` |
-| `policja` | Policja | aktualności | `policja.pl/pol/aktualnosci` |
-| `gis` | Główny Inspektorat Sanitarny | ostrzeżenia publiczne | `gov.pl/web/gis/ostrzezenia` |
-| `paa` | Państwowa Agencja Atomistyki | aktualności | `gov.pl/web/paa/aktualnosci` |
-
-### Świadome zamiany
-
-- **GDDKiA** – oryginalne `drogi.gddkia.gov.pl` jest za WAF Incapsula i nie pozwala na
-  stabilne pobieranie bez przeglądarki. Używamy oficjalnych aktualności GDDKiA na gov.pl.
-- **PAA** – `monitoring.paa.gov.pl` to aplikacja Angular bez publicznego API.
-  Używamy oficjalnych aktualności PAA na gov.pl. Monitoring radiacyjny można dodać później
-  przez przeglądarkę headless lub API, jeśli zostanie udostępnione.
-- **IMGW** – `meteo.imgw.pl` i `hydro.imgw.pl` to aplikacje JS; korzystamy z publicznych
-  endpointów JSON IMGW, które zwracają te same dane.
-- **Ostrzeżenia gov.pl** – strona jest aplikacją Vue; dane pobieramy z jej oficjalnego
-  backendu `/api/data/proxy/rso/...`, a nie przez scraping DOM.
+Nie przechowujemy pełnych treści ani obrazów bez podstawy prawnej, licencji,
+retencji i procedury usunięcia.
 
 ## Zasady pobierania
 
-- `robots.txt` jest sprawdzany i respektowany; przy 401/403 źródło jest traktowane jako zablokowane.
-- Maks. **10 dokumentów na źródło na jeden przebieg** (`--max`).
-- Throttling **1 żądanie/s na domenę**, User-Agent `fact-check-research-bot/0.1`.
+- `robots.txt` jest sprawdzany i respektowany; przy 401/403 źródło jest pomijane.
+- Maks. `INGEST_MAX_PER_SOURCE` dokumentów na źródło na przebieg (`--max`).
+- Throttling `INGEST_REQUEST_DELAY_S` na domenę, User-Agent `fact-check-research-bot/0.1`.
 - Ochrona przed SSRF: wyłącznie publiczne adresy IP, bez przekierowań na sieci prywatne.
-- Upsert po kanonicznym URL; `content_hash` (wydawca + tytuł + fragment) decyduje,
+- Upsert po `external_id` (źródło + URL + twierdzenie); `content_hash` decyduje,
   czy przeliczać embedding.
-- Migawki dzienne (RCB, hydro) mają URL z datą (`#2026-11-21`), więc historia nie znika.
+- Migawki dzienne (RCB, hydro) mają URL z datą, więc historia nie znika.
 
 ## Embeddingi i wyszukiwanie
 
 - Model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 wymiary),
-  uruchamiany lokalnie przez `fastembed`/ONNX. Treść nie jest wysyłana do zewnętrznego API.
-- Embedding liczony z: wydawca + tytuł + fragment. Dzięki temu krótkie komunikaty
-  (np. IMGW) zachowują kontekst instytucji.
-- Kandydaci: top 20, ostatnie 90 dni, z wyłączeniem sprawdzanego URL.
-- Rerank hybrydowy: `0.8 * cosine + 0.2 * pokrycie słów kluczowych`.
-- Wynik: maks. 6 materiałów, maks. 2 na źródło, z progiem podobieństwa
-  (`RETRIEVAL_MIN_SIMILARITY`, `RETRIEVAL_STRONG_SIMILARITY`).
+  lokalnie przez `fastembed`/ONNX. Treść nie jest wysyłana do zewnętrznego API.
+- Embedding liczony z: wydawca + tytuł + treść/fragment.
+- Kandydaci: pgvector (HNSW, cosine), `RETRIEVAL_CANDIDATES`; bez filtra wieku, żeby
+  materiał archiwalny mógł wywołać ostrzeżenie zamiast zniknąć.
+- Rerank: `0.8 * cosine + 0.2 * pokrycie słów kluczowych`; maks. `RETRIEVAL_TOP_K`
+  fragmentów, maks. `RETRIEVAL_MAX_PER_SOURCE` na źródło.
+- Gdy embeddingi są wyłączone lub model się nie wczyta, działa fallback leksykalny;
+  odpowiedź zawiera ostrzeżenie `retrieval_degraded`.
 
-## Czego nie ma w korpusie
+## Status źródła i incydenty
 
-- Fact-checków redakcyjnych (Demagog, Konkret24, AFP) – to osobny kanał danych,
-  planowany jako uzupełnienie, ale nie jest częścią tego MVP.
-- Pełnych tekstów artykułów spoza gov.pl – świadomie tylko fragmenty i link.
-- Platform społecznościowych – nigdy nie trafiają do korpusu.
+- `app/security/source_status.py` zawiera jawną listę statusów (np. sankcje UE) i
+  podstawę prawną. Status wywołuje neutralne ostrzeżenie i nigdy nie przesądza o
+  prawdziwości konkretnej treści.
+- Dopasowania do znanych incydentów (URL, domena po ≥3 przypadkach, podobieństwo
+  treści) są pokazywane jako kontekst, nie jako werdykt.
 
 ## Aktualizacja
 
@@ -80,8 +76,7 @@ W Dockerze ingest można uruchomić z panelu moderatora:
 
 ## Do zrobienia przed pilotażem
 
-- Dodać kanał fact-checkingowy (ClaimReview / Google Fact Check Tools) jako osobny typ źródła.
 - Potwierdzić licencje fragmentów dla serwisów innych niż gov.pl.
 - Dodać monitoring radiacyjny PAA przez przeglądarkę headless albo oficjalne API.
-- Zbudować ręczny zbiór par „to samo wydarzenie / podobny temat” i dostroić progi retrievalu.
-- Rozważyć mocniejszy model embeddingów (np. e5-large) po pomiarze jakości na polskich tekstach.
+- Zbudować ręczny zbiór par „to samo wydarzenie / podobny temat” i dostroić progi.
+- Rozważyć mocniejszy model embeddingów (np. e5-large) po pomiarze jakości.

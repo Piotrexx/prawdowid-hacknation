@@ -21,8 +21,8 @@ Wynik: `eval/out/report.json` (mierniki), `results.csv` (każdy przypadek), `cit
 (pary twierdzenie–cytat do ręcznej oceny poprawności cytowania). Zestaw jury wystarczy zapisać w tym samym
 formacie: `{"id", "scenario", "text", "expected_verdict" | "expected_status", "attack"?, "consistency"?, "same_case_as"?}`.
 
-`eval/cases.jsonl` to 13 przypadków startowych opartych na rzeczywistych rekordach korpusu (pole `basis`).
-Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do co najmniej 30 przypadków.
+`eval/cases.jsonl` to 32 przypadki referencyjne oparte na rzeczywistych rekordach korpusu (pole `basis`).
+Nie są wpisane do promptów ani kodu. Zestaw obejmuje scenariusze A–J z sekcji 6 wymagań.
 
 | Miernik | Cel MVP | Jak liczymy | Wynik |
 |---|---|---|---|

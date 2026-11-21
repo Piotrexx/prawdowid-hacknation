@@ -1,16 +1,16 @@
 "use client";
 
-import { EyeOff, Quote, Scale } from "lucide-react";
+import { EyeOff, Mic, Quote, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageAttachment } from "@/components/check/useImageAttachment";
-import { ApiError, createCheck, createImageCheck, isAbort } from "@/lib/api";
+import { ApiError, createAudioCheck, createCheck, createImageCheck, isAbort } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { describeError } from "@/lib/errors";
-import { plural } from "@/lib/format";
 import { rememberCheck } from "@/lib/history";
 import { SHORT_VERDICT_LABELS } from "@/lib/labels";
 import { isSingleUrl } from "@/lib/links";
+import { maskPii } from "@/lib/pii";
 import { useNewCheckCount } from "@/lib/newCheck";
 import { cacheResult } from "@/lib/resultCache";
 import { ensureSessionId } from "@/lib/session";
@@ -21,7 +21,10 @@ import { Composer, TEXT_LIMIT } from "./Composer";
 interface Turn {
   id: number;
   text: string;
+  sentText: string;
+  maskedPii: string[];
   file: File | null;
+  kind: "image" | "audio" | null;
   /** Own object URL, so clearing the composer does not break the image in the thread. */
   imageUrl: string | null;
   state: TurnState;
@@ -54,7 +57,12 @@ function UserMessage({ turn }: { turn: Turn }) {
             className="mb-2 max-h-48 border border-line object-contain"
           />
         ) : null}
-        {turn.file ? null : (
+        {turn.kind === "audio" ? (
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Mic aria-hidden="true" className="size-4" />
+            {t("composer.voiceMessage", { defaultValue: "Nagranie głosowe" })}
+          </p>
+        ) : turn.file ? null : (
           <>
             <p
               className={cx(
@@ -73,6 +81,12 @@ function UserMessage({ turn }: { turn: Turn }) {
               >
                 {expanded ? t("chat.collapse") : t("chat.expand")}
               </button>
+            ) : null}
+            {turn.maskedPii.length > 0 ? (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+                <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+                Zamaskowano: {turn.maskedPii.join(", ")}.
+              </p>
             ) : null}
           </>
         )}
@@ -175,7 +189,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, state } : turn)));
   }
 
-  async function run(id: number, payload: { text: string; file: File | null }) {
+  async function run(id: number, payload: { text: string; file: File | null; kind: "image" | "audio" | null }) {
     const controller = new AbortController();
     controllers.current.add(controller);
     update(id, { kind: "loading" });
@@ -183,7 +197,9 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     try {
       const sessionId = ensureSessionId();
       const result = payload.file
-        ? await createImageCheck(payload.file, sessionId, controller.signal)
+        ? payload.kind === "audio"
+          ? await createAudioCheck(payload.file, sessionId, controller.signal)
+          : await createImageCheck(payload.file, sessionId, controller.signal)
         : await createCheck(
             isSingleUrl(payload.text)
               ? { url: payload.text, session_id: sessionId }
@@ -194,7 +210,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         cacheResult(result);
         rememberCheck(result);
       }
-      // A question about an image can only be answered in text, so hand the read text back.
+      // A question about an image or recording can only be answered in text, so hand the read text back.
       if (result.status === "needs_clarification" && payload.file && result.input.text.trim()) {
         setText(result.input.text);
       }
@@ -230,6 +246,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     }
     setFormError(null);
 
+    const { text: sentText, masked: maskedPii } = maskPii(trimmed);
+
     const id = nextId.current++;
     let imageUrl: string | null = null;
     if (file) {
@@ -239,17 +257,37 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     scrollTo.current = id;
     setTurns((current) => [
       ...current,
-      { id, text: trimmed, file, imageUrl, state: { kind: "loading" } },
+      { id, text: trimmed, sentText, maskedPii, file, kind: file ? "image" : null, imageUrl, state: { kind: "loading" } },
     ]);
     setText("");
     image.clear();
     textareaRef.current?.focus();
-    void run(id, { text: trimmed, file });
+    void run(id, { text: sentText, file, kind: file ? "image" : null });
+  }
+
+  function sendAudio(file: File) {
+    if (busy || waiting) return;
+    const id = nextId.current++;
+    scrollTo.current = id;
+    setTurns((current) => [
+      ...current,
+      {
+        id,
+        text: t("composer.voiceMessage", { defaultValue: "Nagranie głosowe" }),
+        sentText: "",
+        maskedPii: [],
+        file,
+        kind: "audio",
+        imageUrl: null,
+        state: { kind: "loading" },
+      },
+    ]);
+    void run(id, { text: "", file, kind: "audio" });
   }
 
   function retry(turn: Turn) {
     if (busy || waiting) return;
-    void run(turn.id, { text: turn.text, file: turn.file });
+    void run(turn.id, { text: turn.sentText, file: turn.file, kind: turn.kind });
   }
 
   function focusComposer() {
@@ -342,6 +380,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
           imageError={image.error}
           onPickImage={image.attach}
           onClearImage={image.clear}
+          onVoice={sendAudio}
           onSubmit={send}
           busy={busy}
           error={formError}

@@ -79,6 +79,19 @@ export function formatSeconds(ms: number | null | undefined): string {
   })} s`;
 }
 
+/** Duration in ms → "Analiza trwała 20 sekund." / "Analiza trwała 1 minutę i 20 sekund." */
+export function formatDuration(ms: number | null | undefined): string | null {
+  if (ms === null || ms === undefined) return null;
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 1) return "Analiza trwała mniej niż sekundę.";
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (minutes > 0) parts.push(`${minutes} ${plural(minutes, "minutę", "minuty", "minut")}`);
+  if (seconds > 0 || minutes === 0) parts.push(`${seconds} ${plural(seconds, "sekundę", "sekundy", "sekund")}`);
+  return `Analiza trwała ${parts.join(" i ")}.`;
+}
+
 export function formatUsd(value: number | null | undefined): string {
   if (value === null || value === undefined) return "brak danych";
   return `${value.toLocaleString(LOCALE, {

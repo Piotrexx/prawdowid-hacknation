@@ -1,15 +1,43 @@
-"""Publiczny kontrakt API. Frontend i adaptery kanałów zależą wyłącznie od tych modeli."""
+"""Publiczny kontrakt API. Frontend i adaptery kanałów zależą wyłącznie od tych modeli.
 
+Werdykt powstaje w dwóch warstwach:
+ * `claims` – ocena każdego twierdzenia osobno, oparta na zweryfikowanych cytatach
+   z katalogu źródeł (`evidence`). To warstwa dowodowa i ona jest rozstrzygająca.
+ * `verdict` / `confidence` / `fact_check_results` – podsumowanie całego materiału
+   oraz dopasowania z Google Fact Check Tools. To warstwa wspierająca.
+"""
+
+import datetime as dt
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class Verdict(StrEnum):
+    CONFIRMED = "potwierdzone"
+    FALSE = "falszywe"
+    MISLEADING = "wprowadzajace_w_blad"
+    INSUFFICIENT = "brak_wystarczajacych_dowodow"
+    NOT_VERIFIABLE = "nie_podlega_weryfikacji"
+
+
+VERDICT_LABELS: dict[Verdict, str] = {
+    Verdict.CONFIRMED: "Potwierdzone",
+    Verdict.FALSE: "Fałszywe",
+    Verdict.MISLEADING: "Wprowadzające w błąd",
+    Verdict.INSUFFICIENT: "Brak wystarczających dowodów",
+    Verdict.NOT_VERIFIABLE: "Nie podlega weryfikacji",
+}
+
+# Alias zachowany dla kanałów, które importowały tę nazwę z wcześniejszej wersji.
+VerdictLabel = Verdict
 
 
 class CheckStatus(StrEnum):
-    """Stan obsługi zgłoszenia. Tylko COMPLETED niesie werdykt; pozostałe to nie są werdykty."""
+    """Stan obsługi zgłoszenia. Tylko COMPLETED niesie werdykty; pozostałe to nie są werdykty."""
 
     COMPLETED = "completed"
     NEEDS_CLARIFICATION = "needs_clarification"
@@ -17,12 +45,9 @@ class CheckStatus(StrEnum):
     ERROR = "error"
 
 
-class VerdictLabel(StrEnum):
-    FAKE = "fake_news"
-    REAL = "prawdziwe"
-    UNCERTAIN = "niepewne"
-    SATIRE = "satyna"
-    OPINION = "opinia"
+SourceType = Literal["official", "legal", "statistics", "international", "factcheck", "media"]
+Stance = Literal["supports", "refutes", "context"]
+RetrievalMode = Literal["hybrid", "bm25", "none"]
 
 
 class SourceRef(BaseModel):
@@ -32,14 +57,90 @@ class SourceRef(BaseModel):
     url: str
     published_at: date | None = None
     retrieved_at: datetime | None = None
-    source_type: str
+    source_type: SourceType
     source_name: str
+    license: str = ""
+    # Tylko dla rekordów fact-checkingowych: twierdzenie sprawdzone przez redakcję i jej ocena.
+    claim_reviewed: str | None = None
     rating: str | None = None
     similarity: float | None = None
 
 
+class Evidence(BaseModel):
+    id: str
+    stance: Stance
+    quote: str = Field(description="Dosłowny fragment źródła, zweryfikowany automatycznie.")
+    source: SourceRef
+    archival: bool = False
+
+
+class StrengthFactor(BaseModel):
+    code: str
+    label: str
+    value: str
+    effect: Literal["plus", "minus", "neutral"]
+
+
+class Strength(BaseModel):
+    level: Literal["mocna", "umiarkowana", "slaba", "brak"]
+    score: float
+    factors: list[StrengthFactor] = []
+
+
+class ClaimResult(BaseModel):
+    id: str
+    text: str
+    verdict: Verdict
+    verdict_label: str
+    justification: str = Field(description="Interpretacja modelu; fakty są w `evidence`.")
+    strength: Strength
+    evidence: list[Evidence] = []
+    conflict: bool = False
+    missing: str | None = None
+    risk: Literal["standard", "high"] = "standard"
+
+
+class Warning(BaseModel):
+    code: Literal[
+        "injection_detected",
+        "archival_material",
+        "source_status",
+        "incident_match",
+        "pii_masked",
+        "retrieval_degraded",
+        "image_limits",
+        "audio_limits",
+        "input_truncated",
+        "factcheck_unavailable",
+        "keywords_degraded",
+        "transcription_unavailable",
+    ]
+    message: str
+
+
+class IncidentMatch(BaseModel):
+    incident_id: str
+    match_type: Literal["url", "domain", "content"]
+    title: str
+    publisher: str
+    url: str
+    # `dt.date`, bo nazwa pola przesłania typ `date` w ciele klasy.
+    date: dt.date | None = None
+    note: str
+
+
+class ModeratorCaseInfo(BaseModel):
+    # "recommended" = tylko zalecenie; "created"/"updated" = sprawa faktycznie jest w kolejce.
+    state: Literal["none", "recommended", "created", "updated"] = "none"
+    case_id: int | None = None
+    occurrences: int | None = None
+    notified: bool = False
+    message: str = ""
+
+
 class FactCheckResult(BaseModel):
-    """Wynik z Google Fact Check Tools API"""
+    """Wynik z Google Fact Check Tools API. Kontekst wspierający, nie dowód z katalogu źródeł."""
+
     claim: str
     claimant: str | None = None
     claim_date: str | None = None
@@ -49,14 +150,24 @@ class FactCheckResult(BaseModel):
     publisher_site: str
     rating: str
     textual_rating: str | None = None
-    url: str
+    url: str | None = None
 
 
 class KeywordExtraction(BaseModel):
-    """Słowa kluczowe wyekstrahowane przez Bielik"""
+    """Słowa kluczowe i temat wyekstrahowane przez lokalny model (Bielik/Ollama)."""
+
     keywords: list[str]
     main_topic: str
     summary: str
+
+
+class InputInfo(BaseModel):
+    kind: Literal["text", "url", "image", "audio"]
+    text: str = Field(description="Treść po zamaskowaniu danych osobowych.")
+    url: str | None = None
+    title: str | None = None
+    image_metadata: dict[str, str] | None = None
+    audio_metadata: dict[str, str] | None = None
 
 
 class CheckMeta(BaseModel):
@@ -68,18 +179,15 @@ class CheckMeta(BaseModel):
     llm_calls: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
+    bielik_tokens_in: int = 0
+    bielik_tokens_out: int = 0
     cost_usd: float | None = None
+    retrieval_mode: RetrievalMode = "none"
+    corpus_version: str = ""
     processing_location: str = ""
     cached: bool = False
     related_count: int = 0
     embedding_model: str | None = None
-
-
-class InputInfo(BaseModel):
-    kind: Literal["url"]
-    text: str = Field(description="Treść artykułu po ekstrakcji")
-    url: str
-    title: str | None = None
 
 
 class CheckResponse(BaseModel):
@@ -87,34 +195,86 @@ class CheckResponse(BaseModel):
     created_at: datetime
     channel: str
     status: CheckStatus
+    # Komunikat dla statusów innych niż COMPLETED (prosty język, po polsku).
     status_message: str | None = None
     error_code: str | None = None
     input: InputInfo
-    verdict: VerdictLabel | None = None
+    summary: str | None = None
+    # --- warstwa dowodowa (rozstrzygająca) ---
+    claims: list[ClaimResult] = []
+    warnings: list[Warning] = []
+    incident_matches: list[IncidentMatch] = []
+    # Materiały znalezione, gdy ocena nie mogła zostać wykonana (np. awaria modelu).
+    related_materials: list[SourceRef] = []
+    moderator_case: ModeratorCaseInfo = ModeratorCaseInfo()
+    # --- warstwa wspierająca (podsumowanie całego materiału + fact-checki zewnętrzne) ---
+    verdict: Verdict | None = None
     verdict_label: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     justification: str | None = None
     keywords: list[str] = []
     main_topic: str = ""
-    summary: str = ""
     fact_check_results: list[FactCheckResult] = []
-    source_articles: list[SourceRef] = []
-    related_materials: list[SourceRef] = []
+    source_articles: list[SourceRef] = Field(
+        default=[],
+        description=(
+            "Źródła, na których oparto odpowiedź (bez powtórzeń), zapisywane razem z pytaniem, "
+            "czasem i wynikiem, aby przebieg sprawdzenia był pełny."
+        ),
+    )
     limitations: list[str] = []
     meta: CheckMeta = CheckMeta()
 
 
 class CheckRequest(BaseModel):
-    url: str = Field(..., max_length=2000)
+    text: str | None = Field(default=None, max_length=20000)
+    url: str | None = Field(default=None, max_length=2000)
     session_id: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
     @field_validator("url")
     @classmethod
-    def _validate_url(cls, value: str) -> str:
+    def _validate_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         parts = urlsplit(value)
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise ValueError("Podaj poprawny adres strony (http lub https).")
         return value
+
+    @model_validator(mode="after")
+    def _require_input(self) -> "CheckRequest":
+        if self.text is None and not self.url:
+            raise ValueError("Podaj treść wiadomości albo adres strony.")
+        return self
+
+
+class ConsentRequest(BaseModel):
+    """Zgoda na politykę prywatności. Zapisujemy sam fakt zgody, bez treści sprawdzeń.
+
+    `session_id` może być pominięty – wtedy backend bierze go z ciasteczka sesji.
+    """
+
+    session_id: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
+    policy_version: str = Field(max_length=32)
+    accepted: bool = True
+
+
+class ConsentResponse(BaseModel):
+    session_id: str
+    policy_version: str
+    accepted: bool
+    recorded_at: datetime
+
+
+class CorpusStats(BaseModel):
+    documents: int
+    passages: int
+    domains: int
+    by_type: dict[str, int]
+    version: str
+    built_at: datetime | None = None
 
 
 class HealthResponse(BaseModel):
@@ -125,8 +285,92 @@ class HealthResponse(BaseModel):
     llm_configured: bool
     bielik_configured: bool
     google_factcheck_configured: bool
+    retrieval_mode: RetrievalMode
+    corpus: CorpusStats
     processing_location: str
     retention_days: int
     corpus_ready: bool = False
     corpus_documents: int = 0
     embedding_model: str | None = None
+
+
+class CaseOut(BaseModel):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    claim_text: str
+    status: Literal["open", "in_review", "resolved"]
+    risk: Literal["standard", "high"]
+    occurrences: int
+    channels: list[str]
+    notified_at: datetime | None
+    note: str
+    check_ids: list[str]
+
+
+class CaseUpdate(BaseModel):
+    status: Literal["open", "in_review", "resolved"] | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class SecurityEventOut(BaseModel):
+    id: int
+    created_at: datetime
+    kind: str
+    origin: str
+    detail: str
+    check_id: str | None
+
+
+class CheckListItem(BaseModel):
+    id: str
+    created_at: datetime
+    channel: str
+    status: CheckStatus
+    input_kind: str
+    input_preview: str
+    verdicts: list[Verdict]
+    duration_ms: int
+    cost_usd: float | None
+    keywords: list[str] = []
+    factcheck_count: int = 0
+
+
+class MetricsResponse(BaseModel):
+    checks_total: int
+    by_status: dict[str, int]
+    by_channel: dict[str, int]
+    by_verdict: dict[str, int]
+    abstention_rate: float | None
+    median_duration_ms: int | None
+    p95_duration_ms: int | None
+    tokens_in: int
+    tokens_out: int
+    cost_usd_total: float | None
+    cost_usd_per_1000: float | None
+    errors: dict[str, int]
+    security_events: dict[str, int]
+    open_cases: int
+    avg_factchecks: float = 0.0
+    consents: int = 0
+
+
+class ArchiveRequest(BaseModel):
+    """Prośba o kontrolowaną archiwizację materiału wskazanego przez użytkownika."""
+
+    check_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    session_id: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
+
+
+class ArchiveOut(BaseModel):
+    id: str
+    check_id: str | None
+    created_at: datetime
+    retention_until: datetime
+    url: str | None = None
+    title: str | None = None
+    excerpt: str
+    content_hash: str
+    legal_basis: str

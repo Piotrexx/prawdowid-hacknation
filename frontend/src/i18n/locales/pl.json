@@ -2,11 +2,13 @@
   "nav": {
     "check": "Sprawdź",
     "sources": "Źródła",
+    "privacy": "Prywatność",
     "mainNav": "Główna nawigacja",
     "homeLink": " – strona główna"
   },
   "sidebar": {
     "sessions": "Twoje sesje",
+    "clearHistory": "Wyczyść historię",
     "newSession": "Nowa sesja",
     "menuLabel": "Menu boczne",
     "openMenu": "Otwórz menu",
@@ -35,7 +37,10 @@
     "imageWillCheck": "Sprawdzę tekst widoczny na obrazie.",
     "waitSeconds": "Możesz wysłać kolejne sprawdzenie za {{seconds}} {{unit}}.",
     "errorTooLong": "Tekst jest za długi. Skróć go i spróbuj ponownie.",
-    "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zrzut ekranu."
+    "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zrzut ekranu.",
+    "voice": "Głos",
+    "voiceStop": "Zatrzymaj",
+    "voiceError": "Nie udało się nagrać głosu. Sprawdź uprawnienia mikrofonu."
   },
   "chat": {
     "searching": "Szukam w źródłach…",

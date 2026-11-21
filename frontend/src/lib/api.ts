@@ -1,18 +1,15 @@
 import type {
-  AdminCheckItem,
-  AdminMetrics,
+  ArchiveOut,
+  CaseOut,
+  CaseStatus,
+  CaseUpdate,
+  CheckListItem,
   CheckRequest,
   CheckResponse,
-  ClaimResult,
-  Evidence,
-  FactCheckResult,
+  ConsentResponse,
   HealthResponse,
-  IncidentMatch,
-  ModeratorCaseInfo,
-  SourceRef,
-  StrengthLevel,
-  Verdict,
-  Warning,
+  MetricsResponse,
+  SecurityEventOut,
 } from "./types";
 
 interface SessionDeleteResponse {
@@ -117,6 +114,9 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       ...init,
+      // Numer sesji i zgoda jadą w ciasteczkach, więc backend musi je dostać.
+      // Wymaga allow_credentials=True w CORS po stronie backendu.
+      credentials: "include",
       signal: controller.signal,
     });
     if (!response.ok) throw await toApiError(response);
@@ -144,146 +144,6 @@ export function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-// --- Backend response → frontend shape adapter ---
-
-/** Backend returns old verdict codes; map them to the frontend's Verdict type. */
-function mapVerdict(raw: string | null | undefined): Verdict | null {
-  if (!raw) return null;
-  const MAP: Record<string, Verdict> = {
-    fake_news: "falszywe",
-    prawdziwe: "potwierdzone",
-    niepewne: "brak_wystarczajacych_dowodow",
-    satyna: "nie_podlega_weryfikacji",
-    opinia: "nie_podlega_weryfikacji",
-    // new values pass through if they already match
-    falszywe: "falszywe",
-    potwierdzone: "potwierdzone",
-    wprowadzajace_w_blad: "wprowadzajace_w_blad",
-    brak_wystarczajacych_dowodow: "brak_wystarczajacych_dowodow",
-    nie_podlega_weryfikacji: "nie_podlega_weryfikacji",
-  };
-  return MAP[raw] ?? "brak_wystarczajacych_dowodow";
-}
-
-function confidenceToLevel(c: number | null): StrengthLevel {
-  if (c === null) return "brak";
-  if (c >= 0.75) return "mocna";
-  if (c >= 0.5) return "umiarkowana";
-  return "slaba";
-}
-
-function factCheckToEvidence(fc: FactCheckResult, index: number): Evidence {
-  const r = (fc.rating ?? "").toLowerCase();
-  const stance =
-    r.includes("false") || r.includes("fałsz") || r.includes("nieprawda")
-      ? "refutes"
-      : r.includes("true") || r.includes("prawda") || r.includes("potwierdz")
-        ? "supports"
-        : "context";
-  return {
-    id: `fc-${index}`,
-    stance,
-    source: {
-      doc_id: `fc-${index}`,
-      title: fc.claim_review_title || fc.claim,
-      publisher: fc.publisher_name,
-      url: fc.claim_review_url,
-      published_at: fc.claim_date,
-      retrieved_at: null,
-      source_type: "factcheck",
-      source_name: fc.publisher_site,
-      rating: fc.rating,
-    },
-  };
-}
-
-/** Adapt a raw backend CheckResponse into the shape the UI expects. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function adaptResponse(raw: any): CheckResponse {
-  const verdict = mapVerdict(raw.verdict ?? raw.verdict_label);
-  const confidence: number | null = raw.confidence ?? null;
-  const justification: string | null = raw.justification ?? null;
-  const factChecks: FactCheckResult[] = raw.fact_check_results ?? [];
-  const sourceArticles: SourceRef[] = raw.source_articles ?? [];
-
-  const claims: ClaimResult[] =
-    raw.claims && Array.isArray(raw.claims) && raw.claims.length > 0
-      ? raw.claims
-      : verdict
-        ? [
-            {
-              id: raw.id,
-              text: raw.input?.title ?? raw.input?.url ?? "Artykuł",
-              verdict,
-              confidence: confidence ?? 0,
-              strength: {
-                level: confidenceToLevel(confidence),
-                score: confidence ?? 0,
-                factors: [],
-              },
-              risk: confidence !== null && confidence < 0.5 ? "high" : "low",
-              justification: justification ?? "",
-              evidence: factChecks.map(factCheckToEvidence),
-            },
-          ]
-        : [];
-
-  const warnings: Warning[] =
-    raw.warnings && Array.isArray(raw.warnings) ? raw.warnings : [];
-
-  const moderatorCase: ModeratorCaseInfo = raw.moderator_case ?? { state: "none" };
-
-  const relatedMaterials: SourceRef[] =
-    raw.related_materials && Array.isArray(raw.related_materials)
-      ? raw.related_materials
-      : sourceArticles;
-
-  const incidentMatches: IncidentMatch[] = raw.incident_matches ?? [];
-
-  return {
-    id: raw.id,
-    created_at: raw.created_at,
-    channel: raw.channel,
-    status: raw.status,
-    status_message: raw.status_message ?? null,
-    error_code: raw.error_code ?? null,
-    input: { ...raw.input, kind: raw.input?.kind ?? "url" },
-    claims,
-    verdict,
-    verdict_label: verdict,
-    confidence,
-    justification,
-    summary: raw.summary ?? justification,
-    keywords: raw.keywords ?? [],
-    main_topic: raw.main_topic ?? "",
-    fact_check_results: factChecks,
-    source_articles: sourceArticles,
-    related_materials: relatedMaterials,
-    incident_matches: incidentMatches,
-    limitations: raw.limitations ?? [],
-    warnings,
-    moderator_case: moderatorCase,
-    meta: raw.meta ?? {
-      duration_ms: 0,
-      stages_ms: {},
-      provider: null,
-      model: null,
-      bielik_model: null,
-      llm_calls: 0,
-      tokens_in: 0,
-      tokens_out: 0,
-      cost_usd: null,
-      processing_location: "",
-      cached: false,
-    },
-  };
-}
-
-async function getAdapted(path: string, options?: RequestOptions): Promise<CheckResponse> {
-  const raw = await getJson<unknown>(path, options);
-  return adaptResponse(raw);
-}
-
 // --- Public API ---
 
 export function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
@@ -294,33 +154,77 @@ export async function createCheck(
   body: CheckRequest,
   signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  // Backend only accepts URL checks; if only text was provided without a URL, return a helpful error.
-  if (!body.url) {
+  if (!body.url && !body.text) {
     throw new ApiError("validation", {
-      detail: "Podaj link do artykułu, który chcesz sprawdzić.",
+      detail: "Podaj link lub tekst do sprawdzenia.",
     });
   }
-  return getAdapted("/checks", {
+  const payload: Record<string, unknown> = { session_id: body.session_id };
+  if (body.url) payload.url = body.url;
+  if (body.text) payload.text = body.text;
+  return getJson<CheckResponse>("/checks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: body.url, session_id: body.session_id }),
+    body: JSON.stringify(payload),
     timeoutMs: CHECK_TIMEOUT_MS,
     signal,
   });
 }
 
 export async function createImageCheck(
-  _file: File,
-  _sessionId: string | undefined,
-  _signal?: AbortSignal,
+  file: File,
+  sessionId?: string,
+  signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  throw new ApiError("validation", {
-    detail: "Sprawdzanie zdjęć nie jest jeszcze dostępne. Wklej link do artykułu.",
+  const body = new FormData();
+  body.append("file", file);
+  if (sessionId) body.append("session_id", sessionId);
+  // No Content-Type header: the browser sets the multipart boundary itself.
+  return getJson<CheckResponse>("/checks/image", {
+    method: "POST",
+    body,
+    timeoutMs: CHECK_TIMEOUT_MS,
+    signal,
+  });
+}
+
+export async function createAudioCheck(
+  file: File,
+  sessionId?: string,
+  signal?: AbortSignal,
+): Promise<CheckResponse> {
+  const body = new FormData();
+  body.append("file", file);
+  if (sessionId) body.append("session_id", sessionId);
+  return getJson<CheckResponse>("/checks/audio", {
+    method: "POST",
+    body,
+    timeoutMs: CHECK_TIMEOUT_MS,
+    signal,
   });
 }
 
 export function getCheck(id: string, signal?: AbortSignal): Promise<CheckResponse> {
-  return getAdapted(`/checks/${encodeURIComponent(id)}`, { signal });
+  return getJson<CheckResponse>(`/checks/${encodeURIComponent(id)}`, { signal });
+}
+
+export function archiveCheck(
+  checkId: string,
+  sessionId?: string,
+): Promise<ArchiveOut> {
+  return getJson<ArchiveOut>("/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ check_id: checkId, session_id: sessionId }),
+  });
+}
+
+export function getArchive(id: string): Promise<ArchiveOut> {
+  return getJson<ArchiveOut>(`/archive/${encodeURIComponent(id)}`);
+}
+
+export function deleteArchive(id: string): Promise<{ deleted: boolean }> {
+  return getJson(`/archive/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function deleteSession(sessionId: string): Promise<SessionDeleteResponse> {
@@ -329,11 +233,45 @@ export function deleteSession(sessionId: string): Promise<SessionDeleteResponse>
   });
 }
 
+export function recordConsent(
+  sessionId: string,
+  policyVersion: string,
+  accepted = true,
+): Promise<ConsentResponse> {
+  return getJson<ConsentResponse>("/consent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      policy_version: policyVersion,
+      accepted,
+    }),
+  });
+}
+
+export async function hasConsent(
+  sessionId: string,
+  policyVersion: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    await getJson<ConsentResponse>(
+      `/consent/${encodeURIComponent(sessionId)}?policy_version=${encodeURIComponent(policyVersion)}`,
+      { signal },
+    );
+    return true;
+  } catch (error) {
+    // 404 simply means this session has not accepted this policy version yet.
+    if (error instanceof ApiError && error.kind === "not_found") return false;
+    throw error;
+  }
+}
+
 function adminHeaders(token: string): HeadersInit {
   return { "X-Admin-Token": token };
 }
 
-export function getMetrics(token: string, signal?: AbortSignal): Promise<AdminMetrics> {
+export function getMetrics(token: string, signal?: AbortSignal): Promise<MetricsResponse> {
   return getJson("/admin/metrics", { headers: adminHeaders(token), signal });
 }
 
@@ -341,8 +279,40 @@ export function getRecentChecks(
   token: string,
   signal?: AbortSignal,
   limit = 50,
-): Promise<AdminCheckItem[]> {
+): Promise<CheckListItem[]> {
   return getJson(`/admin/checks?limit=${limit}`, {
+    headers: adminHeaders(token),
+    signal,
+  });
+}
+
+export function getCases(
+  token: string,
+  status: CaseStatus | null,
+  signal?: AbortSignal,
+): Promise<CaseOut[]> {
+  const query = status ? `?${new URLSearchParams({ status })}` : "";
+  return getJson(`/admin/cases${query}`, { headers: adminHeaders(token), signal });
+}
+
+export function updateCase(
+  token: string,
+  id: number,
+  update: CaseUpdate,
+): Promise<CaseOut> {
+  return getJson(`/admin/cases/${id}`, {
+    method: "PATCH",
+    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+}
+
+export function getSecurityEvents(
+  token: string,
+  signal?: AbortSignal,
+  limit = 50,
+): Promise<SecurityEventOut[]> {
+  return getJson(`/admin/events?limit=${limit}`, {
     headers: adminHeaders(token),
     signal,
   });
@@ -350,9 +320,10 @@ export function getRecentChecks(
 
 export async function downloadExport(
   token: string,
-  format: "csv" | "json",
+  format: "csv" | "json" | "stix",
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const response = await send(`/admin/export?format=${format}`, {
+  const path = format === "stix" ? "/admin/export/stix" : `/admin/export?format=${format}`;
+  const response = await send(path, {
     headers: adminHeaders(token),
     timeoutMs: 60_000,
   });

@@ -10,10 +10,10 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 ## Co robi
 
 - Wydziela z treści twierdzenia do sprawdzenia i oddziela fakty od opinii oraz prognoz.
-- Szuka w lokalnym, polskojęzycznym korpusie **10 źródeł urzędowych** (maks. 10 dokumentów
-  na źródło na przebieg – [docs/ZRODLA.md](docs/ZRODLA.md)).
-- Po ekstrakcji słów kluczowych przez Bielika przeszukuje **pgvector** i dokłada do kontekstu
-  artykuły o podobnym znaczeniu, które mogą opisywać to samo wydarzenie.
+- Szuka w polskojęzycznym korpusie **źródeł urzędowych, prawnych i fact-checkingowych**
+  (maks. `INGEST_MAX_PER_SOURCE` dokumentów na źródło na przebieg – [docs/ZRODLA.md](docs/ZRODLA.md)).
+- Każde twierdzenie jest osobno zestawiane z fragmentami źródeł przez **PostgreSQL + pgvector**
+  i reguły werdyktu; przy braku embeddingów działa jawny fallback leksykalny.
 - Dla każdego twierdzenia zwraca jeden z wyników: **potwierdzone**, **fałszywe**, **wprowadzające w błąd**,
   **brak wystarczających dowodów**, **nie podlega weryfikacji**.
 - Awarię, prośbę o doprecyzowanie i treść poza zakresem komunikuje osobno – to nie są werdykty.
@@ -34,12 +34,12 @@ backend/   FastAPI
     ├─ api/                 kanał WWW i panel moderatora (+ ingest)
     ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
     ├─ core/prompts.py      prompty Bielika i DeepSeeka (kontekst + fact-checki)
-    ├─ ingest/              konektory 10 źródeł → tekst → embedding
-    ├─ retrieval/           pgvector + hybrydowy rerank materiałów podobnych
+    ├─ ingest/              konektory źródeł → tekst → embedding → PostgreSQL
+    ├─ retrieval/           pgvector + rerank; fallback leksykalny
     ├─ llm/                 wymienny dostawca modelu (API zgodne z OpenAI, domyślnie DeepSeek | Anthropic | brak)
-    ├─ security/            PII, prompt injection, SSRF, limity żądań
-    ├─ store/               PostgreSQL: sprawdzenia, korpus, przebiegi ingestu
-    └─ data/                dane lokalne
+    ├─ security/            PII, prompt injection, SSRF, statusy źródeł, limity żądań
+    ├─ integrations/        eksport STIX 2.1 + mapowanie DISARM
+    └─ store/               PostgreSQL: sprawdzenia, sprawy, zgody, archiwum, korpus, ingest
 ```
 
 `frontend/` i `backend/` to dwa niezależne projekty (osobne zależności, osobne uruchamianie, brak wspólnego
@@ -68,8 +68,8 @@ npm install
 npm run dev
 ```
 
-Pierwsze uruchomienie pobiera lokalny model embeddingów (ok. 470 MB). Ingest 10 źródeł
-z limitem 10 dokumentów na źródło trwa ok. 2 minuty i tworzy ok. 80–100 dokumentów.
+Pierwsze uruchomienie pobiera lokalny model embeddingów (ok. 470 MB) oraz model Whisper
+(dla nagrań). Ingest źródeł z limitem dokumentów na źródło tworzy korpus w PostgreSQL.
 
 Bez klucza API usługa też się uruchomi: wyszukiwanie działa, a każde sprawdzenie kończy się jawnym
 komunikatem o problemie technicznym (nigdy pozornym werdyktem) wraz z listą znalezionych materiałów.
@@ -78,10 +78,11 @@ Alternatywnie w kontenerach: `docker compose up --build` (wymaga pliku `backend/
 
 ### Scenariusz demonstracyjny
 
-1. `http://localhost:3000` – wklej treść lub link, kliknij „Sprawdź”.
-2. `http://localhost:3000/zrodla` – katalog źródeł z licencjami i zasadami kwalifikacji.
-3. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa, eksport CSV/JSON
-   (token = `ADMIN_TOKEN`).
+1. `http://localhost:3000` – wklej treść, link, zrzut ekranu albo nagraj głos; kliknij „Sprawdź”.
+2. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa,
+   archiwum i eksport CSV/JSON/STIX (token = `ADMIN_TOKEN`).
+3. Po zaakceptowaniu polityki prywatności sprawdzenia i archiwum są zapisywane w PostgreSQL;
+   usunięcie sesji usuwa powiązane dane.
 
 ## Testy i mierniki
 
@@ -107,5 +108,5 @@ Opis scenariuszy A–J, sposób liczenia mierników i stan pomiarów: [docs/TEST
 ## Pochodzenie
 
 Projekt rozwija pomysły z [ellmu](https://github.com/Piotrexx/ellmu): pobieranie artykułów (trafilatura),
-wyszukiwanie hybrydowe (BM25 + embeddingi) oraz walidator, który odrzuca odpowiedź modelu, gdy cytat nie
-występuje w źródle. W Prawdowidzie ten walidator stał się podstawą reguł werdyktu.
+wyszukiwanie semantyczne oraz walidator, który odrzuca odpowiedź modelu, gdy cytat nie występuje w źródle.
+W Prawdowidzie ten walidator stał się podstawą reguł werdyktu.

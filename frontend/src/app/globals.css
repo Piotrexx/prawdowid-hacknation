@@ -235,6 +235,86 @@
   }
 }
 
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Na wąskim ekranie panel wjeżdża od dołu, na szerokim lekko się przybliża. */
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dialog-in-centered {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.99);
+  }
+}
+
+@layer components {
+  .overlay-enter {
+    animation: overlay-in 160ms ease-out both;
+  }
+
+  .overlay-exit {
+    animation: overlay-out 140ms ease-in both;
+  }
+
+  .dialog-enter {
+    animation: dialog-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Wyjście prowadzi `animationend` na panelu, więc musi mieć animację także
+     przy ograniczonych animacjach – globalna reguła skraca ją do 0,01 ms. */
+  .dialog-exit {
+    animation: dialog-out 140ms ease-in both;
+  }
+
+  @media (min-width: 40rem) {
+    .dialog-enter {
+      animation-name: dialog-in-centered;
+    }
+  }
+}
+
+/* Systemowe ustawienie oraz „Ogranicz animacje" z ustawień dostępności.
+   Oba muszą wyłączać animacje – stąd dwie reguły o tej samej treści. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -244,4 +324,13 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
