@@ -174,7 +174,7 @@ export function CheckForm({
                   <button
                     type="button"
                     onClick={() => applyExample(example.template)}
-                    className="min-h-11 rounded-full border border-line-strong bg-subtle px-4 font-medium hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-h-11 rounded-sm border border-accent bg-surface px-4 font-semibold text-accent hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {example.label}
                   </button>

@@ -14,6 +14,7 @@ COPY data/corpus ./data/corpus
 ENV DATABASE_URL=sqlite:////app/var/prawdowid.db \
     INDEX_DIR=/app/var/index \
     FASTEMBED_CACHE_PATH=/app/var/fastembed \
+    HF_HOME=/app/var/huggingface \
     PATH="/app/.venv/bin:$PATH"
 RUN useradd --system --uid 10001 prawdowid && mkdir -p /app/var && chown prawdowid /app/var
 USER prawdowid

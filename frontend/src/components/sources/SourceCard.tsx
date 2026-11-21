@@ -35,7 +35,7 @@ export function SourceCard({ source }: { source: SourceCatalogEntry }) {
 
       <p className="mt-2 flex flex-wrap gap-1.5">
         <Tag>{SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}</Tag>
-        <Tag>Poziom {source.tier}</Tag>
+        <Tag>Waga źródła {source.tier}</Tag>
         {source.enabled ? null : (
           <Tag tone="warn" icon={Ban}>
             Wyłączone

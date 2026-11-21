@@ -1,72 +1,161 @@
 @import "tailwindcss";
 
-/* Every text/background pair below meets WCAG AA (4.5:1); borders and focus meet 3:1. */
+/* Palette taken from gov.pl (govpl_template.css / main.css): brand blue #0052a5,
+   ink #1b1b1b, grey fill #f1f1f1, rule #b7b7b7, accent red #d5233f, focus #006cd7.
+   Every text/background pair below meets WCAG AA (4.5:1); borders and focus meet 3:1. */
 :root {
   color-scheme: light;
 
-  --page: #f6f7f9;
+  --page: #ffffff;
   --surface: #ffffff;
-  --subtle: #eef1f4;
-  --line: #d3d9e0;
-  --line-strong: #7b8696;
-  --ink: #17212b;
-  --muted: #4b5766;
-  --accent: #0f2747;
-  --accent-hover: #1c3f70;
+  --subtle: #f1f1f1;
+  --line: #b7b7b7;
+  --line-strong: #767676;
+  --ink: #1b1b1b;
+  --muted: #656565;
+  --accent: #0052a5;
+  --accent-hover: #0452a8;
   --on-accent: #ffffff;
-  --link: #17498a;
-  --focus: #1b6fd1;
+  --link: #0052a5;
+  --focus: #006cd7;
+  --required: #d5233f;
+  --bar: #0052a5;
+  --on-bar: #ffffff;
+  --bar-line: #0052a5;
 
-  --ok-fg: #17573a;
-  --ok-bg: #e8f5ed;
-  --ok-line: #3a9463;
-  --bad-fg: #94201a;
-  --bad-bg: #fdecea;
-  --bad-line: #cf4a3c;
-  --warn-fg: #6f4700;
-  --warn-bg: #fdf2d3;
-  --warn-line: #b98212;
-  --calm-fg: #36414f;
-  --calm-bg: #eef1f4;
-  --calm-line: #7b8696;
-  --info-fg: #343190;
-  --info-bg: #ecedfc;
-  --info-line: #6a6ed6;
+  --ok-fg: #2f5410;
+  --ok-bg: #eef5e5;
+  --ok-line: #598527;
+  --bad-fg: #a7162d;
+  --bad-bg: #fbeaed;
+  --bad-line: #d5233f;
+  --warn-fg: #6b4a00;
+  --warn-bg: #fdf4dd;
+  --warn-line: #eba828;
+  --calm-fg: #4a4a4a;
+  --calm-bg: #f1f1f1;
+  --calm-line: #808893;
+  --info-fg: #0052a5;
+  --info-bg: #e6eff7;
+  --info-line: #006cd7;
 }
 
+/* The script in the document head resolves the "auto" preference to a concrete
+   data-theme before first paint. This media query is the no-JavaScript fallback,
+   so the two dark palettes are deliberately kept in step. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: dark;
 
-    --page: #10151b;
-    --surface: #171d25;
-    --subtle: #1f2731;
-    --line: #313b47;
-    --line-strong: #71808f;
-    --ink: #e8ecf1;
-    --muted: #a9b4c0;
-    --accent: #a9c8f5;
-    --accent-hover: #c4dafa;
-    --on-accent: #0f2747;
-    --link: #9cc4ff;
+    --page: #15191d;
+    --surface: #1c2126;
+    --subtle: #252b31;
+    --line: #3a424a;
+    --line-strong: #7a848e;
+    --ink: #eceff2;
+    --muted: #b3bcc5;
+    --accent: #9cc5f0;
+    --accent-hover: #c0daf7;
+    --on-accent: #0b2a4a;
+    --link: #8fc0ff;
     --focus: #8fc0ff;
+    --required: #ff8da0;
+    --bar: #0b2a4a;
+    --on-bar: #eceff2;
+    --bar-line: #3a424a;
 
-    --ok-fg: #8fdfae;
-    --ok-bg: #12291d;
-    --ok-line: #3a9463;
-    --bad-fg: #ffb1a8;
-    --bad-bg: #341715;
-    --bad-line: #cf4a3c;
-    --warn-fg: #f3cf78;
-    --warn-bg: #2f250b;
-    --warn-line: #b98212;
-    --calm-fg: #c8d1dc;
-    --calm-bg: #1f2731;
-    --calm-line: #71808f;
-    --info-fg: #c0c3fc;
-    --info-bg: #1e1f42;
-    --info-line: #6a6ed6;
+    --ok-fg: #b2d98a;
+    --ok-bg: #1d2714;
+    --ok-line: #598527;
+    --bad-fg: #ff9fae;
+    --bad-bg: #2e1317;
+    --bad-line: #d5233f;
+    --warn-fg: #f0cc7a;
+    --warn-bg: #2d2309;
+    --warn-line: #eba828;
+    --calm-fg: #c9d1d9;
+    --calm-bg: #252b31;
+    --calm-line: #808893;
+    --info-fg: #a8cdf5;
+    --info-bg: #10263c;
+    --info-line: #006cd7;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: #15191d;
+  --surface: #1c2126;
+  --subtle: #252b31;
+  --line: #3a424a;
+  --line-strong: #7a848e;
+  --ink: #eceff2;
+  --muted: #b3bcc5;
+  --accent: #9cc5f0;
+  --accent-hover: #c0daf7;
+  --on-accent: #0b2a4a;
+  --link: #8fc0ff;
+  --focus: #8fc0ff;
+  --required: #ff8da0;
+  --bar: #0b2a4a;
+  --on-bar: #eceff2;
+  --bar-line: #3a424a;
+
+  --ok-fg: #b2d98a;
+  --ok-bg: #1d2714;
+  --ok-line: #598527;
+  --bad-fg: #ff9fae;
+  --bad-bg: #2e1317;
+  --bad-line: #d5233f;
+  --warn-fg: #f0cc7a;
+  --warn-bg: #2d2309;
+  --warn-line: #eba828;
+  --calm-fg: #c9d1d9;
+  --calm-bg: #252b31;
+  --calm-line: #808893;
+  --info-fg: #a8cdf5;
+  --info-bg: #10263c;
+  --info-line: #006cd7;
+}
+
+/* High contrast: black ground, white text, yellow interactive elements.
+   Every pair here clears WCAG AAA (7:1). */
+:root[data-theme="contrast"] {
+  color-scheme: dark;
+
+  --page: #000000;
+  --surface: #000000;
+  --subtle: #141414;
+  --line: #ffffff;
+  --line-strong: #ffffff;
+  --ink: #ffffff;
+  --muted: #ffffff;
+  --accent: #ffff00;
+  --accent-hover: #ffffa0;
+  --on-accent: #000000;
+  --link: #ffff00;
+  --focus: #ffff00;
+  --required: #ffb3b3;
+  --bar: #000000;
+  --on-bar: #ffff00;
+  --bar-line: #ffffff;
+
+  --ok-fg: #7cff7c;
+  --ok-bg: #000000;
+  --ok-line: #7cff7c;
+  --bad-fg: #ff9a9a;
+  --bad-bg: #000000;
+  --bad-line: #ff9a9a;
+  --warn-fg: #ffd24d;
+  --warn-bg: #000000;
+  --warn-line: #ffd24d;
+  --calm-fg: #ffffff;
+  --calm-bg: #000000;
+  --calm-line: #ffffff;
+  --info-fg: #8cd3ff;
+  --info-bg: #000000;
+  --info-line: #8cd3ff;
 }
 
 @theme inline {
@@ -82,6 +171,10 @@
   --color-on-accent: var(--on-accent);
   --color-link: var(--link);
   --color-focus: var(--focus);
+  --color-required: var(--required);
+  --color-bar: var(--bar);
+  --color-on-bar: var(--on-bar);
+  --color-bar-line: var(--bar-line);
 
   --color-ok-fg: var(--ok-fg);
   --color-ok-bg: var(--ok-bg);
@@ -99,9 +192,19 @@
   --color-info-bg: var(--info-bg);
   --color-info-line: var(--info-line);
 
+  /* gov.pl rounds corners at .25rem and nowhere further, so the whole radius
+     scale collapses to that one step; rounded-full is untouched. */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.25rem;
+  --radius-2xl: 0.25rem;
+  --radius-3xl: 0.25rem;
+
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
-    "Helvetica Neue", Arial, sans-serif;
+    var(--font-open-sans), "Open Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -113,12 +216,31 @@
     scroll-padding-top: 1rem;
   }
 
+  /* Text scaling: every length in the interface is in rem, so moving the root
+     size carries the whole layout with it (WCAG 1.4.4 Resize text). */
+  :root[data-font="large"] {
+    font-size: 112.5%;
+  }
+
+  :root[data-font="xlarge"] {
+    font-size: 125%;
+  }
+
   body {
     background: var(--page);
     color: var(--ink);
     font-family: var(--font-sans);
     line-height: 1.6;
     overflow-wrap: break-word;
+  }
+
+  /* gov.pl sets headings noticeably bolder than the body copy. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 700;
+    line-height: 1.25;
   }
 
   :focus-visible {
@@ -158,13 +280,25 @@
     text-decoration-thickness: 0.14em;
   }
 
+  /* On the blue bar the default blue focus ring would disappear, so it turns
+     yellow there, the way gov.pl handles focus on its own coloured strips. */
+  .gov-bar :focus-visible {
+    outline-color: #ffc605;
+  }
+
+  /* The red asterisk gov.pl puts after the label of every required field. */
+  .required-mark {
+    color: var(--required);
+    font-weight: 700;
+  }
+
   .skip-link {
     position: absolute;
     left: 0.5rem;
     top: 0.5rem;
     z-index: 50;
     transform: translateY(-200%);
-    border-radius: 0.5rem;
+    border-radius: 0.25rem;
     background: var(--accent);
     color: var(--on-accent);
     padding: 0.75rem 1rem;
@@ -176,6 +310,7 @@
   }
 }
 
+/* Honoured both from the system setting and from the in-page control. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -185,4 +320,13 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }

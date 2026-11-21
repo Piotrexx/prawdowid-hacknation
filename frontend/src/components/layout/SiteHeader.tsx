@@ -1,11 +1,12 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AccessibilityMenu } from "@/components/a11y/AccessibilityMenu";
 import { cx } from "@/lib/cx";
-import { Logo } from "./Logo";
 
 const NAV_ITEMS = [
   { href: "/", label: "Sprawdź" },
@@ -26,7 +27,7 @@ interface NavListProps {
 
 function NavList({ pathname, onNavigate }: NavListProps) {
   return (
-    <ul className="flex flex-col py-2 md:flex-row md:gap-1 md:py-0">
+    <ul className="flex flex-col pb-2 md:flex-row md:gap-1 md:pb-0">
       {NAV_ITEMS.map((item) => {
         const current = isCurrent(pathname, item.href);
         return (
@@ -36,10 +37,9 @@ function NavList({ pathname, onNavigate }: NavListProps) {
               aria-current={current ? "page" : undefined}
               onClick={onNavigate}
               className={cx(
-                "flex min-h-11 items-center rounded-lg px-3 hover:bg-subtle",
-                current
-                  ? "font-semibold text-ink underline decoration-2 underline-offset-8"
-                  : "text-muted hover:text-ink",
+                // gov.pl marks the open section with a thick underline rather than a fill.
+                "flex min-h-11 items-center border-b-[3px] px-3 hover:bg-white/10",
+                current ? "border-current font-bold" : "border-transparent",
               )}
             >
               {item.label}
@@ -60,23 +60,33 @@ export function SiteHeader() {
   const close = () => setOpen(false);
 
   return (
-    <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 px-4 py-2">
+    <header className="gov-bar border-b border-bar-line bg-bar text-on-bar">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
         <Link
           href="/"
           onClick={close}
-          className="inline-flex min-h-11 items-center gap-2.5 text-xl font-semibold tracking-tight text-ink"
+          className="mr-auto inline-flex min-h-11 items-center gap-2.5 text-xl font-bold tracking-tight md:order-1 md:mr-3"
         >
-          <Logo />
+          {/* The full mascot art, transparent and uncropped, fixed regardless of theme. */}
+          <Image
+            src="/maskotka.png"
+            alt=""
+            aria-hidden="true"
+            width={250}
+            height={640}
+            className="h-9 w-auto shrink-0 self-start"
+          />
           Prawdowid
-          <span className="hidden rounded border border-line-strong px-1.5 py-0.5 text-xs font-medium tracking-normal text-muted sm:inline">
-            prototyp
-          </span>
         </Link>
+
+        {/* Kept outside the collapsible menu so it is reachable at every width. */}
+        <div className="md:order-3">
+          <AccessibilityMenu />
+        </div>
 
         <button
           type="button"
-          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line-strong px-3 font-medium md:hidden"
+          className="inline-flex min-h-11 items-center gap-2 rounded-sm border border-current px-3 font-semibold md:hidden"
           aria-expanded={open}
           aria-controls="menu-glowne"
           onClick={() => setOpen((value) => !value)}
@@ -92,7 +102,10 @@ export function SiteHeader() {
         <nav
           id="menu-glowne"
           aria-label="Główna nawigacja"
-          className={cx("w-full md:block md:w-auto", open ? "block" : "hidden")}
+          className={cx(
+            "w-full md:order-2 md:mr-auto md:block md:w-auto",
+            open ? "block" : "hidden",
+          )}
         >
           {/* On routes with a dynamic segment the pathname is unknown while prerendering. */}
           <Suspense fallback={<NavList pathname={null} onNavigate={close} />}>
