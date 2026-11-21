@@ -7,10 +7,10 @@ import { SourceMeta } from "./SourceMeta";
 
 const STANCE_ORDER: Stance[] = ["supports", "refutes", "context"];
 
-const STANCE_STYLES: Record<Stance, { icon: LucideIcon; rail: string; text: string }> = {
-  supports: { icon: Check, rail: "border-ok-line", text: "text-ok-fg" },
-  refutes: { icon: X, rail: "border-bad-line", text: "text-bad-fg" },
-  context: { icon: Info, rail: "border-calm-line", text: "text-calm-fg" },
+const STANCE_STYLES: Record<Stance, { icon: LucideIcon; text: string }> = {
+  supports: { icon: Check, text: "text-ok-fg" },
+  refutes: { icon: X, text: "text-bad-fg" },
+  context: { icon: Info, text: "text-calm-fg" },
 };
 
 function groupByStance(evidence: Evidence[]): Array<[Stance, Evidence[]]> {
@@ -28,45 +28,38 @@ function groupByStance(evidence: Evidence[]): Array<[Stance, Evidence[]]> {
 export function EvidenceChain({ evidence }: { evidence: Evidence[] }) {
   if (evidence.length === 0) {
     return (
-      <p className="text-muted">
+      <p className="text-ink-soft">
         Brak materiałów źródłowych, które dotyczą tego twierdzenia.
       </p>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {groupByStance(evidence).map(([stance, items]) => {
         const style = STANCE_STYLES[stance];
         const Icon = style.icon;
         return (
           <section key={stance}>
-            <h5 className={cx("flex items-center gap-2 font-semibold", style.text)}>
-              <Icon aria-hidden="true" className="size-5 shrink-0" />
+            <h4 className={cx("mb-2.5 flex items-center gap-2 text-[0.9375rem] font-bold", style.text)}>
+              <Icon aria-hidden="true" className="size-4.5 shrink-0" strokeWidth={2.4} />
               {STANCE_LABELS[stance]}{" "}
               <span className="font-normal text-muted">
                 ({items.length} {plural(items.length, "materiał", "materiały", "materiałów")})
               </span>
-            </h5>
-            <ol className={cx("mt-3 ml-2 space-y-5 border-l-2 pl-5", style.rail)}>
+            </h4>
+            <ul className="flex flex-col gap-2">
               {items.map((item) => (
-                <li key={item.id} className="relative">
-                  <span
-                    aria-hidden="true"
-                    className={cx(
-                      "absolute top-2 -left-[1.6875rem] size-3 rounded-full border-2 bg-surface",
-                      style.rail,
-                    )}
-                  />
-                  <blockquote className="rounded-lg border border-line bg-surface px-4 py-3 text-[1.0625rem] leading-relaxed">
+                <li key={item.id} className="border border-line bg-surface px-4.5 py-4">
+                  <blockquote className="text-[0.9375rem] leading-relaxed">
                     „{item.quote}”
                   </blockquote>
-                  <div className="mt-2">
+                  <div className="mt-2.5">
                     <SourceMeta source={item.source} archival={item.archival} />
                   </div>
                 </li>
               ))}
-            </ol>
+            </ul>
           </section>
         );
       })}

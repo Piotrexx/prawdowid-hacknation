@@ -23,16 +23,13 @@ export function SourceMeta({ source, archival = false }: SourceMetaProps) {
   ].filter(Boolean);
 
   return (
-    <div className="space-y-1.5">
-      <p>
-        <ExternalLink href={source.url} className="inline-block py-2 font-medium">
+    <div className="space-y-1.5 text-sm">
+      <p className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-muted">
+        <ExternalLink href={source.url} className="inline-block py-1.5 font-semibold">
           {source.title || source.url}
         </ExternalLink>
-      </p>
-      <p className="text-muted">
-        {source.publisher}
-        {" · "}
-        {published ?? "brak daty"}
+        <span>{source.publisher}</span>
+        <span>{published ?? "brak daty"}</span>
       </p>
       <p className="flex flex-wrap gap-1.5">
         <Tag>{typeLabel}</Tag>
@@ -44,17 +41,17 @@ export function SourceMeta({ source, archival = false }: SourceMetaProps) {
       </p>
       {source.claim_reviewed ? (
         <p>
-          <span className="font-medium">Sprawdzane twierdzenie:</span>{" "}
+          <span className="font-semibold">Sprawdzane twierdzenie:</span>{" "}
           {source.claim_reviewed}
         </p>
       ) : null}
       {source.rating ? (
         <p>
-          <span className="font-medium">Ocena redakcji:</span> {source.rating}
+          <span className="font-semibold">Ocena redakcji:</span> {source.rating}
         </p>
       ) : null}
       {smallPrint.length > 0 ? (
-        <p className="text-sm text-muted">{smallPrint.join(" · ")}</p>
+        <p className="text-xs text-muted">{smallPrint.join(" · ")}</p>
       ) : null}
     </div>
   );

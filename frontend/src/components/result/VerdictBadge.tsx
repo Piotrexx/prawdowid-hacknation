@@ -7,35 +7,64 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cx } from "@/lib/cx";
-import { VERDICT_LABELS } from "@/lib/labels";
+import { SHORT_VERDICT_LABELS, VERDICT_LABELS } from "@/lib/labels";
 import type { Verdict } from "@/lib/types";
 
 interface VerdictStyle {
   icon: LucideIcon;
-  box: string;
-  text: string;
+  band: string;
+  chip: string;
 }
 
 // "Brak wystarczających dowodów" is an honest answer, so it gets a calm neutral tone, not an error tone.
 const VERDICT_STYLES: Record<Verdict, VerdictStyle> = {
-  potwierdzone: { icon: CircleCheck, box: "border-ok-line bg-ok-bg", text: "text-ok-fg" },
-  falszywe: { icon: CircleX, box: "border-bad-line bg-bad-bg", text: "text-bad-fg" },
+  potwierdzone: {
+    icon: CircleCheck,
+    band: "border-ok-line bg-ok-bg text-ok-fg",
+    chip: "bg-ok-bg text-ok-fg",
+  },
+  falszywe: {
+    icon: CircleX,
+    band: "border-bad-line bg-bad-bg text-bad-fg",
+    chip: "bg-bad-bg text-bad-fg",
+  },
   wprowadzajace_w_blad: {
     icon: TriangleAlert,
-    box: "border-warn-line bg-warn-bg",
-    text: "text-warn-fg",
+    band: "border-warn-line bg-warn-bg text-warn-fg",
+    chip: "bg-warn-bg text-warn-fg",
   },
   brak_wystarczajacych_dowodow: {
     icon: CircleHelp,
-    box: "border-calm-line bg-calm-bg",
-    text: "text-calm-fg",
+    band: "border-calm-line bg-calm-bg text-calm-fg",
+    chip: "bg-calm-bg text-calm-fg",
   },
   nie_podlega_weryfikacji: {
     icon: MessageSquareQuote,
-    box: "border-info-line bg-info-bg",
-    text: "text-info-fg",
+    band: "border-info-line bg-info-bg text-info-fg",
+    chip: "bg-info-bg text-info-fg",
   },
 };
+
+// Most serious first: the first verdict in this order colours a history entry.
+export const VERDICT_SEVERITY: Verdict[] = [
+  "falszywe",
+  "wprowadzajace_w_blad",
+  "brak_wystarczajacych_dowodow",
+  "nie_podlega_weryfikacji",
+  "potwierdzone",
+];
+
+const VERDICT_STRIPES: Record<Verdict, string> = {
+  potwierdzone: "border-l-ok-fg",
+  falszywe: "border-l-bad-fg",
+  wprowadzajace_w_blad: "border-l-warn-fg",
+  brak_wystarczajacych_dowodow: "border-l-calm-fg",
+  nie_podlega_weryfikacji: "border-l-info-fg",
+};
+
+export function verdictStripe(verdict: Verdict | undefined): string {
+  return (verdict && VERDICT_STRIPES[verdict]) || "border-l-line-mid";
+}
 
 function styleFor(verdict: Verdict): VerdictStyle {
   return VERDICT_STYLES[verdict] ?? VERDICT_STYLES.brak_wystarczajacych_dowodow;
@@ -50,19 +79,18 @@ interface VerdictProps {
   label?: string;
 }
 
-/** Full-width verdict row for a claim card: icon, text label and colour together. */
+/** Full-width verdict row for a claim: icon, text label and colour together. */
 export function VerdictBanner({ verdict, label }: VerdictProps) {
   const style = styleFor(verdict);
   const Icon = style.icon;
   return (
     <p
       className={cx(
-        "flex items-center gap-3 border-y px-5 py-3 text-xl font-semibold",
-        style.box,
-        style.text,
+        "flex items-center gap-3 border-y px-5 py-3.5 text-xl font-bold sm:px-10",
+        style.band,
       )}
     >
-      <Icon aria-hidden="true" className="size-7 shrink-0" />
+      <Icon aria-hidden="true" className="size-6.5 shrink-0" />
       <span>
         <span className="sr-only">Ocena: </span>
         {labelFor(verdict, label)}
@@ -77,13 +105,27 @@ export function VerdictBadge({ verdict, label }: VerdictProps) {
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-sm font-medium",
-        style.box,
-        style.text,
+        "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-[0.02em] uppercase",
+        style.chip,
       )}
     >
       <Icon aria-hidden="true" className="size-4 shrink-0" />
       {labelFor(verdict, label)}
+    </span>
+  );
+}
+
+/** Compact, icon-free chip for lists and the table of contents. */
+export function VerdictChip({ verdict, uppercase = false }: VerdictProps & { uppercase?: boolean }) {
+  return (
+    <span
+      className={cx(
+        "inline-block shrink-0 px-3 py-1.5 text-xs font-bold whitespace-nowrap",
+        uppercase && "tracking-[0.02em] uppercase",
+        styleFor(verdict).chip,
+      )}
+    >
+      {SHORT_VERDICT_LABELS[verdict] ?? VERDICT_LABELS[verdict] ?? verdict}
     </span>
   );
 }
