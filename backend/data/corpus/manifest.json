@@ -1,0 +1,36 @@
+{
+  "built_at": "2026-11-21T13:03:24+00:00",
+  "version": "10d51f43c4ec",
+  "documents": 575,
+  "domains": 11,
+  "by_source": {
+    "cert-pl": 40,
+    "cyberdefence24": 40,
+    "defence24": 40,
+    "fakenews-pl": 10,
+    "konkret24": 30,
+    "msz-gov-pl": 59,
+    "niebezpiecznik": 15,
+    "osw": 10,
+    "pravda-claimreview": 211,
+    "pravda-rss": 20,
+    "rzeczpospolita": 20,
+    "sejm-eli": 80
+  },
+  "by_type": {
+    "official": 109,
+    "media": 115,
+    "factcheck": 271,
+    "legal": 80
+  },
+  "last_run": {
+    "osw": {
+      "fetched": 10,
+      "new": 10
+    },
+    "niebezpiecznik": {
+      "fetched": 15,
+      "new": 15
+    }
+  }
+}

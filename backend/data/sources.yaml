@@ -1,0 +1,166 @@
+rules:
+  - "Do korpusu trafiają wyłącznie polskojęzyczne źródła wpisane do tego katalogu wraz z uzasadnieniem kwalifikacji."
+  - "Poziom 1: źródła pierwotne i urzędowe (organy państwa, instytucje UE, akty prawne, dane publiczne). Poziom 2: organizacje fact-checkingowe deklarujące standardy IFCN/EFCSN. Poziom 3: media – tylko jako kontekst."
+  - "Każdy dokument ma zapisany adres, wydawcę, datę publikacji (jeśli podana) i datę pobrania."
+  - "Szanujemy robots.txt i blokady serwisów. Źródło, które blokuje automatyczne pobieranie, nie trafia do katalogu do czasu uzgodnienia dostępu – nie obchodzimy zabezpieczeń ani paywalli."
+  - "Treści na otwartych licencjach i materiały urzędowe przechowujemy w pełnym tekście. Dla treści chronionych prawem autorskim przechowujemy tylko tytuł, krótki fragment i link albo dane strukturalne (twierdzenie, ocena, link)."
+  - "Źródło wykluczamy, gdy: straci status będący podstawą kwalifikacji, zmieni warunki korzystania na niezgodne z naszym użyciem, albo powtarzalnie publikuje sprostowane informacje bez korekt."
+  - "Status źródła (np. sankcje UE) ani obecność domeny w katalogu incydentów nie przesądza o prawdziwości konkretnej treści – może najwyżej wywołać neutralne ostrzeżenie."
+  - "Aktualizacja: `uv run python -m app.ingest.run` dopisuje nowe dokumenty; każdy przebieg zapisuje raport w data/corpus/manifest.json."
+
+sources:
+  - id: msz-gov-pl
+    name: "MSZ – aktualności i oświadczenia"
+    publisher: "Ministerstwo Spraw Zagranicznych RP"
+    homepage: "https://www.gov.pl/web/dyplomacja/aktualnosci"
+    source_type: official
+    tier: 1
+    license: "CC BY-SA 4.0 (stopka serwisu gov.pl)"
+    storage: full_text
+    qualification: "Źródło pierwotne: oficjalny serwis ministra właściwego do spraw zagranicznych."
+    update_policy: "Codziennie; nowe pozycje z listy aktualności."
+    connector: govpl
+    params: { listing: "https://www.gov.pl/web/dyplomacja/aktualnosci", pages: 6 }
+
+  - id: sejm-eli
+    name: "Dziennik Ustaw (API ELI Sejmu RP)"
+    publisher: "Kancelaria Sejmu RP"
+    homepage: "https://isap.sejm.gov.pl"
+    source_type: legal
+    tier: 1
+    license: "Materiały urzędowe – nie są przedmiotem prawa autorskiego (art. 4 ustawy o prawie autorskim)"
+    storage: structured
+    qualification: "Źródło pierwotne: urzędowy rejestr aktów prawnych (tytuł, status, daty ogłoszenia i wejścia w życie)."
+    update_policy: "Codziennie; nowe pozycje bieżącego rocznika."
+    connector: sejm_eli
+    params: { publisher: DU, year: 2026, limit: 80, types: ["Ustawa", "Umowa międzynarodowa", "Oświadczenie rządowe"] }
+
+  - id: cert-pl
+    name: "CERT Polska"
+    publisher: "NASK – CERT Polska"
+    homepage: "https://cert.pl"
+    source_type: official
+    tier: 1
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Zespół CSIRT poziomu krajowego (ustawa o krajowym systemie cyberbezpieczeństwa)."
+    update_policy: "Codziennie; kanał RSS."
+    connector: rss
+    params: { feed: "https://cert.pl/rss.xml", max_items: 40 }
+
+  - id: konkret24
+    name: "Konkret24"
+    publisher: "TVN24 – Konkret24"
+    homepage: "https://konkret24.tvn24.pl"
+    source_type: factcheck
+    tier: 2
+    license: "Prawa zastrzeżone (TVN) – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Redakcja fact-checkingowa deklarująca przestrzeganie kodeksu IFCN (do potwierdzenia w rejestrze ifcncodeofprinciples.poynter.org)."
+    update_policy: "Co godzinę; kanał RSS."
+    connector: rss
+    params: { feed: "https://konkret24.tvn24.pl/najnowsze.xml", max_items: 40 }
+
+  - id: pravda-rss
+    name: "Pravda – artykuły"
+    publisher: "Stowarzyszenie Pravda"
+    homepage: "https://pravda.org.pl"
+    source_type: factcheck
+    tier: 2
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Organizacja fact-checkingowa deklarująca standardy IFCN/EFCSN (do potwierdzenia w rejestrach)."
+    update_policy: "Codziennie; kanał RSS."
+    connector: rss
+    params: { feed: "https://pravda.org.pl/feed/", max_items: 30 }
+
+  - id: pravda-claimreview
+    name: "Pravda – zweryfikowane twierdzenia (ClaimReview)"
+    publisher: "Stowarzyszenie Pravda"
+    homepage: "https://pravda.org.pl"
+    source_type: factcheck
+    tier: 2
+    license: "Dane strukturalne ClaimReview opublikowane przez wydawcę w Google Fact Check Tools – przechowujemy twierdzenie, ocenę i link"
+    storage: structured
+    qualification: "Korpus zweryfikowanych twierdzeń organizacji fact-checkingowej (schema.org/ClaimReview)."
+    update_policy: "Codziennie; publiczny kanał danych Fact Check Tools."
+    connector: claimreview
+    params: { domain: "pravda.org.pl", max_items: 220 }
+
+  - id: fakenews-pl
+    name: "FakeNews.pl"
+    publisher: "Fundacja „Przeciwdziałamy Dezinformacji”"
+    homepage: "https://fakenews.pl"
+    source_type: factcheck
+    tier: 2
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Organizacja fact-checkingowa deklarująca standardy EFCSN (do potwierdzenia w rejestrze efcsn.com)."
+    update_policy: "Codziennie; kanał RSS."
+    connector: rss
+    params: { feed: "https://fakenews.pl/feed/", max_items: 20 }
+
+  - id: osw
+    name: "Ośrodek Studiów Wschodnich – analizy"
+    publisher: "Ośrodek Studiów Wschodnich im. Marka Karpia"
+    homepage: "https://www.osw.waw.pl"
+    source_type: official
+    tier: 1
+    license: "Do potwierdzenia w nocie prawnej serwisu – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Państwowa instytucja analityczna zajmująca się m.in. Rosją i Europą Wschodnią; analizy eksperckie, nie dokumenty urzędowe."
+    update_policy: "Codziennie; kanał RSS."
+    connector: rss
+    params: { feed: "https://www.osw.waw.pl/pl/rss.xml", max_items: 30 }
+
+  - id: rzeczpospolita
+    name: "Rzeczpospolita"
+    publisher: "Gremi Media – Rzeczpospolita"
+    homepage: "https://www.rp.pl"
+    source_type: media
+    tier: 3
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Ogólnopolski dziennik; wiarygodne źródło wtórne, używane wyłącznie jako kontekst."
+    update_policy: "Co godzinę; kanał RSS."
+    connector: rss
+    params: { feed: "https://www.rp.pl/rss_main", max_items: 30 }
+
+  - id: cyberdefence24
+    name: "CyberDefence24"
+    publisher: "Defence24 – CyberDefence24"
+    homepage: "https://cyberdefence24.pl"
+    source_type: media
+    tier: 3
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Serwis branżowy o cyberbezpieczeństwie i dezinformacji; źródło wtórne, używane wyłącznie jako kontekst."
+    update_policy: "Co godzinę; kanał RSS."
+    connector: rss
+    params: { feed: "https://cyberdefence24.pl/_rss", max_items: 40 }
+
+  - id: defence24
+    name: "Defence24"
+    publisher: "Defence24"
+    homepage: "https://defence24.pl"
+    source_type: media
+    tier: 3
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Serwis branżowy o obronności i bezpieczeństwie międzynarodowym; źródło wtórne, używane wyłącznie jako kontekst."
+    update_policy: "Co godzinę; kanał RSS."
+    connector: rss
+    params: { feed: "https://defence24.pl/_rss", max_items: 40 }
+
+  - id: niebezpiecznik
+    name: "Niebezpiecznik"
+    publisher: "Niebezpiecznik.pl"
+    homepage: "https://niebezpiecznik.pl"
+    source_type: media
+    tier: 3
+    license: "Prawa zastrzeżone – przechowujemy tylko tytuł, zajawkę i link"
+    storage: excerpt
+    qualification: "Serwis branżowy o bezpieczeństwie w sieci (oszustwa, wycieki, phishing); źródło wtórne, używane wyłącznie jako kontekst."
+    update_policy: "Codziennie; kanał RSS."
+    connector: rss
+    params: { feed: "https://niebezpiecznik.pl/feed/", max_items: 20 }
