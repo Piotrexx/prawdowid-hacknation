@@ -267,6 +267,9 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
 
   function sendAudio(file: File) {
     if (busy || waiting) return;
+    setFormError(null);
+    setText("");
+    image.clear();
     const id = nextId.current++;
     scrollTo.current = id;
     setTurns((current) => [
