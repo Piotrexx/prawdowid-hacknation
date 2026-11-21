@@ -1,6 +1,5 @@
 "use client";
 
-import { History } from "lucide-react";
 import Link from "next/link";
 import { VERDICT_SEVERITY, VerdictChip, verdictStripe } from "@/components/result/VerdictBadge";
 import { cx } from "@/lib/cx";
@@ -33,15 +32,7 @@ function sortedVerdicts(entry: HistoryEntry) {
 /** This browser's completed checks, newest first, as compact links for the app sidebar. */
 export function HistoryList({ onNavigate }: { onNavigate?: () => void }) {
   const entries = useHistory();
-  if (entries === null) return null;
-  if (entries.length === 0) {
-    return (
-      <p className="flex gap-2.5 px-2 text-sm text-ink-soft">
-        <History aria-hidden="true" className="mt-0.5 size-4.5 shrink-0 text-muted" />
-        Tu pojawią się Twoje sprawdzenia.
-      </p>
-    );
-  }
+  if (!entries?.length) return null;
   return (
     <ol className="flex flex-col gap-0.5">
       {entries.map((entry) => {

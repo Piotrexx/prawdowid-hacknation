@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Menu, MessageSquareText, SquarePen, X, type LucideIcon } from "lucide-react";
+import { BookOpen, Menu, MessageSquareText, Plus, SquarePen, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -103,21 +103,22 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
         aria-labelledby={historyId}
         className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
       >
-        <div className="px-4 pb-4">
+        <h2 id={historyId} className="eyebrow mb-2 px-5">
+          Twoje sesje
+        </h2>
+        {/* The list shrinks and scrolls, so the button under it stays in view. */}
+        <div className="min-h-0 shrink overflow-y-auto px-2">
+          <HistoryList onNavigate={onNavigate} />
+        </div>
+        <div className="shrink-0 pt-1 pb-2">
           <button
             type="button"
             onClick={startNewCheck}
-            className="flex min-h-12 w-full items-center gap-2.5 border border-line-mid bg-surface px-4 font-semibold text-ink transition-colors hover:border-accent hover:text-accent"
+            className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent"
           >
-            <SquarePen aria-hidden="true" className="size-5 text-accent" />
+            <Plus aria-hidden="true" className="size-5 shrink-0" />
             Nowa sesja
           </button>
-        </div>
-        <h2 id={historyId} className="eyebrow mb-2 px-5">
-          Twoje sprawdzenia
-        </h2>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          <HistoryList onNavigate={onNavigate} />
         </div>
       </section>
 
