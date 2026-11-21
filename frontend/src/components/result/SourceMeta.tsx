@@ -3,7 +3,7 @@ import { ExternalLink } from "@/components/ui/ExternalLink";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate } from "@/lib/format";
 import { SOURCE_TYPE_LABELS } from "@/lib/labels";
-import type { SourceRef } from "@/lib/types";
+import type { SourceRef, SourceType } from "@/lib/types";
 
 interface SourceMetaProps {
   source: SourceRef;
@@ -13,7 +13,7 @@ interface SourceMetaProps {
 export function SourceMeta({ source, archival = false }: SourceMetaProps) {
   const published = formatDate(source.published_at);
   const retrieved = formatDate(source.retrieved_at);
-  const typeLabel = SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type;
+  const typeLabel = SOURCE_TYPE_LABELS[source.source_type as SourceType] ?? source.source_type;
   const smallPrint = [
     source.source_name && source.source_name !== source.publisher
       ? `Źródło w katalogu: ${source.source_name}`

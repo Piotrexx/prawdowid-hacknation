@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import checks
+from app.api import admin, checks
 from app.config import Settings, get_settings
 from app.core.pipeline import VerificationService
 from app.llm.base import LLMProvider
@@ -71,7 +71,7 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_settings().cors_origin_list,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type", "X-Admin-Token"],
         expose_headers=["Retry-After", "Content-Disposition"],
     )
@@ -85,6 +85,7 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
         return response
 
     app.include_router(checks.router, prefix="/api/v1")
+    app.include_router(admin.router, prefix="/api/v1")
     return app
 
 

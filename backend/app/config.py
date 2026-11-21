@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 60.0
 
     # Bielik 4.5B Instruct (for keyword extraction) - typically served via Ollama/vLLM
-    bielik_base_url: str = "http://localhost:11434"  # Ollama default
-    bielik_model: str = "bielik:4.5b-instruct"
+    bielik_base_url: str = "http://localhost:11434/v1"  # Ollama OpenAI-compatible endpoint
+    bielik_model: str = "llama3.2:3b"
     bielik_api_key: SecretStr | None = None
     bielik_timeout_s: float = 120.0
 

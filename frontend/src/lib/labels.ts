@@ -1,4 +1,12 @@
-import type { CheckStatus, VerdictLabel } from "./types";
+import type {
+  CheckStatus,
+  RetrievalMode,
+  Stance,
+  StoragePolicy,
+  StrengthLevel,
+  SourceType,
+  Verdict,
+} from "./types";
 
 export const VERDICT_LABELS: Record<Verdict, string> = {
   potwierdzone: "Potwierdzone",
@@ -66,6 +74,8 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 const INPUT_KIND_LABELS: Record<string, string> = {
   url: "Link",
+  text: "Tekst",
+  image: "Zdjęcie",
 };
 
 /** Labels for open-ended backend keys: fall back to the raw key instead of guessing. */

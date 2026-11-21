@@ -48,7 +48,7 @@ function ModeratorCard({ info }: { info: ModeratorCaseInfo }) {
 
   const details = [
     info.message || "Ta treść trafiła do kolejki moderatora.",
-    info.occurrences !== null && info.occurrences > 1
+    info.occurrences != null && info.occurrences > 1
       ? `Podobne zgłoszenie pojawiło się już ${info.occurrences} ${plural(info.occurrences, "raz", "razy", "razy")}.`
       : null,
     info.notified ? "Moderator dostał powiadomienie." : null,

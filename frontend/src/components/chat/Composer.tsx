@@ -2,6 +2,7 @@
 
 import { ArrowUp, ImagePlus, X } from "lucide-react";
 import { useLayoutEffect, useRef, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { cx } from "@/lib/cx";
 import { formatInteger, plural } from "@/lib/format";
 import {
@@ -41,6 +42,7 @@ export function Composer({
   waitSeconds,
   textareaRef,
 }: ComposerProps) {
+  const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
   const overLimit = text.length > TEXT_LIMIT;
   const blocked = busy || waitSeconds > 0;
@@ -86,8 +88,8 @@ export function Composer({
               {attachment.file.name}
               <span className="block text-xs text-muted">
                 {text.trim()
-                  ? "Wyślę tylko obraz. Aby sprawdzić tekst, usuń obraz."
-                  : "Sprawdzę tekst widoczny na obrazie."}
+                  ? t("composer.imageWillSend")
+                  : t("composer.imageWillCheck")}
               </span>
             </span>
             <button
@@ -99,20 +101,20 @@ export function Composer({
               className="grid size-11 shrink-0 place-items-center text-muted hover:bg-subtle hover:text-ink"
             >
               <X aria-hidden="true" className="size-5" />
-              <span className="sr-only">Usuń obraz</span>
+              <span className="sr-only">{t("composer.removeImage")}</span>
             </button>
           </div>
         ) : null}
 
         <label htmlFor="pole-tresci" className="sr-only">
-          Treść do sprawdzenia
+          {t("composer.contentLabel")}
         </label>
         <textarea
           id="pole-tresci"
           ref={textareaRef}
           value={text}
           rows={1}
-          placeholder="Wklej wiadomość, wpis albo link do sprawdzenia…"
+          placeholder={t("composer.placeholder")}
           aria-describedby={describedBy}
           aria-invalid={error || overLimit ? true : undefined}
           onChange={(event) => onTextChange(event.target.value)}
@@ -153,7 +155,7 @@ export function Composer({
             className="inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold text-link hover:bg-subtle"
           >
             <ImagePlus aria-hidden="true" className="size-5" />
-            {attachment ? "Inny obraz" : "Zrzut ekranu"}
+            {attachment ? t("composer.otherImage") : t("composer.screenshot")}
           </button>
           <span className="flex-1" />
           {text.length >= COUNTER_FROM ? (
@@ -170,7 +172,7 @@ export function Composer({
             className="grid size-11 place-items-center bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <ArrowUp aria-hidden="true" className="size-5.5" strokeWidth={2.5} />
-            <span className="sr-only">Sprawdź</span>
+            <span className="sr-only">{t("composer.submit")}</span>
           </button>
         </div>
       </div>
@@ -182,13 +184,15 @@ export function Composer({
       ) : null}
       {waitSeconds > 0 ? (
         <p className="mt-2 text-sm text-muted">
-          Możesz wysłać kolejne sprawdzenie za {waitSeconds}{" "}
-          {plural(waitSeconds, "sekundę", "sekundy", "sekund")}.
+          {t("composer.waitSeconds", {
+            seconds: waitSeconds,
+            unit: plural(waitSeconds, "sekundę", "sekundy", "sekund"),
+          })}
         </p>
       ) : null}
       <p id="czat-pomoc" className="mt-2 text-center text-xs text-muted">
-        Każda wiadomość to osobne sprawdzenie. Zawsze otwórz źródła – ocena należy do Ciebie.
-        <span className="hidden sm:inline"> Enter wysyła, Shift+Enter dodaje nową linię.</span>
+        {t("composer.help")}
+        <span className="hidden sm:inline">{t("composer.helpDesktop")}</span>
       </p>
     </form>
   );

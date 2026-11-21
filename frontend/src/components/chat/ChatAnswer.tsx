@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { STATUS_TITLES } from "@/components/result/StatusPanel";
 import { VerdictChip, verdictStripe } from "@/components/result/VerdictBadge";
 import { warningCard } from "@/components/result/Warnings";
@@ -50,13 +51,14 @@ function AssistantRow({ children }: { children: ReactNode }) {
 }
 
 function Loading() {
+  const { t } = useTranslation();
   return (
     <AssistantRow>
       <div className="flex items-center gap-3 py-1.5">
         <Loader aria-hidden="true" className="size-5 text-accent motion-safe:animate-spin" />
         <div>
-          <p className="font-semibold">Szukam w źródłach…</p>
-          <p className="text-sm text-muted">Zwykle trwa to kilkanaście sekund.</p>
+          <p className="font-semibold">{t("chat.searching")}</p>
+          <p className="text-sm text-muted">{t("chat.usuallySeconds")}</p>
         </div>
       </div>
     </AssistantRow>
@@ -134,6 +136,7 @@ function ClaimSummary({
 }
 
 function CopyLink({ id }: { id: string }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<"idle" | "done" | "failed">("idle");
   async function copy() {
     try {
@@ -151,14 +154,14 @@ function CopyLink({ id }: { id: string }) {
         ) : (
           <Copy aria-hidden="true" className="size-4.5" />
         )}
-        {state === "done" ? "Skopiowano" : "Skopiuj link"}
+        {state === "done" ? t("result.copied") : t("result.copyLink")}
       </Button>
       <span role="status" className="sr-only">
-        {state === "done" ? "Skopiowano link do wyniku." : ""}
+        {state === "done" ? t("result.copiedAria") : ""}
       </span>
       {state === "failed" ? (
         <p className="w-full text-sm text-muted">
-          Nie udało się skopiować. Otwórz pełny wynik i skopiuj adres z paska przeglądarki.
+          {t("result.copyFailed")}
         </p>
       ) : null}
     </>
@@ -166,14 +169,15 @@ function CopyLink({ id }: { id: string }) {
 }
 
 function Verdicts({ result }: { result: CheckResponse }) {
+  const { t } = useTranslation();
   const headingId = useId();
   const time = formatTime(result.created_at);
   const moderator = result.moderator_case;
   const notes = [
     ...(moderator.state === "recommended"
-      ? [{ key: "mod", title: "Zalecamy ocenę przez człowieka", tone: "neutral" as const }]
+      ? [{ key: "mod", title: t("result.humanReview"), tone: "neutral" as const }]
       : moderator.state === "created" || moderator.state === "updated"
-        ? [{ key: "mod", title: "Sprawa czeka na moderatora", tone: "info" as const }]
+        ? [{ key: "mod", title: t("result.waitingModerator"), tone: "info" as const }]
         : []),
     ...result.warnings.map((warning, index) => ({
       key: `${warning.code}-${index}`,
@@ -187,7 +191,7 @@ function Verdicts({ result }: { result: CheckResponse }) {
       <article aria-labelledby={headingId} className="border border-line bg-surface shadow-card">
         <header className="px-5 pt-4.5 pb-3.5">
           <h2 id={headingId} className="text-lg font-bold">
-            Wynik sprawdzenia
+            {t("result.title")}
           </h2>
           <p className="text-sm text-muted">
             {result.claims.length}{" "}
@@ -196,8 +200,8 @@ function Verdicts({ result }: { result: CheckResponse }) {
           </p>
           {result.summary ? (
             <p className="mt-3 leading-relaxed">
-              <span className="font-semibold">W skrócie</span>{" "}
-              <span className="text-muted">(interpretacja systemu)</span>: {result.summary}
+              <span className="font-semibold">{t("result.summary")}</span>{" "}
+              <span className="text-muted">{t("result.systemNote")}</span>: {result.summary}
             </p>
           ) : null}
         </header>
@@ -249,7 +253,7 @@ function Verdicts({ result }: { result: CheckResponse }) {
             href={checkPath(result.id)}
             className="inline-flex min-h-11 items-center gap-2 bg-accent px-4 font-semibold text-on-accent hover:bg-accent-hover"
           >
-            Otwórz pełny wynik ze źródłami
+            {t("result.openFull")}
             <ArrowRight aria-hidden="true" className="size-4.5" />
           </Link>
           <CopyLink id={result.id} />
@@ -265,12 +269,6 @@ const STATUS_ICONS: Record<string, LucideIcon> = {
   error: Wrench,
 };
 
-const STATUS_FALLBACKS: Record<string, string> = {
-  needs_clarification: "Nie wiem jeszcze, co dokładnie mam sprawdzić. Opisz to trochę szerzej.",
-  out_of_scope: "Na to pytanie nie potrafię odpowiedzieć na podstawie moich źródeł.",
-  error: "Coś poszło nie tak po stronie systemu. Spróbuj ponownie za chwilę.",
-};
-
 function StatusAnswer({
   result,
   onRetry,
@@ -280,8 +278,11 @@ function StatusAnswer({
   onRetry: () => void;
   onFocusComposer: () => void;
 }) {
+  const { t } = useTranslation();
   const Icon = STATUS_ICONS[result.status] ?? Wrench;
   const related = result.related_materials.slice(0, 3);
+  const statusTitleKey = `status.${result.status}` as const;
+  const statusFallbackKey = `status.${result.status}_fallback` as const;
 
   return (
     <AssistantRow>
@@ -291,20 +292,20 @@ function StatusAnswer({
           {STATUS_TITLES[result.status] ?? STATUS_TITLES.error}
         </h2>
         <p className="mt-1.5 leading-relaxed whitespace-pre-line">
-          {result.status_message || STATUS_FALLBACKS[result.status] || STATUS_FALLBACKS.error}
+          {result.status_message || t(statusFallbackKey) || t("status.error_fallback")}
         </p>
         {result.status === "out_of_scope" ? (
           <p className="mt-1.5 text-sm text-muted">
-            To nie jest ocena prawdziwości. Odpowiadam tylko na podstawie opisanego zbioru źródeł.
+            {t("status.out_of_scope_note")}
           </p>
         ) : null}
         {result.status === "error" ? (
-          <p className="mt-1.5 text-sm text-muted">Ta treść nie została oceniona.</p>
+          <p className="mt-1.5 text-sm text-muted">{t("status.error_note")}</p>
         ) : null}
 
         {related.length > 0 ? (
           <div className="mt-3 text-sm">
-            <p className="text-muted">Materiały, które mogą pomóc – oceń je samodzielnie:</p>
+            <p className="text-muted">{t("result.relatedMaterials")}</p>
             <ul className="mt-1">
               {related.map((source) => (
                 <li key={source.doc_id}>
@@ -319,12 +320,12 @@ function StatusAnswer({
 
         <div className="mt-3.5 flex flex-wrap gap-2">
           {result.status === "needs_clarification" ? (
-            <Button onClick={onFocusComposer}>Dopisz szczegóły poniżej</Button>
+            <Button onClick={onFocusComposer}>{t("status.clarify")}</Button>
           ) : null}
           {result.status === "error" ? (
             <Button onClick={onRetry}>
               <RotateCcw aria-hidden="true" className="size-4.5" />
-              Spróbuj ponownie
+              {t("status.retry")}
             </Button>
           ) : null}
         </div>
@@ -334,6 +335,7 @@ function StatusAnswer({
 }
 
 function FailureAnswer({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { t } = useTranslation();
   const failure = describeFailure(error);
   const Icon = failure.icon;
   return (
@@ -344,11 +346,11 @@ function FailureAnswer({ error, onRetry }: { error: unknown; onRetry: () => void
           {failure.title}
         </h2>
         <p className="mt-1.5">{failure.message}</p>
-        <p className="mt-1 text-sm text-ink-soft">To nie jest wynik sprawdzenia.</p>
+        <p className="mt-1 text-sm text-ink-soft">{t("status.notResult")}</p>
         {failure.canRetry ? (
           <Button onClick={onRetry} className="mt-3">
             <RotateCcw aria-hidden="true" className="size-4.5" />
-            Spróbuj ponownie
+            {t("status.retry")}
           </Button>
         ) : null}
       </div>

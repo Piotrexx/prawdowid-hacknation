@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.api.deps import enforce_rate_limit
 from app.core.pipeline import VerificationService
 from app.schemas import CheckRequest, CheckResponse, HealthResponse
+from app.store.db import Store
 
 router = APIRouter(tags=["weryfikacja"])
 
@@ -32,3 +33,19 @@ def health(request: Request) -> HealthResponse:
 async def create_check(request: Request, payload: CheckRequest) -> CheckResponse:
     service: VerificationService = request.app.state.service
     return await service.check(payload)
+
+
+@router.get("/checks/{check_id}", response_model=CheckResponse)
+def get_check(request: Request, check_id: str) -> CheckResponse:
+    store: Store = request.app.state.store
+    result = store.get_check(check_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Sprawdzenie nie zostało znalezione.")
+    return result
+
+
+@router.delete("/sessions/{session_id}")
+def delete_session(request: Request, session_id: str) -> dict:
+    store: Store = request.app.state.store
+    deleted = store.delete_session(session_id)
+    return {"deleted": deleted}

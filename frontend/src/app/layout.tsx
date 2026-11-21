@@ -7,6 +7,7 @@ interface LayoutProps {
 import { Open_Sans } from "next/font/google";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { APPLY_SETTINGS_SCRIPT } from "@/lib/a11ySettings";
+import { I18nProvider } from "@/i18n/provider";
 import "./globals.css";
 
 const openSans = Open_Sans({
@@ -45,12 +46,14 @@ export default function RootLayout({ children }: LayoutProps) {
         <a href="#tresc" className="skip-link">
           Przejdź do treści
         </a>
-        <div className="flex min-h-dvh flex-col bg-surface lg:flex-row">
-          <AppSidebar />
-          <main id="tresc" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
-            {children}
-          </main>
-        </div>
+        <I18nProvider>
+          <div className="flex min-h-dvh flex-col bg-surface lg:flex-row">
+            <AppSidebar />
+            <main id="tresc" tabIndex={-1} className="flex min-w-0 flex-1 flex-col">
+              {children}
+            </main>
+          </div>
+        </I18nProvider>
       </body>
     </html>
   );

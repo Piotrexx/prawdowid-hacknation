@@ -4,7 +4,6 @@ import {
   CircleX,
   MessageSquareQuote,
   TriangleAlert,
-  User,
   type LucideIcon,
 } from "lucide-react";
 import { cx } from "@/lib/cx";
@@ -17,7 +16,6 @@ interface VerdictStyle {
   chip: string;
 }
 
-// "Brak wystarczających dowodów" is an honest answer, so it gets a calm neutral tone, not an error tone.
 const VERDICT_STYLES: Record<Verdict, VerdictStyle> = {
   potwierdzone: {
     icon: CircleCheck,
@@ -46,7 +44,6 @@ const VERDICT_STYLES: Record<Verdict, VerdictStyle> = {
   },
 };
 
-// Most serious first: the first verdict in this order colours a history entry.
 export const VERDICT_SEVERITY: Verdict[] = [
   "falszywe",
   "wprowadzajace_w_blad",
@@ -67,16 +64,8 @@ export function verdictStripe(verdict: Verdict | undefined): string {
   return (verdict && VERDICT_STRIPES[verdict]) || "border-l-line-mid";
 }
 
-export function verdictStripe(verdict: Verdict | undefined): string {
-  return (verdict && VERDICT_STRIPES[verdict]) || "border-l-line-mid";
-}
-
-function styleFor(verdict: VerdictLabel): VerdictStyle {
-  return VERDICT_STYLES[verdict] ?? VERDICT_STYLES.niepewne;
-}
-
-function labelFor(verdict: VerdictLabel): string {
-  return VERDICT_LABELS[verdict] || verdict;
+function styleFor(verdict: Verdict): VerdictStyle {
+  return VERDICT_STYLES[verdict] ?? VERDICT_STYLES.brak_wystarczajacych_dowodow;
 }
 
 interface VerdictProps {
@@ -84,18 +73,10 @@ interface VerdictProps {
   label?: string;
 }
 
-/** Full-width verdict row for a claim: icon, text label and colour together. */
+/** Full-width verdict row (for the result page header). */
 export function VerdictBanner({ verdict, label }: VerdictProps) {
-interface VerdictBadgeProps {
-  verdict: VerdictLabel;
-  confidence?: number | null;
-  justification?: string | null;
-}
-
-export function VerdictBadge({ verdict, confidence, justification }: VerdictBadgeProps) {
   const style = styleFor(verdict);
   const Icon = style.icon;
-
   return (
     <p
       className={cx(
@@ -106,13 +87,20 @@ export function VerdictBadge({ verdict, confidence, justification }: VerdictBadg
       <Icon aria-hidden="true" className="size-6.5 shrink-0" />
       <span>
         <span className="sr-only">Ocena: </span>
-        {labelFor(verdict, label)}
+        {label ?? VERDICT_LABELS[verdict] ?? verdict}
       </span>
     </p>
   );
 }
 
-export function VerdictBadge({ verdict, label }: VerdictProps) {
+interface VerdictBadgeProps {
+  verdict: Verdict;
+  confidence?: number | null;
+  justification?: string | null;
+}
+
+/** Full verdict badge with optional confidence and justification (used on the About page). */
+export function VerdictBadge({ verdict, confidence: _confidence, justification: _justification }: VerdictBadgeProps) {
   const style = styleFor(verdict);
   const Icon = style.icon;
   return (
@@ -123,7 +111,7 @@ export function VerdictBadge({ verdict, label }: VerdictProps) {
       )}
     >
       <Icon aria-hidden="true" className="size-4 shrink-0" />
-      {labelFor(verdict, label)}
+      {VERDICT_LABELS[verdict] ?? verdict}
     </span>
   );
 }

@@ -1,18 +1,21 @@
 "use client";
 
-import { BookOpen, Menu, MessageSquareText, Plus, SquarePen, X, type LucideIcon } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Menu, MessageSquareText, Plus, SquarePen, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { HistoryList } from "@/components/chat/HistoryList";
 import { cx } from "@/lib/cx";
 import { requestNewCheck } from "@/lib/newCheck";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
-const NAV_ITEMS: Array<{ href: string; label: string; icon: LucideIcon }> = [
-  { href: "/", label: "Sprawdź", icon: MessageSquareText },
-  { href: "/zrodla", label: "Źródła", icon: BookOpen },
-];
+function getNavItems(t: (key: string) => string) {
+  return [
+    { href: "/", label: t("nav.check"), icon: MessageSquareText },
+    { href: "/zrodla", label: t("nav.sources"), icon: BookOpen },
+  ] as Array<{ href: string; label: string; icon: LucideIcon }>;
+}
 
 function isCurrent(pathname: string | null, href: string): boolean {
   if (pathname === null) return false;
@@ -20,10 +23,20 @@ function isCurrent(pathname: string | null, href: string): boolean {
   return pathname.startsWith(href);
 }
 
-function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
+function NavList({
+  pathname,
+  onNavigate,
+  collapsed,
+}: {
+  pathname: string | null;
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}) {
+  const { t } = useTranslation();
+  const items = getNavItems(t);
   return (
     <ul className="flex flex-col gap-0.5">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const current = isCurrent(pathname, href);
         return (
           <li key={href}>
@@ -31,15 +44,17 @@ function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate
               href={href}
               aria-current={current ? "page" : undefined}
               onClick={onNavigate}
+              title={collapsed ? label : undefined}
               className={cx(
-                "flex min-h-11 items-center gap-3 border-l-[3px] px-3 transition-colors",
+                "flex min-h-11 items-center gap-3 border-l-[3px] transition-colors",
+                collapsed ? "justify-center px-2" : "px-3",
                 current
                   ? "border-accent bg-surface font-bold text-accent"
                   : "border-transparent text-ink hover:bg-surface hover:text-accent",
               )}
             >
               <Icon aria-hidden="true" className="size-5 shrink-0" />
-              {label}
+              {!collapsed && label}
             </Link>
           </li>
         );
@@ -48,11 +63,20 @@ function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate
   );
 }
 
-function CurrentNavList({ onNavigate }: { onNavigate?: () => void }) {
-  return <NavList pathname={usePathname()} onNavigate={onNavigate} />;
+function CurrentNavList({
+  onNavigate,
+  collapsed,
+}: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}) {
+  return (
+    <NavList pathname={usePathname()} onNavigate={onNavigate} collapsed={collapsed} />
+  );
 }
 
 function Brand({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslation();
   return (
     <Link
       href="/"
@@ -60,12 +84,11 @@ function Brand({ onNavigate }: { onNavigate?: () => void }) {
       className="inline-flex min-h-11 items-center text-[1.625rem] leading-none font-bold tracking-[-0.02em] text-ink"
     >
       Prawdowid
-      <span className="sr-only"> – strona główna</span>
+      <span className="sr-only">{t("nav.homeLink")}</span>
     </Link>
   );
 }
 
-/** Starts a fresh conversation, from any page. */
 function useStartNewCheck(onNavigate?: () => void) {
   const router = useRouter();
   return () => {
@@ -76,60 +99,80 @@ function useStartNewCheck(onNavigate?: () => void) {
 }
 
 interface SidebarContentProps {
-  /** Keeps ids unique between the desktop sidebar and the phone drawer. */
   idPrefix: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }
 
-function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
+function SidebarContent({ idPrefix, onNavigate, collapsed }: SidebarContentProps) {
+  const { t } = useTranslation();
   const startNewCheck = useStartNewCheck(onNavigate);
   const historyId = `${idPrefix}-historia`;
 
   return (
     <>
       <div className="flex flex-col gap-4 px-4 pt-5">
-        <div className="hidden px-1 lg:block">
-          <Brand onNavigate={onNavigate} />
-        </div>
-        <nav aria-label="Główna nawigacja" className="-mx-4">
-          {/* On routes with a dynamic segment the pathname is unknown while prerendering. */}
-          <Suspense fallback={<NavList pathname={null} onNavigate={onNavigate} />}>
-            <CurrentNavList onNavigate={onNavigate} />
+        {!collapsed && (
+          <div className="hidden px-1 lg:block">
+            <Brand onNavigate={onNavigate} />
+          </div>
+        )}
+        <nav aria-label={t("nav.mainNav")} className="-mx-4">
+          <Suspense fallback={<NavList pathname={null} onNavigate={onNavigate} collapsed={collapsed} />}>
+            <CurrentNavList onNavigate={onNavigate} collapsed={collapsed} />
           </Suspense>
         </nav>
       </div>
 
-      <section
-        aria-labelledby={historyId}
-        className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
-      >
-        <h2 id={historyId} className="eyebrow mb-2 px-5">
-          Twoje sesje
-        </h2>
-        {/* The list shrinks and scrolls, so the button under it stays in view. */}
-        <div className="min-h-0 shrink overflow-y-auto px-2">
-          <HistoryList onNavigate={onNavigate} />
-        </div>
-        <div className="shrink-0 pt-1 pb-2">
+      {!collapsed && (
+        <section
+          aria-labelledby={historyId}
+          className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
+        >
+          <h2 id={historyId} className="eyebrow mb-2 px-5">
+            {t("sidebar.sessions")}
+          </h2>
+          <div className="min-h-0 shrink overflow-y-auto px-2">
+            <HistoryList onNavigate={onNavigate} />
+          </div>
+          <div className="shrink-0 pt-1 pb-2">
+            <button
+              type="button"
+              onClick={startNewCheck}
+              className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent"
+            >
+              <Plus aria-hidden="true" className="size-5 shrink-0" />
+              {t("sidebar.newSession")}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {collapsed && (
+        <div className="mt-4 flex flex-1 flex-col items-center border-t border-line pt-4">
           <button
             type="button"
             onClick={startNewCheck}
-            className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent"
+            title={t("sidebar.newSession")}
+            className="grid size-11 place-items-center text-ink transition-colors hover:bg-surface hover:text-accent"
           >
             <Plus aria-hidden="true" className="size-5 shrink-0" />
-            Nowa sesja
+            <span className="sr-only">{t("sidebar.newSession")}</span>
           </button>
         </div>
-      </section>
+      )}
 
-      <div className="border-t border-line px-4 pt-3 pb-4">
-        <AccessibilitySettings placement="above" />
-      </div>
+      {!collapsed && (
+        <div className="border-t border-line px-4 pt-3 pb-4">
+          <AccessibilitySettings placement="above" />
+        </div>
+      )}
     </>
   );
 }
 
 function MobileBar() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -168,7 +211,7 @@ function MobileBar() {
           className="grid size-11 place-items-center text-ink hover:bg-subtle"
         >
           <Menu aria-hidden="true" className="size-6" />
-          <span className="sr-only">Otwórz menu</span>
+          <span className="sr-only">{t("sidebar.openMenu")}</span>
         </button>
         <Brand />
         <span className="flex-1" />
@@ -178,7 +221,7 @@ function MobileBar() {
           className="grid size-11 place-items-center text-accent hover:bg-subtle"
         >
           <SquarePen aria-hidden="true" className="size-5.5" />
-          <span className="sr-only">Nowa sesja</span>
+          <span className="sr-only">{t("sidebar.newSession")}</span>
         </button>
       </div>
 
@@ -195,7 +238,7 @@ function MobileBar() {
             id="menu-boczne"
             role="dialog"
             aria-modal="true"
-            aria-label="Menu"
+            aria-label={t("sidebar.menu")}
             className="absolute inset-y-0 left-0 flex w-[min(20rem,88vw)] flex-col bg-subtle shadow-card"
           >
             <div className="flex items-center justify-between border-b border-line py-1.5 pr-2 pl-5">
@@ -207,7 +250,7 @@ function MobileBar() {
                 className="grid size-11 place-items-center text-ink hover:bg-surface"
               >
                 <X aria-hidden="true" className="size-6" />
-                <span className="sr-only">Zamknij menu</span>
+                <span className="sr-only">{t("sidebar.closeMenu")}</span>
               </button>
             </div>
             <SidebarContent idPrefix="szuflada" onNavigate={close} />
@@ -218,15 +261,60 @@ function MobileBar() {
   );
 }
 
+function useCollapsed() {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  function toggle() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sidebar-collapsed", String(next));
+      } catch {
+        // localStorage not available
+      }
+      return next;
+    });
+  }
+
+  return { collapsed, toggle };
+}
+
 export function AppSidebar() {
+  const { t } = useTranslation();
+  const { collapsed, toggle } = useCollapsed();
+
   return (
     <>
       <MobileBar />
       <aside
-        aria-label="Menu boczne"
-        className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col border-r border-line bg-subtle lg:flex"
+        aria-label={t("sidebar.menuLabel")}
+        className={cx(
+          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line bg-subtle transition-[width] duration-200 lg:flex",
+          collapsed ? "w-14" : "w-72",
+        )}
       >
-        <SidebarContent idPrefix="boczny" />
+        <SidebarContent idPrefix="boczny" collapsed={collapsed} />
+        <button
+          type="button"
+          onClick={toggle}
+          title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+          className="absolute -right-3 top-6 z-10 grid size-6 place-items-center border border-line bg-subtle text-ink shadow-sm hover:bg-surface"
+        >
+          {collapsed ? (
+            <ChevronRight aria-hidden="true" className="size-3.5" />
+          ) : (
+            <ChevronLeft aria-hidden="true" className="size-3.5" />
+          )}
+          <span className="sr-only">
+            {collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+          </span>
+        </button>
       </aside>
     </>
   );

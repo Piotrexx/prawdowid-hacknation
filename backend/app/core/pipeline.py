@@ -211,8 +211,12 @@ class VerificationService:
         )
 
     async def _extract_keywords(self, run: _Run) -> None:
-        """Używa Bielik 4.5B Instruct do ekstrakcji słów kluczowych z tytułu i treści."""
-        if self._bielik_provider is None:
+        """Używa Bielik 4.5B Instruct do ekstrakcji słów kluczowych z tytułu i treści.
+        Jeśli Bielik nie jest dostępny, używa DeepSeek jako fallback."""
+        if self._bielik_provider is None and self._provider is None:
+            raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES["bielik_not_configured"], "bielik_not_configured")
+        provider = self._bielik_provider or self._provider
+        if provider is None:
             raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES["bielik_not_configured"], "bielik_not_configured")
 
         # Prompt w polsku - tylko po polsku
@@ -222,17 +226,40 @@ class VerificationService:
         )
 
         try:
-            extraction, usage = await self._bielik_provider.structured(
+            extraction, usage = await provider.structured(
                 system="Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON.",
                 user=user_prompt,
                 schema=KeywordExtraction,
                 effort="low",
             )
         except LLMError as exc:
-            log.warning("Bielik błąd: %s (%s)", exc.code, exc)
+            log.warning("Bielik/keyword błąd: %s (%s)", exc.code, exc)
+            # If Bielik failed and we have a fallback (DeepSeek), try it instead of stopping.
+            if provider is self._bielik_provider and self._provider is not None:
+                log.warning("Bielik niedostępny – używam DeepSeek jako fallback dla ekstrakcji słów kluczowych")
+                run.add_warning("Lokalny model Bielik był niedostępny – słowa kluczowe zostały wyekstrahowane przez DeepSeek.")
+                try:
+                    extraction, usage = await self._provider.structured(
+                        system="Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON.",
+                        user=user_prompt,
+                        schema=KeywordExtraction,
+                        effort="low",
+                    )
+                except LLMError as exc2:
+                    log.warning("DeepSeek fallback/keyword błąd: %s (%s)", exc2.code, exc2)
+                    raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES.get(exc2.code, _LLM_MESSAGES["llm_unavailable"]), exc2.code) from exc2
+                run.usage.add(usage)
+                run.keywords = extraction.keywords[:10]
+                run.main_topic = extraction.main_topic
+                if not run.keywords:
+                    run.add_warning("Nie udało się wyekstrahować słów kluczowych z artykułu.")
+                return
             raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES.get(exc.code, _LLM_MESSAGES["bielik_unavailable"]), exc.code) from exc
 
-        run.bielik_usage.add(usage)
+        if self._bielik_provider is not None:
+            run.bielik_usage.add(usage)
+        else:
+            run.usage.add(usage)
         run.keywords = extraction.keywords[:10]  # Max 10 słów kluczowych
         run.main_topic = extraction.main_topic
 

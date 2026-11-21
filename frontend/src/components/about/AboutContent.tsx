@@ -1,15 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { VerdictBadge } from "@/components/result/VerdictBadge";
-import type { VerdictLabel } from "@/lib/types";
+import type { Verdict } from "@/lib/types";
 import { HealthBlock } from "./HealthBlock";
 
-const VERDICTS: Array<{ verdict: VerdictLabel; meaning: string }> = [
-  { verdict: "fake_news", meaning: "Artykuł zawiera fałszywe informacje (dezinformacja). Fact-checki obalają te twierdzenia." },
-  { verdict: "prawdziwe", meaning: "Główne twierdzenia artykułu są wspierane przez wiarygodne źródła i fact-checki." },
-  { verdict: "niepewne", meaning: "Brak wystarczających dowodów ani w jedną, ani w drugą stronę. Twierdzenia są trudne do zweryfikowania." },
-  { verdict: "satyna", meaning: "Artykuł jest satyrą/paryzą (np. ASZdziennik), nie ma być traktowany poważnie." },
-  { verdict: "opinia", meaning: "Artykuł wyraża opinię lub komentarz autora, a nie stwierdza fakty." },
+const VERDICTS: Array<{ verdict: Verdict; meaning: string }> = [
+  { verdict: "falszywe", meaning: "Artykuł zawiera fałszywe informacje (dezinformacja). Fact-checki obalają te twierdzenia." },
+  { verdict: "potwierdzone", meaning: "Główne twierdzenia artykułu są wspierane przez wiarygodne źródła i fact-checki." },
+  { verdict: "brak_wystarczajacych_dowodow", meaning: "Brak wystarczających dowodów ani w jedną, ani w drugą stronę. Twierdzenia są trudne do zweryfikowania." },
+  { verdict: "nie_podlega_weryfikacji", meaning: "Artykuł wyraża opinię, satyrę lub komentarz autora, a nie stwierdza fakty dające się zweryfikować." },
+  { verdict: "wprowadzajace_w_blad", meaning: "Twierdzenia są technicznie niepełne, wyrwane z kontekstu lub tendencyjnie przedstawione." },
 ];
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -53,7 +53,7 @@ export function AboutContent() {
           items={[
             "Nie jest sędzią prawdy. Pokazuje analizę opartą na modelach AI i fact-checkach. Ostateczna ocena należy do Ciebie.",
             "Nie przeszukuje całego internetu na żywo – korzysta z Google Fact Check Tools API (baza istniejących sprawdzeń).",
-            "Nie zgaduje. Gdy dowodów jest za mało, zwraca werdykt „niepewne”.",
+            "Nie zgaduje. Gdy dowodów jest za mało, zwraca werdykt „brak wystarczających dowodów”.",
             "Nie ocenia autentyczności zdjęć ani filmów – tylko tekst artykułu.",
             "Nie zastępuje urzędu, prawnika ani lekarza.",
           ]}
@@ -82,8 +82,7 @@ export function AboutContent() {
         <Bullets
           items={[
             "Sprawdzane jest tylko to, co podasz w linku. Treść artykułu nie jest przechowywana trwale (tylko fragment do 1500 znaków).",
-            "Łatwe do rozpoznania dane osobowe są automatycznie ukrywane przed wysłaniem do modeli.",
-            "Sprawdzenia są przypisane do losowego numeru sesji w Twojej przeglądarce. Możesz je usunąć przyciskiem „Usuń moje dane z tej sesji” na stronie głównej.",
+            "Sprawdzenia są przypisane do losowego numeru sesji w Twojej przeglądarce. Możesz je usunąć przyciskiem „Usuń moje dane z tej sesji”.",
             "Zapisy są usuwane automatycznie po określonym czasie (domyślnie 30 dni).",
             "Mimo to nie wklejaj haseł ani innych danych, których nie chcesz nikomu pokazywać.",
           ]}
