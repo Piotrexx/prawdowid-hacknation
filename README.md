@@ -102,6 +102,7 @@ Opis scenariuszy A–J, sposób liczenia mierników i stan pomiarów: [docs/TEST
 | [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md) | architektura, przepływ danych, modele i dostawcy, bezpieczeństwo, prywatność, koszty, ograniczenia |
 | [docs/ZRODLA.md](docs/ZRODLA.md) | źródła, licencje, kwalifikacja, aktualizacja, wykluczenia |
 | [docs/TESTY-I-RYZYKA.md](docs/TESTY-I-RYZYKA.md) | testy wg sekcji 6, nieobsługiwane przypadki, lista ryzyk |
+| [docs/KOSZTY.md](docs/KOSZTY.md) | koszt zapytania i 1 000 zapytań, usługi zewnętrzne, infrastruktura, kanały, skalowanie |
 | [backend/README.md](backend/README.md) | konfiguracja, API, aktualizacja korpusu |
 | [frontend/README.md](frontend/README.md) | uruchomienie i widoki interfejsu |
 

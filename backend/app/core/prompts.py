@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.retrieval.types import Hit
-from app.schemas import Verdict
+from app.schemas import ClarifyingQuestion, Verdict
 from app.security.injection import wrap_untrusted
 
 _DATA_RULE = (
@@ -38,10 +38,15 @@ Zadanie:
 3. Dla twierdzeń typu "fakt" podaj 2–4 zapytania do wyszukiwarki po polsku. Używaj nazw własnych, liczb, dat i słów kluczowych, bez zbędnych słów.
 4. risk="high", gdy twierdzenie dotyczy bezpośredniego zagrożenia życia lub zdrowia, bezpieczeństwa publicznego, działań wojennych, mobilizacji, ewakuacji, przebiegu wyborów albo może wywołać panikę. W pozostałych przypadkach "standard".
 5. input_status:
-   - "ok" – wskazano co najmniej jedno twierdzenie;
-   - "needs_clarification" – materiał jest zbyt ogólny lub niejasny, by wskazać konkretne twierdzenie (np. samo „czy to prawda?”). W polu message napisz jedno proste, uprzejme pytanie doprecyzowujące;
+   - "ok" – wskazano co najmniej jedno twierdzenie. Kilka konkretnych twierdzeń w jednej wiadomości to też "ok" – nie dopytuj wtedy. Pełny artykuł prasowy prawie zawsze jest "ok";
+   - "needs_clarification" – bez dodatkowej informacji nie wiadomo, co sprawdzać: materiał nie zawiera konkretnego twierdzenia (np. samo „czy to prawda?”, jedno hasło), zaimki („on”, „oni”, „to”) nie mają w materiale żadnego odniesienia albo brakuje kluczowego szczegółu (kto, gdzie, kiedy), bez którego nie da się szukać źródeł. Wtedy:
+     • w questions zadaj od 1 do 3 krótkich, uprzejmych pytań. Gdy pytanie ma kilka oczywistych odpowiedzi, podaj je w options (najwyżej 5), w przeciwnym razie zostaw options puste;
+     • w missing wypisz krótko, czego brakuje (np. "kto", "miejsce", "data");
+     • w message przepisz pierwsze pytanie.
+     Nie pytaj o dane osobowe obywatela;
    - "out_of_scope" – materiał nie zawiera niczego do sprawdzenia (np. powitanie, prośba o napisanie tekstu, pytanie o poradę). W polu message wyjaśnij to jednym prostym zdaniem.
-   Dla "ok" pole message zostaw puste.
+   Dla "ok" pole message zostaw puste. Pola questions i missing wypełniaj tylko przy "needs_clarification".
+6. Jeśli materiał kończy się sekcją „Doprecyzowanie od użytkownika”, są to odpowiedzi obywatela na wcześniejsze pytania. Użyj ich, by uzupełnić twierdzenia (kto, co, kiedy, gdzie), i nie pytaj ponownie o to samo. Odpowiedzi wyjaśniają, o które twierdzenie chodzi – nie są dowodem jego prawdziwości.
 
 Dzisiejsza data: {{today}}. Pisz prostym językiem. Nie oceniaj prawdziwości twierdzeń – to zadanie kolejnego etapu."""
 
@@ -100,6 +105,9 @@ class Extraction(BaseModel):
     message: str
     claims: list[ExtractedClaim]
     injection_detected: bool
+    # Wypełniane tylko przy needs_clarification; domyślne wartości, żeby ich brak nie psuł zwykłego sprawdzenia.
+    questions: list[ClarifyingQuestion] = []
+    missing: list[str] = []
 
 
 class PassageJudgement(BaseModel):
@@ -124,9 +132,16 @@ class ImageReading(BaseModel):
     injection_detected: bool
 
 
-def extract_prompts(material: str, today: date, max_claims: int) -> tuple[str, str]:
+_NO_MORE_QUESTIONS = """
+
+Obywatel odpowiedział już na pytania doprecyzowujące tyle razy, ile to możliwe. Nie używaj "needs_clarification": wydziel twierdzenia najlepiej, jak się da, na podstawie materiału i odpowiedzi."""
+
+
+def extract_prompts(material: str, today: date, max_claims: int, allow_clarification: bool = True) -> tuple[str, str]:
     tag, block = wrap_untrusted("material", material)
     system = EXTRACT_SYSTEM.format(max_claims=max_claims, today=today.isoformat())
+    if not allow_clarification:
+        system += _NO_MORE_QUESTIONS
     return system, f"Materiał do analizy znajduje się w bloku <{tag}>.\n\n{block}"
 
 
@@ -156,14 +171,12 @@ Treść:
 
 Zadanie:
 1. Zidentyfikuj główny temat artykułu (jedno zdanie).
-2. Wyekstrahuj do 10 najważniejszych słów kluczowych/fraz, które najlepiej nadają się do wyszukiwania sprawdzeń faktów (fact-checking). Skup się na: nazwiskach, nazwach instytucji, konkretnych twierdzeniach, datach, lokalizacjach, liczbach.
-3. Napisz krótkie podsumowanie (2-3 zdania) na czym polega główne twierdzenie artykułu.
+2. Wyekstrahuj od 3 do 6 najważniejszych słów kluczowych/fraz, które najlepiej nadają się do wyszukiwania sprawdzeń faktów (fact-checking). Skup się na: nazwiskach, nazwach instytucji, konkretnych twierdzeniach, datach, lokalizacjach, liczbach.
 
 Odpowiedz WYŁĄCZNIE obiektem JSON o strukturze:
 {{
     "keywords": ["słowo1", "fraza 2", "nazwisko 3", ...],
-    "main_topic": "Główny temat artykułu w jednym zdaniu.",
-    "summary": "Krótkie podsumowanie głównego twierdzenia."
+    "main_topic": "Główny temat artykułu w jednym zdaniu."
 }}
 
 Ważne:

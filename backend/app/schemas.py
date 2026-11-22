@@ -164,7 +164,30 @@ class KeywordExtraction(BaseModel):
 
     keywords: list[str]
     main_topic: str
-    summary: str
+    # Nieużywane; model lokalny już go nie generuje (każdy token na CPU kosztuje), zostaje dla zgodności.
+    summary: str = ""
+
+
+class ClarifyingQuestion(BaseModel):
+    """Pytanie do użytkownika, gdy nie wiadomo, które twierdzenie sprawdzić."""
+
+    text: str
+    options: list[str] = Field(default=[], description="Gotowe odpowiedzi do wyboru, jeśli pytanie je ma")
+
+
+class ClarificationExchange(BaseModel):
+    questions: list[str]
+    answer: str
+
+
+class Clarification(BaseModel):
+    """Przebieg doprecyzowania. `questions` jest niepuste tylko wtedy, gdy sprawdzenie czeka na odpowiedź."""
+
+    questions: list[ClarifyingQuestion] = []
+    missing: list[str] = []
+    round: int = 0
+    max_rounds: int = 0
+    history: list[ClarificationExchange] = []
 
 
 class InputInfo(BaseModel):
@@ -292,13 +315,19 @@ class CheckResponse(BaseModel):
     limitations: list[str] = []
     # Wynik osobnej analizy zdjęcia (odwrotne wyszukiwanie, porównanie kopii, ślady AI).
     image_analysis: ImageAnalysis | None = None
+    # Sprawdzenie, na którego pytanie doprecyzowujące odpowiada to zgłoszenie.
+    parent_check_id: str | None = None
+    clarification: Clarification | None = None
     meta: CheckMeta = CheckMeta()
     request_count: int = 1
 
 
 class CheckRequest(BaseModel):
+    """Nowe sprawdzenie (`text` albo `url`) lub odpowiedź na pytanie doprecyzowujące (`parent_check_id` + `text`)."""
+
     text: str | None = Field(default=None, max_length=20000)
     url: str | None = Field(default=None, max_length=2000)
+    parent_check_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     session_id: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
     @field_validator("url")
@@ -313,7 +342,10 @@ class CheckRequest(BaseModel):
 
     @model_validator(mode="after")
     def _require_input(self) -> "CheckRequest":
-        if self.text is None and not self.url:
+        if self.parent_check_id:
+            if not (self.text and self.text.strip()) or self.url:
+                raise ValueError("Odpowiedź na pytanie musi być tekstem.")
+        elif self.text is None and not self.url:
             raise ValueError("Podaj treść wiadomości albo adres strony.")
         return self
 

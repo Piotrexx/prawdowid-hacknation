@@ -14,6 +14,8 @@ from app.schemas import (
     ArchiveRequest,
     CheckRequest,
     CheckResponse,
+    CheckStatus,
+    ClarificationExchange,
     ConsentRequest,
     ConsentResponse,
     HealthResponse,
@@ -81,13 +83,36 @@ async def create_check(
     settings: Settings = request.app.state.settings
     session_id = _session(request, payload.session_id)
     _require_consent(request, session_id)
-    if payload.url and not payload.text:
+    if payload.parent_check_id:
+        submission = _answer_submission(request, payload, session_id)
+    elif payload.url and not payload.text:
         submission = Submission(channel="web", session_id=session_id, url=payload.url.strip())
     else:
         submission = Submission.from_message("web", session_id, payload.text or "")
     result = await service.check(submission)
     background_tasks.add_task(send_check_to_discord, result, settings)
     return result
+
+
+def _answer_submission(request: Request, payload: CheckRequest, session_id: str) -> Submission:
+    """Odpowiedź na pytanie doprecyzowujące: sprawdzamy pierwotną treść razem ze wszystkimi odpowiedziami."""
+    store = request.app.state.store
+    parent_id = payload.parent_check_id or ""
+    parent = store.get_check(parent_id)
+    # Cudze sprawdzenie traktujemy jak nieistniejące.
+    if parent is None or store.get_check_session(parent_id) != session_id:
+        raise HTTPException(404, "Nie znaleziono pytania, na które odpowiadasz. Wyślij treść jeszcze raz.")
+    asked = parent.clarification
+    if parent.status != CheckStatus.NEEDS_CLARIFICATION or asked is None or not asked.questions:
+        raise HTTPException(409, "To sprawdzenie nie czeka na doprecyzowanie.")
+    history = [
+        *asked.history,
+        ClarificationExchange(questions=[q.text for q in asked.questions], answer=(payload.text or "").strip()),
+    ]
+    # Zdjęcia i nagrania nie są przechowywane, więc przy odpowiedzi korzystamy z odczytanego z nich tekstu.
+    if parent.input.kind == "url" and parent.input.url:
+        return Submission(channel="web", session_id=session_id, url=parent.input.url, parent_check_id=parent_id, history=history)
+    return Submission(channel="web", session_id=session_id, text=parent.input.text, parent_check_id=parent_id, history=history)
 
 
 @router.post("/checks/image", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
