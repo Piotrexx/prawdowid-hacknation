@@ -29,18 +29,23 @@ import { STRENGTH_LABELS } from "@/lib/labels";
 import { checkPath } from "@/lib/links";
 import type { CheckResponse, ClaimResult, ClarifyingQuestion, Evidence } from "@/lib/types";
 import { describeFailure } from "./failure";
-import Image from "next/image";
 
 export type TurnState =
   | { kind: "loading" }
   | { kind: "result"; result: CheckResponse }
   | { kind: "failure"; error: unknown };
 
+/** The assistant's side of the thread: a small mark in the margin, then the answer. */
 function AssistantRow({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
-      <Image src={"/maskotka-proper.png"} alt="Prawowid" width={100 / 0.67} height={100}/>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="relative">
+      <span
+        aria-hidden="true"
+        className="absolute top-1 right-full mr-3 hidden size-8 place-items-center bg-accent text-sm font-bold text-on-accent xl:grid"
+      >
+        P
+      </span>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
@@ -49,7 +54,7 @@ function Loading() {
   const { t } = useTranslation();
   return (
     <AssistantRow>
-      <div className="flex items-start gap-3 py-1.5">
+      <div className="flex items-center gap-3 py-1.5">
         <Loader aria-hidden="true" className="size-5 text-accent motion-safe:animate-spin" />
         <div>
           <p className="font-semibold">{t("chat.searching")}</p>
