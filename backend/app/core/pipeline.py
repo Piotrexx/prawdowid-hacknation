@@ -1,4 +1,4 @@
-"""Pipeline wykrywania fake news: URL -> trafilatura -> Bielik (keywords) -> Google Fact Check -> DeepSeek (verdict)."""
+"""Pipeline wykrywania fake news: URL/tekst -> trafilatura -> Bielik (keywords + doprecyzowanie) -> Google Fact Check -> DeepSeek (verdict)."""
 
 import asyncio
 import hashlib
@@ -14,11 +14,15 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.config import Settings
-from app.core.prompts import BIELIK_KEYWORD_PROMPT, DEEPSEEK_VERDICT_PROMPT
+from app.core.prompts import BIELIK_KEYWORD_PROMPT, CLARITY_PROMPT, DEEPSEEK_VERDICT_PROMPT
 from app.llm.base import LLMError, LLMProvider, T, Usage, estimate_cost
 from app.llm.factory import build_provider
 from app.schemas import (
     CheckMeta,
+    Clarification,
+    ClarityCheck,
+    ClarificationExchange,
+    ClarifyingQuestion,
     CheckRequest,
     CheckResponse,
     CheckStatus,
@@ -34,6 +38,13 @@ from app.textutil import truncate
 log = logging.getLogger("check")
 
 _STORED_PAGE_CHARS = 1500
+_MIN_TEXT_WORDS = 4
+_MAX_QUESTIONS = 3
+_MAX_OPTIONS = 5
+_CLARIFY_INTRO = "Zanim sprawdzę, potrzebuję kilku szczegółów."
+_SHORT_TEXT_QUESTION = ClarifyingQuestion(
+    text="Jakie konkretnie twierdzenie mam sprawdzić? Napisz, kto co powiedział albo co się wydarzyło – a jeśli wiesz, to także kiedy i gdzie."
+)
 _NOT_A_VERDICT = "To problem techniczny, a nie wynik sprawdzenia."
 _LLM_MESSAGES = {
     "llm_not_configured": f"Usługa nie ma teraz dostępu do modelu językowego, więc nie mogę ocenić tej treści. {_NOT_A_VERDICT}",
@@ -78,6 +89,10 @@ class _Run:
     verdict: VerdictLabel | None = None
     confidence: float | None = None
     justification: str | None = None
+    parent_check_id: str | None = None
+    history: list[ClarificationExchange] = field(default_factory=list)
+    clarification: Clarification | None = None
+    clarification_skipped: bool = False
 
     def mark(self, stage: str, since: float) -> None:
         self.stages_ms[stage] = self.stages_ms.get(stage, 0) + int((time.perf_counter() - since) * 1000)
@@ -121,11 +136,12 @@ class VerificationService:
             except Exception as e:
                 log.warning("Nie udało się zainicjować Bielik: %s", e)
 
-    async def check(self, request: CheckRequest) -> CheckResponse:
+    async def check(self, request: CheckRequest, parent: CheckResponse | None = None) -> CheckResponse:
+        """`parent` to sprawdzenie z pytaniem doprecyzowującym, na które `request.text` jest odpowiedzią."""
         run = _Run(channel="web")
         cache_key = None
         try:
-            response, cache_key = await self._verify(request, run)
+            response, cache_key = await self._verify(request, run, parent)
         except _Stop as stop:
             response = self._response(run, stop.status, status_message=stop.message, error_code=stop.error_code)
         except Exception:
@@ -156,21 +172,60 @@ class VerificationService:
                     "bielik_tokens_out": run.bielik_usage.output_tokens,
                     "cost_usd": response.meta.cost_usd,
                     "cached": response.meta.cached,
+                    "parent_check_id": run.parent_check_id,
+                    "clarification_round": response.clarification.round if response.clarification else 0,
                     "security_events": len(run.events),
                 }
             )
         )
         return response
 
-    async def _verify(self, request: CheckRequest, run: _Run) -> tuple[CheckResponse, str]:
+    async def _verify(
+        self, request: CheckRequest, run: _Run, parent: CheckResponse | None
+    ) -> tuple[CheckResponse, str]:
         started = time.perf_counter()
+        url, text = request.url, request.text
 
-        # 1. Pobierz i wyekstrahuj treść artykułu (trafilatura)
-        await self._fetch_article(request.url, run)
+        # Odpowiedź na pytanie: sprawdzamy pierwotną treść, a odpowiedzi dokładamy jako kontekst.
+        if parent is not None:
+            asked = parent.clarification or Clarification()
+            run.parent_check_id = parent.id
+            run.history = [
+                *asked.history,
+                ClarificationExchange(questions=[q.text for q in asked.questions], answer=(text or "").strip()),
+            ]
+            if parent.input.kind == "url":
+                url, text = parent.input.url, None
+            else:
+                url, text = None, parent.input.text
+
+        # 1. Pobierz i wyekstrahuj treść artykułu (trafilatura) albo przyjmij wklejony tekst
+        if url:
+            await self._fetch_article(url, run)
+        else:
+            self._use_text(text or "", run)
         run.mark("fetch", started)
 
-        # 2. Ekstrakcja słów kluczowych przez Bielik
-        await self._extract_keywords(run)
+        if run.input.kind == "text" and not run.history and len(run.article_text.split()) < _MIN_TEXT_WORDS:
+            self._ask(run, [_SHORT_TEXT_QUESTION], ["konkretne twierdzenie"])
+
+        # 2. Słowa kluczowe (Bielik) i ocena, czy wiadomo, co sprawdzać – równolegle. Gdy trzeba dopytać,
+        # pytanie wraca od razu, a słowa kluczowe są zbędne (po odpowiedzi sprawdzamy od nowa).
+        keywords = asyncio.create_task(self._extract_keywords(run))
+        try:
+            clarity = await self._check_clarity(run)
+            if clarity is not None and clarity.needs_clarification:
+                questions = self._clean_questions(clarity.questions)
+                if questions:
+                    if len(run.history) < self._settings.clarification_max_rounds:
+                        self._ask(run, questions, [m for m in clarity.missing if m.strip()][:5])
+                    run.clarification_skipped = True
+            await keywords
+        finally:
+            if not keywords.done():
+                keywords.cancel()
+            elif not keywords.cancelled():
+                keywords.exception()  # błąd już obsłużony albo zbędny – bez ostrzeżenia o nieodebranym wyjątku
         run.mark("keywords", started)
 
         # 3. Zapytanie do Google Fact Check Tools API
@@ -182,11 +237,51 @@ class VerificationService:
         run.mark("verdict", started)
 
         # Cache key
-        fingerprint = f"{run.article_url}|{self._provider.model if self._provider else 'none'}|{run.keywords}"
+        answers = [exchange.answer for exchange in run.history]
+        source = run.article_url or hashlib.sha256(run.article_text.encode()).hexdigest()
+        fingerprint = f"{source}|{self._provider.model if self._provider else 'none'}|{run.keywords}|{answers}"
         cache_key = hashlib.sha256(fingerprint.encode()).hexdigest()
 
         response = self._response(run, CheckStatus.COMPLETED, cached=False)
         return response, cache_key
+
+    def _use_text(self, text: str, run: _Run) -> None:
+        """Wiadomość wklejona przez użytkownika – sprawdzamy ją bez pobierania czegokolwiek z sieci."""
+        run.article_text = text.strip()
+        run.input = InputInfo(kind="text", text=run.article_text, url="")
+
+    def _clean_questions(self, questions: list[ClarifyingQuestion]) -> list[ClarifyingQuestion]:
+        cleaned = []
+        for question in questions:
+            text = question.text.strip()
+            if not text:
+                continue
+            options = [option.strip() for option in question.options if option.strip()][:_MAX_OPTIONS]
+            cleaned.append(ClarifyingQuestion(text=text, options=options))
+        return cleaned[:_MAX_QUESTIONS]
+
+    def _ask(self, run: _Run, questions: list[ClarifyingQuestion], missing: list[str]) -> None:
+        """Kończy sprawdzenie pytaniem do użytkownika. To nie jest werdykt."""
+        run.clarification = Clarification(
+            questions=questions,
+            missing=missing,
+            round=len(run.history) + 1,
+            max_rounds=self._settings.clarification_max_rounds,
+            history=run.history,
+        )
+        # Pełna treść pytań w komunikacie, żeby kanały bez obsługi `clarification` (np. bot) też je pokazały.
+        listed = "\n".join(f"{i}. {q.text}" for i, q in enumerate(questions, 1))
+        raise _Stop(CheckStatus.NEEDS_CLARIFICATION, f"{_CLARIFY_INTRO}\n{listed}")
+
+    def _clarification_context(self, run: _Run) -> str:
+        if not run.history:
+            return ""
+        lines = ["", "Doprecyzowanie od użytkownika:"]
+        for exchange in run.history:
+            for question in exchange.questions:
+                lines.append(f"Pytanie: {question}")
+            lines.append(f"Odpowiedź: {exchange.answer}")
+        return "\n".join(lines) + "\n"
 
     async def _fetch_article(self, url: str, run: _Run) -> None:
         """Pobiera artykuł i ekstrahuje treść używając trafilatura."""
@@ -210,7 +305,30 @@ class VerificationService:
             title=run.article_title or None,
         )
 
-    async def _extract_keywords(self, run: _Run) -> None:
+    async def _check_clarity(self, run: _Run) -> ClarityCheck | None:
+        """Czy wiadomo, które twierdzenie sprawdzić. Awaria modelu nie zatrzymuje sprawdzenia."""
+        choice = self._settings.clarification_model
+        provider = {"llm": self._provider, "bielik": self._bielik_provider}.get(choice)
+        if provider is None:
+            return None
+        try:
+            result, usage = await provider.structured(
+                system="Pomagasz ustalić, co dokładnie użytkownik chce sprawdzić. Odpowiadasz wyłącznie obiektem JSON.",
+                user=CLARITY_PROMPT.format(
+                    title=run.article_title or "Brak tytułu",
+                    text=run.article_text[:8000],
+                    clarifications=self._clarification_context(run),
+                ),
+                schema=ClarityCheck,
+                effort="low",
+            )
+        except LLMError as exc:
+            log.warning("ocena doprecyzowania (%s) niedostępna: %s (%s)", choice, exc.code, exc)
+            return None
+        (run.bielik_usage if provider is self._bielik_provider else run.usage).add(usage)
+        return result
+
+    async def _extract_keywords(self, run: _Run) -> KeywordExtraction:
         """Używa Bielik 4.5B Instruct do ekstrakcji słów kluczowych z tytułu i treści.
         Jeśli Bielik nie jest dostępny, używa DeepSeek jako fallback."""
         if self._bielik_provider is None and self._provider is None:
@@ -223,6 +341,7 @@ class VerificationService:
         user_prompt = BIELIK_KEYWORD_PROMPT.format(
             title=run.article_title or "Brak tytułu",
             text=run.article_text[:8000],  # Limit kontekstu
+            clarifications=self._clarification_context(run),
         )
 
         try:
@@ -253,7 +372,7 @@ class VerificationService:
                 run.main_topic = extraction.main_topic
                 if not run.keywords:
                     run.add_warning("Nie udało się wyekstrahować słów kluczowych z artykułu.")
-                return
+                return extraction
             raise _Stop(CheckStatus.ERROR, _LLM_MESSAGES.get(exc.code, _LLM_MESSAGES["bielik_unavailable"]), exc.code) from exc
 
         if self._bielik_provider is not None:
@@ -265,6 +384,7 @@ class VerificationService:
 
         if not run.keywords:
             run.add_warning("Nie udało się wyekstrahować słów kluczowych z artykułu.")
+        return extraction
 
     async def _query_factcheck(self, run: _Run) -> None:
         """Zapytuje Google Fact Check Tools API o sprawdzenia powiązane ze słowami kluczowymi."""
@@ -351,6 +471,7 @@ class VerificationService:
             keywords=", ".join(run.keywords),
             main_topic=run.main_topic,
             factcheck_context=factcheck_context,
+            clarifications=self._clarification_context(run),
         )
 
         try:
@@ -381,6 +502,24 @@ class VerificationService:
     ) -> CheckResponse:
         provider = self._provider
         override = (self._settings.llm_price_input_per_mtok, self._settings.llm_price_output_per_mtok)
+        clarification = run.clarification
+        if clarification is None and run.history:
+            clarification = Clarification(
+                round=len(run.history), max_rounds=self._settings.clarification_max_rounds, history=run.history
+            )
+        if run.input.kind == "text":
+            source_note = "Analiza opiera się wyłącznie na tekście wklejonym przez użytkownika."
+        else:
+            source_note = "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia. Strona mogła się później zmienić."
+        limitations = [
+            source_note,
+            "Werdykt to interpretacja modelu językowego opartego na dostępnych sprawdzeniach faktów.",
+            "Brak sprawdzeń w Google Fact Check nie oznacza, że informacja jest prawdziwa.",
+        ]
+        if run.clarification_skipped:
+            limitations.append(
+                "Mimo doprecyzowania nie było w pełni jasne, które twierdzenie sprawdzić. Sprawdziłem treść w obecnej postaci."
+            )
         return CheckResponse(
             id=run.check_id,
             created_at=datetime.now(UTC),
@@ -397,11 +536,9 @@ class VerificationService:
             main_topic=run.main_topic,
             fact_check_results=run.fact_check_results,
             source_articles=[],
-            limitations=[
-                "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia. Strona mogła się później zmienić.",
-                "Werdykt to interpretacja modelu językowego opartego na dostępnych sprawdzeniach faktów.",
-                "Brak sprawdzeń w Google Fact Check nie oznacza, że informacja jest prawdziwa.",
-            ],
+            limitations=limitations,
+            parent_check_id=run.parent_check_id,
+            clarification=clarification,
             meta=CheckMeta(
                 duration_ms=int((time.perf_counter() - run.started) * 1000),
                 stages_ms=run.stages_ms,

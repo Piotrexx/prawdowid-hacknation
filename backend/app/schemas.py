@@ -5,7 +5,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CheckStatus(StrEnum):
@@ -51,11 +51,38 @@ class FactCheckResult(BaseModel):
     url: str
 
 
+class ClarifyingQuestion(BaseModel):
+    """Pytanie do użytkownika, gdy nie wiadomo, co dokładnie sprawdzić."""
+    text: str
+    options: list[str] = Field(default=[], description="Gotowe odpowiedzi do wyboru, jeśli pytanie je ma")
+
+
 class KeywordExtraction(BaseModel):
     """Słowa kluczowe wyekstrahowane przez Bielik"""
     keywords: list[str]
     main_topic: str
     summary: str
+
+
+class ClarityCheck(BaseModel):
+    """Czy wiadomo, które twierdzenie sprawdzić; jeśli nie – pytania do użytkownika."""
+    missing: list[str] = []
+    needs_clarification: bool = False
+    questions: list[ClarifyingQuestion] = []
+
+
+class ClarificationExchange(BaseModel):
+    questions: list[str]
+    answer: str
+
+
+class Clarification(BaseModel):
+    """Przebieg doprecyzowania. `questions` jest niepuste tylko przy statusie needs_clarification."""
+    questions: list[ClarifyingQuestion] = []
+    missing: list[str] = []
+    round: int = 0
+    max_rounds: int = 0
+    history: list[ClarificationExchange] = []
 
 
 class CheckMeta(BaseModel):
@@ -73,8 +100,8 @@ class CheckMeta(BaseModel):
 
 
 class InputInfo(BaseModel):
-    kind: Literal["url", "image"]
-    text: str = Field(description="Treść artykułu po ekstrakcji")
+    kind: Literal["url", "text", "image"]
+    text: str = Field(description="Treść artykułu po ekstrakcji lub tekst wklejony przez użytkownika")
     url: str
     title: str | None = None
 
@@ -164,12 +191,29 @@ class CheckResponse(BaseModel):
     limitations: list[str] = []
     warnings: list[CheckWarning] = []
     image_analysis: ImageAnalysis | None = None
+    parent_check_id: str | None = None
+    clarification: Clarification | None = None
     meta: CheckMeta = CheckMeta()
 
 
 class CheckRequest(BaseModel):
-    url: str = Field(..., max_length=2000)
+    """Nowe sprawdzenie (`url` albo `text`) lub odpowiedź na pytanie doprecyzowujące (`parent_check_id` + `text`)."""
+
+    url: str | None = Field(default=None, max_length=2000)
+    text: str | None = Field(default=None, max_length=20_000)
+    parent_check_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     session_id: str | None = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+    @model_validator(mode="after")
+    def _one_input(self) -> "CheckRequest":
+        has_url = bool(self.url and self.url.strip())
+        has_text = bool(self.text and self.text.strip())
+        if self.parent_check_id:
+            if not has_text or has_url:
+                raise ValueError("Odpowiedź na pytanie musi zawierać tekst (bez linku w polu url).")
+        elif has_url == has_text:
+            raise ValueError("Podaj link albo tekst do sprawdzenia.")
+        return self
 
 
 class HealthResponse(BaseModel):

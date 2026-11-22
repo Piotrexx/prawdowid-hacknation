@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from app.api.deps import enforce_rate_limit
 from app.core.image_check import ImageCheckService
 from app.core.pipeline import VerificationService
-from app.schemas import CheckRequest, CheckResponse, HealthResponse
+from app.schemas import CheckRequest, CheckResponse, CheckStatus, HealthResponse
 from app.store.db import Store
 
 router = APIRouter(tags=["weryfikacja"])
@@ -34,7 +34,15 @@ def health(request: Request) -> HealthResponse:
 @router.post("/checks", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
 async def create_check(request: Request, payload: CheckRequest) -> CheckResponse:
     service: VerificationService = request.app.state.service
-    return await service.check(payload)
+    parent = None
+    if payload.parent_check_id:
+        store: Store = request.app.state.store
+        parent = store.get_check(payload.parent_check_id)
+        if parent is None:
+            raise HTTPException(404, "Nie znaleziono pytania, na które odpowiadasz. Wyślij treść jeszcze raz.")
+        if parent.status != CheckStatus.NEEDS_CLARIFICATION or parent.clarification is None:
+            raise HTTPException(409, "To sprawdzenie nie czeka na doprecyzowanie.")
+    return await service.check(payload, parent)
 
 
 _SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")

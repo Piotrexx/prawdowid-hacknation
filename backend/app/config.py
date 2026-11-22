@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     bielik_api_key: SecretStr | None = None
     bielik_timeout_s: float = 120.0
 
+    # Doprecyzowanie: który model decyduje, czy dopytać użytkownika ("llm" = główny model, np. DeepSeek;
+    # "bielik"; "off" = tylko reguła zbyt krótkiego tekstu) i ile razy najwyżej dopytujemy.
+    clarification_model: Literal["llm", "bielik", "off"] = "llm"
+    clarification_max_rounds: int = 2
+
     # Google Fact Check Tools API
     google_factcheck_api_key: SecretStr | None = None
 

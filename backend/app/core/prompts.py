@@ -8,7 +8,7 @@ Tytuł: {title}
 
 Treść:
 {text}
-
+{clarifications}
 Zadanie:
 1. Zidentyfikuj główny temat artykułu (jedno zdanie).
 2. Wyekstrahuj do 10 najważniejszych słów kluczowych/fraz, które najlepiej nadają się do wyszukiwania sprawdzeń faktów (fact-checking). Skup się na: nazwiskach, nazwach instytucji, konkretnych twierdzeniach, datach, lokalizacjach, liczbach.
@@ -25,7 +25,42 @@ Ważne:
 - Słowa kluczowe muszą być konkretne i przydatne do wyszukiwania w bazach fact-checkingowych
 - Unikaj ogólnych słów jak "polityka", "ekonomia", "skandal" - używaj nazw właściwych
 - Jeśli artykuł zawiera cytaty - uwzględnij kluczowe fragmenty jako frazy
+- Jeśli jest sekcja "Doprecyzowanie od użytkownika", użyj odpowiedzi, żeby wybrać właściwe nazwy i twierdzenia
 - Odpowiedz TYLKO po polsku
+""".strip()
+
+# Prompt oceniający, czy wiadomo, co sprawdzać (domyślnie DeepSeek, zob. CLARIFICATION_MODEL)
+CLARITY_PROMPT = """
+Oceń, czy z poniższej treści (artykułu albo wiadomości wklejonej przez użytkownika) da się ustalić, JAKIE konkretne twierdzenie trzeba sprawdzić.
+
+Tytuł: {title}
+
+Treść:
+{text}
+{clarifications}
+Ustaw "needs_clarification": true TYLKO gdy bez dodatkowej informacji nie wiadomo, co sprawdzać, np.:
+- treść nie zawiera żadnego konkretnego twierdzenia (np. samo "czy to prawda?", jedno hasło),
+- zaimki ("on", "oni", "to") nie mają w treści żadnego odniesienia,
+- brakuje kluczowego szczegółu (kto, gdzie, kiedy), bez którego nie da się szukać źródeł.
+Pełny artykuł prasowy prawie zawsze da się sprawdzić. Kilka konkretnych twierdzeń w jednej wiadomości też da się sprawdzić – nie pytaj wtedy.
+Jeśli jest sekcja "Doprecyzowanie od użytkownika", uwzględnij odpowiedzi i nie pytaj ponownie o to samo.
+
+Gdy "needs_clarification" jest true, zadaj od 1 do 3 krótkich, życzliwych pytań po polsku. Gdy pytanie ma kilka oczywistych odpowiedzi, podaj je w "options". W "missing" wypisz krótko, czego brakuje.
+Nie pytaj o dane osobowe użytkownika.
+
+Odpowiedz WYŁĄCZNIE obiektem JSON o strukturze (najpierw "missing", potem decyzja):
+{{
+    "missing": [],
+    "needs_clarification": true | false,
+    "questions": []
+}}
+
+Przykład dla wiadomości "Podobno on to zrobił, prawda?":
+{{
+    "missing": ["kto", "co dokładnie się stało"],
+    "needs_clarification": true,
+    "questions": [{{"text": "O kim jest ta wiadomość?", "options": []}}, {{"text": "Co dokładnie ta osoba miała zrobić?", "options": []}}]
+}}
 """.strip()
 
 # Prompt dla DeepSeek - ostateczny werdykt
@@ -41,7 +76,7 @@ Tytuł: {title}
 
 Treść:
 {text}
-
+{clarifications}
 Słowa kluczowe: {keywords}
 Główny temat: {main_topic}
 
@@ -71,5 +106,6 @@ Ważne:
 - confidence to Twoja pewność werdyktu (0.0 - 1.0)
 - justification musi być po polsku, konkretna i uzasadniona
 - Jeśli fact-checki sprzeczają się ze sobą - wskaż to w uzasadnieniu i obniż confidence
+- Jeśli jest sekcja "Doprecyzowanie od użytkownika", traktuj ją jako wyjaśnienie, o które twierdzenie chodzi, a nie jako dowód jego prawdziwości
 - Odpowiedz TYLKO po polsku
 """.strip()
