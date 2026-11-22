@@ -7,6 +7,21 @@ import os
 import tempfile
 import threading
 
+# faster-whisper >= 1.1 calls av.open(..., metadata_errors="ignore") but PyAV 19.x
+# does not yet expose that kwarg. Strip it silently until PyAV adds support.
+try:
+    import av as _av
+
+    _av_open_orig = _av.open
+
+    def _av_open_compat(*args, **kwargs):
+        kwargs.pop("metadata_errors", None)
+        return _av_open_orig(*args, **kwargs)
+
+    _av.open = _av_open_compat
+except ImportError:
+    pass
+
 from app.config import Settings
 
 log = logging.getLogger("audio")

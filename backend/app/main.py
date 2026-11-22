@@ -197,6 +197,11 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
 
     for router in (checks.router, admin.router, moderator.auth_router, moderator.router):
         app.include_router(router, prefix="/api/v1")
+
+    # Alias dla platform/probek, które pytają o zdrowie usługi pod gołym /health.
+    app.add_api_route(
+        "/health", checks.health, methods=["GET"], include_in_schema=False
+    )
     return app
 
 

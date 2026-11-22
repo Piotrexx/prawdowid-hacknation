@@ -30,23 +30,26 @@ Dostajesz materiał przesłany przez obywatela: wiadomość, treść strony inte
 
 Zadanie:
 1. Wydziel najważniejsze twierdzenia z materiału (najwyżej {{max_claims}}). Każde zapisz po polsku jako jedno samodzielne zdanie, zrozumiałe bez reszty tekstu: uzupełnij z kontekstu, kogo, czego, kiedy i gdzie dotyczy, ale nie dodawaj informacji, których w materiale nie ma. Nie łącz kilku faktów w jedno twierdzenie.
+   • Materiał zawierający sprzeczność („A i jednocześnie nie-A", „jeden urząd mówi X, drugi mówi Y", „jest 2 i 3 jednocześnie") to prawidłowy fakt do sprawdzenia – wydziel go jako JEDNO twierdzenie opisujące sprzeczność, nie dopytuj o szczegóły.
+   • Twierdzenie z odwołaniem do „domeny opisanej w katalogu incydentów", „strony podobnej do znanego źródła dezinformacji" itp. traktuj jako konkretne twierdzenie (sama domena nie przesądza o prawdziwości – to już zadanie oceny).
+   • Planowane wydarzenie z konkretną datą lub miejscem („w przyszłym tygodniu w X odbędzie się…", „jutro otwarcie…", „w styczniu wejdzie w życie…") to fakt – nie prognoza. Sprawdzeniu podlega, czy wydarzenie zostało oficjalnie ogłoszone lub udokumentowane.
 2. Określ rodzaj każdego twierdzenia:
-   - "fakt" – da się sprawdzić w źródłach (zdarzenie, liczba, data, cytat, stan prawny, istnienie czegoś);
-   - "opinia" – ocena, pogląd, wartościowanie;
-   - "prognoza" – przewidywanie przyszłości lub spekulacja.
-   Opinie i prognozy uwzględniaj tylko wtedy, gdy są istotną częścią materiału.
+   - "fakt" – da się sprawdzić w źródłach (zdarzenie, liczba, data, cytat, stan prawny, istnienie czegoś, zapowiedź lub ogłoszenie z datą);
+   - "opinia" – ocena, pogląd, wartościowanie. Sygnały: „uważam, że", „moim zdaniem", „myślę, że", „sądzę, że", „według mnie", „jest najlepszy/najgorszy", „jest niesprawiedliwy/sprawiedliwy", „to dobre/złe". Opinia nawet bez tych zwrotów to wyraźne wartościowanie subiektywne.
+   - "prognoza" – przewidywanie dalekiej przyszłości lub spekulacja bez konkretnej zapowiedzi („za pięć lat Polska będzie…", „w przyszłości dojdzie do…"). NIE dotyczy zapowiedzianych wydarzeń z konkretną datą – te są faktami.
+   Opinie i prognozy wydzielaj zawsze, gdy są głównym treścią materiału – nie przełączaj na needs_clarification tylko dlatego, że to nie fakt.
 3. Dla twierdzeń typu "fakt" podaj 2–4 zapytania do wyszukiwarki po polsku. Używaj nazw własnych, liczb, dat i słów kluczowych, bez zbędnych słów.
 4. risk="high", gdy twierdzenie dotyczy bezpośredniego zagrożenia życia lub zdrowia, bezpieczeństwa publicznego, działań wojennych, mobilizacji, ewakuacji, przebiegu wyborów albo może wywołać panikę. W pozostałych przypadkach "standard".
 5. input_status:
-   - "ok" – wskazano co najmniej jedno twierdzenie. Kilka konkretnych twierdzeń w jednej wiadomości to też "ok" – nie dopytuj wtedy. Pełny artykuł prasowy prawie zawsze jest "ok";
-   - "needs_clarification" – bez dodatkowej informacji nie wiadomo, co sprawdzać: materiał nie zawiera konkretnego twierdzenia (np. samo „czy to prawda?”, jedno hasło), zaimki („on”, „oni”, „to”) nie mają w materiale żadnego odniesienia albo brakuje kluczowego szczegółu (kto, gdzie, kiedy), bez którego nie da się szukać źródeł. Wtedy:
+   - "ok" – wskazano co najmniej jedno twierdzenie (fakt, opinia lub prognoza). To domyślny status, gdy w materiale jest cokolwiek konkretnego do wydzielenia. Kilka konkretnych twierdzeń w jednej wiadomości to też "ok" – nie dopytuj wtedy. Pełny artykuł prasowy prawie zawsze jest "ok";
+   - "needs_clarification" – UŻYWAJ OSZCZĘDNIE. Tylko gdy materiał jest tak krótki/ogólnikowy, że nie da się wydzielić żadnego twierdzenia: samo „czy to prawda?", jedno hasło bez treści, zaimki („on", „oni", „to") bez żadnego odniesienia w materiale. Jeśli widzisz choć jedno konkretne zdanie z czasownikiem i podmiotem, wybierz "ok" i wydziel twierdzenie – nawet jeśli brakuje dat lub miejsc (brak szczegółów to sprawa oceny dowodów, nie ekstrakcji). Przy "needs_clarification":
      • w questions zadaj od 1 do 3 krótkich, uprzejmych pytań. Gdy pytanie ma kilka oczywistych odpowiedzi, podaj je w options (najwyżej 5), w przeciwnym razie zostaw options puste;
      • w missing wypisz krótko, czego brakuje (np. "kto", "miejsce", "data");
      • w message przepisz pierwsze pytanie.
      Nie pytaj o dane osobowe obywatela;
-   - "out_of_scope" – materiał nie zawiera niczego do sprawdzenia (np. powitanie, prośba o napisanie tekstu, pytanie o poradę). W polu message wyjaśnij to jednym prostym zdaniem.
+   - "out_of_scope" – materiał nie zawiera niczego do sprawdzenia (np. powitanie, prośba o napisanie tekstu, pytanie o poradę, zadanie kreatywne). W polu message wyjaśnij to jednym prostym zdaniem.
    Dla "ok" pole message zostaw puste. Pola questions i missing wypełniaj tylko przy "needs_clarification".
-6. Jeśli materiał kończy się sekcją „Doprecyzowanie od użytkownika”, są to odpowiedzi obywatela na wcześniejsze pytania. Użyj ich, by uzupełnić twierdzenia (kto, co, kiedy, gdzie), i nie pytaj ponownie o to samo. Odpowiedzi wyjaśniają, o które twierdzenie chodzi – nie są dowodem jego prawdziwości.
+6. Jeśli materiał kończy się sekcją „Doprecyzowanie od użytkownika", są to odpowiedzi obywatela na wcześniejsze pytania. Użyj ich, by uzupełnić twierdzenia (kto, co, kiedy, gdzie), i nie pytaj ponownie o to samo. Odpowiedzi wyjaśniają, o które twierdzenie chodzi – nie są dowodem jego prawdziwości.
 
 Dzisiejsza data: {{today}}. Pisz prostym językiem. Nie oceniaj prawdziwości twierdzeń – to zadanie kolejnego etapu."""
 

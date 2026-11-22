@@ -39,7 +39,7 @@ ENV DATABASE_URL=postgresql+psycopg://prawdowid:prawdowid@postgres:5432/prawdowi
     UV_CACHE_DIR=/app/var/uv-cache
 RUN useradd --system --uid 10001 prawdowid \
     && mkdir -p /app/var /app/var/uv-cache \
-    && chown -R prawdowid /app/var
+    && chown -R prawdowid /app/var /app/.cache
 USER prawdowid
 
 EXPOSE 8000

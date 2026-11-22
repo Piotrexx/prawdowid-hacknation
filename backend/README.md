@@ -53,8 +53,9 @@ Bez ingestu usługa odpowiada, ale korpus jest pusty i twierdzenia kończą się
 docker compose up --build
 ```
 
-`docker-compose.yml` uruchamia PostgreSQL/pgvector, backend, Ollamę z Bielikiem i
-frontend. Modele embeddingów i Whisper są cache'owane w wolumenie `backend-var`.
+`docker-compose.yml` uruchamia PostgreSQL/pgvector, backend, Ollamę z Bielikiem,
+frontend oraz bota Discord. Modele embeddingów i Whisper są cache'owane w wolumenie
+`backend-var`.
 
 ## Endpointy
 

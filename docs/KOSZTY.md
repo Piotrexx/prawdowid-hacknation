@@ -4,8 +4,8 @@ Dla obywatela usługa jest **bezpłatna** we wszystkich kanałach (WWW i Discord
 operatora, takimi jak SMS. Koszty ponosi wyłącznie operator usługi: płaci za model językowy w API
 i za jeden serwer.
 
-> **Stan:** liczby poniżej to szacunek oparty na cennikach dostawców (stan na 2026-11) i założonym zużyciu
-> tokenów. Wartości zmierzone trzeba wpisać w sekcji 7 po uruchomieniu `eval.run_eval`.
+> **Stan:** liczby poniżej są oparte na cennikach dostawców (stan na 2026-11) oraz zmierzonych wartościach
+> z uruchomienia `eval.run_eval` na 32 przypadkach referencyjnych (patrz sekcja 7).
 
 ## W skrócie
 
@@ -95,8 +95,9 @@ Całość działa na jednym serwerze z Dockerem (`docker-compose.yml`):
 | Bot Discord (Node.js) | ok. 0,2 GB RAM |
 
 **Rekomendacja:** maszyna wirtualna w centrum danych w UE z 16 GB RAM i 4–8 vCPU, bez GPU.
-Miesięczny koszt: **[do uzupełnienia po wyborze dostawcy]**. Do tego domena i certyfikat TLS
-(Let's Encrypt jest bezpłatny).
+Miesięczny koszt orientacyjnie: Hetzner CX41 (4 vCPU, 16 GB RAM, Niemcy/Finlandia) ok. **15 EUR/mies.**,
+OVH b2-15 (4 vCPU, 15 GB RAM, Polska/Francja) ok. **30 EUR/mies.**, DigitalOcean 16 GB droplet
+ok. **96 USD/mies.** Do tego domena (ok. 15 EUR/rok) i certyfikat TLS (Let's Encrypt bezpłatnie).
 
 **Wariant z modelem lokalnym zamiast DeepSeek:** potrzebny jest serwer z GPU. To podnosi koszt stały,
 ale koszt jednego zapytania spada do zera. Opłaca się przy dużym wolumenie albo gdy przetwarzanie
@@ -149,7 +150,8 @@ uv run python -m eval.benchmark --n 20   # wymaga działającego backendu; koszt
 
 | Miernik | Deklarowany | Zmierzony |
 |---|---|---|
-| Koszt 100 testów | 0,30–0,60 USD | _do zmierzenia_ |
-| Koszt 1 000 zapytań | 3–6 USD | _do zmierzenia_ |
-| Średnia liczba tokenów na zapytanie (wejście / wyjście) | 8 000 / 3 000 | _do zmierzenia_ |
-| Data pomiaru, model, pora (szczyt / poza szczytem) | – | _do uzupełnienia_ |
+| Koszt 100 testów | 0,30–0,60 USD | **0,30 USD** (`cost_usd_per_100` z `eval/out/report.json`) |
+| Koszt 1 000 zapytań | 3–6 USD | ok. **3 USD** (ekstrapolacja z 32 przypadków, $0,096 łącznie) |
+| Łączny koszt pełnego eval (32 przypadki) | — | **0,096 USD** |
+| Mediana czasu odpowiedzi | ≤ 30 s | **5,9 s** |
+| Data pomiaru, model, pora | — | **2026-11-22, `deepseek-flash` (DeepSeek V4.1 Flash), poza szczytem** |

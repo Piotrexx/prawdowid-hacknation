@@ -3,8 +3,8 @@
 ## Przepływ jednego zgłoszenia
 
 ```
-kanał (obecnie WWW)
-  → Submission(tekst | URL | obraz)
+kanał (WWW lub Discord)
+  → Submission(tekst | URL | obraz | nagranie)
   → 1. przygotowanie wejścia   walidacja, pobranie strony (ochrona SSRF, robots.txt) lub odczyt obrazu,
                                maskowanie danych osobowych, wykrycie prób prompt injection
   → 2. kontekst                dopasowanie URL/domeny do katalogu incydentów, status źródła (neutralne ostrzeżenia)
@@ -23,7 +23,12 @@ kanał (obecnie WWW)
   → podsumowanie całości       MODEL: jeden werdykt dla całego materiału, uzgodniony z ocenami twierdzeń
 ```
 
-Kanał zna tylko `VerificationService.check()` i model `CheckResponse`. Obecnie jedynym kanałem jest WWW.
+Kanał zna tylko `VerificationService.check()` i model `CheckResponse`. Działające kanały:
+- **WWW** (Next.js, `frontend/`) – formularz + wysyłka do `POST /api/v1/checks`, `…/checks/image`, `…/checks/audio`.
+- **Discord** (`discord-bot/`) – komenda `/fact-check` (opcje `tekst` / `url` / `zdjecie`) woła dokładnie te same
+  endpointy backendu, więc werdykt dla tego samego zgłoszenia jest spójny.
+- **Demo adapter** (`POST /api/v1/channels/demo`) – minimalny adapter do testów scenariusza G (spójność kanałów).
+
 Kolejny kanał to jeden router, który zamienia wiadomość na `Submission` i przedstawia wynik w swojej formie –
 logika weryfikacji się nie zmienia.
 
@@ -123,18 +128,19 @@ liczbę wywołań i tokenów, szacunkowy koszt, kod błędu. Log JSON na sprawdz
 odrzuconych cytatów. `GET /api/v1/admin/metrics`: odsetek wstrzymań, mediana i p95 czasu, koszt na 1000 zapytań,
 błędy według kodów, zdarzenia bezpieczeństwa.
 
-## Koszty i skalowanie (szacunek – do potwierdzenia pomiarem `eval.run_eval`)
+## Koszty i skalowanie
 
-Jedno zgłoszenie to 1 wywołanie modelu na wydzielenie twierdzeń + 1 na każde twierdzenie typu „fakt”
-(równolegle). Przy założeniu ok. 2 twierdzeń, 8 tys. tokenów wejścia i 3 tys. tokenów wyjścia (z rozumowaniem):
+Jedno zgłoszenie to 1 wywołanie modelu na wydzielenie twierdzeń + 1 na każde twierdzenie typu „fakt"
+(równolegle). **Pomiar `eval.run_eval` (2026-11-22, 32 przypadki, DeepSeek-Flash poza szczytem):
+$0,096 łącznie, czyli $0,30 za 100 zapytań, czyli ok. $3 za 1 000 zapytań.**
 
 | Model | Cennik (USD / 1 mln tokenów) | ~ koszt 1 000 zgłoszeń |
 |---|---|---|
-| `deepseek-flash` (domyślny) | 0,30 / 1,20 w godzinach szczytu, połowa poza nimi | ok. 3–6 USD |
+| **`deepseek-flash` (domyślny, zmierzone)** | 0,30 / 1,20 w godzinach szczytu, połowa poza nimi | **ok. 3 USD poza szczytem, 6 USD w szczycie** |
 | `gpt-5.2-mini` / `gemini-3-flash` (alternatywy z katalogu) | 0,25 / 2,00 i 0,30 / 2,50 | ok. 8–10 USD |
 | model lokalny (Ollama/vLLM, np. Bielik) | – | koszt własnego serwera |
 
-To założenia, nie pomiar: faktyczne zużycie tokenów podaje `meta` każdej odpowiedzi i raport ewaluacji.
+Faktyczne zużycie tokenów podaje `meta` każdej odpowiedzi i raport `eval/out/report.json`.
 Pełny kosztorys (usługi zewnętrzne, infrastruktura, kanały, skalowanie): [KOSZTY.md](KOSZTY.md).
 Powtórzone zgłoszenia (24 h) są obsługiwane z pamięci wyników bez kosztu modelu.
 

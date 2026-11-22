@@ -19,24 +19,28 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 - Awarię, prośbę o doprecyzowanie i treść poza zakresem komunikuje osobno – to nie są werdykty.
 - Każdy rozstrzygający wynik ma co najmniej jeden dosłowny cytat ze źródła (tytuł, wydawca, data, link).
   Cytaty są sprawdzane automatycznie; zmyślony cytat = brak werdyktu.
+- **Multimodalność:** tekst, URL, zrzut ekranu (OCR + odwrotne wyszukiwanie obrazu w Yandex/TinEye +
+  porównanie SIFT/RANSAC), nagranie głosowe (transkrypcja Whisper lokalnie).
 - Nierozstrzygnięte zgłoszenia trafiają do kolejki moderatora; podobne zgłoszenia są grupowane w jedną sprawę.
 - Ignoruje i odnotowuje próby prompt injection, maskuje dane osobowe, nie zapisuje obrazów.
 
-> **Drugi kanał:** `POST /api/v1/channels/demo` to adapter demonstracyjny, który woła tę samą
-> ścieżkę weryfikacji co WWW (spójność wyniku i cytatów jest testowana).
+> **Drugi kanał:** bot Discord z komendą `/fact-check` (tekst / url / zdjęcie) woła ten sam backend
+> co WWW (`POST /api/v1/checks`, `POST /api/v1/checks/image`), więc wynik merytoryczny jest spójny
+> niezależnie od kanału. Dodatkowo `POST /api/v1/channels/demo` jako adapter demonstracyjny do testów.
 
 ## Architektura w skrócie
 
 ```
-frontend/  Next.js (kanał WWW, katalog źródeł, panel moderatora)
-    │  HTTP/JSON
+frontend/      Next.js (kanał WWW, katalog źródeł, panel moderatora)
+discord-bot/   Node.js + discord.js (kanał Discord, komenda /fact-check)
+    │  HTTP/JSON  (oba kanały wołają ten sam backend)
 backend/   FastAPI
     ├─ api/                 kanał WWW i panel moderatora (+ ingest)
     ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
     ├─ core/prompts.py      prompty Bielika i DeepSeeka (kontekst + fact-checki)
     ├─ ingest/              konektory źródeł → tekst → embedding → PostgreSQL
     ├─ retrieval/           pgvector + rerank; fallback leksykalny
-    ├─ llm/                 wymienny dostawca modelu (API zgodne z OpenAI, domyślnie DeepSeek | Anthropic | brak)
+    ├─ llm/                 wymienny dostawca modelu (domyślnie DeepSeek; również Anthropic, OpenAI, Gemini, OpenRouter, lokalny)
     ├─ security/            PII, prompt injection, SSRF, statusy źródeł, limity żądań
     ├─ integrations/        eksport STIX 2.1 + mapowanie DISARM
     └─ store/               PostgreSQL: sprawdzenia, sprawy, zgody, archiwum, korpus, ingest
@@ -78,10 +82,13 @@ Alternatywnie w kontenerach: `docker compose up --build` (wymaga pliku `backend/
 
 ### Scenariusz demonstracyjny
 
-1. `http://localhost:3000` – wklej treść, link, zrzut ekranu albo nagraj głos; kliknij „Sprawdź”.
-2. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa,
-   archiwum i eksport CSV/JSON/STIX (token = `ADMIN_TOKEN`).
-3. Po zaakceptowaniu polityki prywatności sprawdzenia i archiwum są zapisywane w PostgreSQL;
+1. **WWW** (`http://localhost:3000`) – wklej treść, link, zrzut ekranu albo nagraj głos; kliknij „Sprawdź".
+2. **Discord** – na serwerze z zarejestrowanym botem wpisz `/fact-check tekst:<pytanie>`. Bot odpowiada
+   embedem z werdyktem, siłą podstawy i linkiem do pełnej analizy na WWW; `/fact-check zdjecie:<plik>`
+   uruchamia tę samą ścieżkę co upload obrazu w WWW.
+3. **Panel moderatora** (`http://localhost:3000/moderator`) – kolejka spraw, statystyki, zdarzenia
+   bezpieczeństwa, archiwum i eksport CSV/JSON/STIX (login e-mail/hasło albo `ADMIN_TOKEN`).
+4. Po zaakceptowaniu polityki prywatności sprawdzenia i archiwum są zapisywane w PostgreSQL;
    usunięcie sesji usuwa powiązane dane.
 
 ## Testy i mierniki
@@ -105,6 +112,19 @@ Opis scenariuszy A–J, sposób liczenia mierników i stan pomiarów: [docs/TEST
 | [docs/KOSZTY.md](docs/KOSZTY.md) | koszt zapytania i 1 000 zapytań, usługi zewnętrzne, infrastruktura, kanały, skalowanie |
 | [backend/README.md](backend/README.md) | konfiguracja, API, aktualizacja korpusu |
 | [frontend/README.md](frontend/README.md) | uruchomienie i widoki interfejsu |
+| [discord-bot/README.md](discord-bot/README.md) | rejestracja komendy `/fact-check`, uruchomienie bota |
+
+## Materiały do oceny (wg sekcji 4 wymagań)
+
+- **Nazwa zespołu, tytuł, opis** — powyżej (sekcja wprowadzająca).
+- **Prezentacja PDF (maks. 12 slajdów)** — _do dołączenia przez zespół przed oddaniem_ (`docs/prezentacja.pdf`).
+- **Film demonstracyjny (maks. 3 min)** — _do nagrania i zalinkowania przez zespół przed oddaniem_.
+- **Repozytorium + instrukcja uruchomienia** — ten plik (sekcja „Uruchomienie" wyżej).
+- **Opis architektury, przepływu, modeli** — [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
+- **Opis źródeł i licencji** — [docs/ZRODLA.md](docs/ZRODLA.md).
+- **Wyniki testów z sekcji 6 + dane do odtworzenia** — [docs/TESTY-I-RYZYKA.md](docs/TESTY-I-RYZYKA.md)
+  + `backend/eval/cases.jsonl` + `backend/eval/out/*.csv`.
+- **Lista ryzyk** — [docs/TESTY-I-RYZYKA.md#ryzyka](docs/TESTY-I-RYZYKA.md).
 
 ## Pochodzenie
 
