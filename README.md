@@ -140,15 +140,3 @@ Opis scenariuszy A–J, sposób liczenia mierników i stan pomiarów: [docs/TEST
 | [backend/README.md](backend/README.md) | konfiguracja, API, aktualizacja korpusu |
 | [frontend/README.md](frontend/README.md) | uruchomienie i widoki interfejsu |
 | [discord-bot/README.md](discord-bot/README.md) | rejestracja komendy `/fact-check`, uruchomienie bota |
-
-## Materiały do oceny (wg sekcji 4 wymagań)
-
-- **Nazwa zespołu, tytuł, opis** — powyżej (sekcja wprowadzająca).
-- **Prezentacja PDF (maks. 12 slajdów)** — _do dołączenia przez zespół przed oddaniem_ (`docs/prezentacja.pdf`).
-- **Film demonstracyjny (maks. 3 min)** — _do nagrania i zalinkowania przez zespół przed oddaniem_.
-- **Repozytorium + instrukcja uruchomienia** — ten plik (sekcja „Uruchomienie" wyżej).
-- **Opis architektury, przepływu, modeli** — [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
-- **Opis źródeł i licencji** — [docs/ZRODLA.md](docs/ZRODLA.md).
-- **Wyniki testów z sekcji 6 + dane do odtworzenia** — [docs/TESTY-I-RYZYKA.md](docs/TESTY-I-RYZYKA.md)
-  + `backend/eval/cases.jsonl` + `backend/eval/out/*.csv`.
-- **Lista ryzyk** — [docs/TESTY-I-RYZYKA.md#ryzyka](docs/TESTY-I-RYZYKA.md).
