@@ -100,6 +100,12 @@ Bez klucza API usługa też się uruchomi: wyszukiwanie działa, a każde sprawd
 komunikatem o problemie technicznym (nigdy pozornym werdyktem) wraz z listą znalezionych materiałów.
 
 Alternatywnie w kontenerach: `docker compose up --build` (wymaga pliku `backend/.env`).
+### Zmienne środowiskowe
+
+Wzory wszystkich zmiennych środowiskowych to 
+- [backend/.env.example](backend/.env.example)
+- [frontend/.env.example](frontend/.env.example)
+- [discord-bot/.env.example.discord](discord-bot/.env.example.discord);
 
 ### Scenariusz demonstracyjny
 
