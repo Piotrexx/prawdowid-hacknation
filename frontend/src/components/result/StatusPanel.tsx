@@ -21,10 +21,10 @@ const PANELS: Record<NonVerdictStatus, { icon: LucideIcon; fallback: string }> =
 };
 
 export const STATUS_TITLES: Record<CheckStatus, string> = {
-  completed: "Wynik sprawdzenia",
+  completed: "Wynik analizy",
   needs_clarification: "Potrzebuję więcej szczegółów",
   out_of_scope: "To pytanie jest poza zakresem",
-  error: "Błąd systemu – to nie jest wynik sprawdzenia",
+  error: "Błąd systemu – to nie jest wynik analizy",
 };
 
 interface StatusPanelProps {
@@ -69,7 +69,7 @@ export function StatusPanel({ result, actions }: StatusPanelProps) {
           </p>
           {isError ? (
             <p className="font-semibold text-bad-fg">
-              To nie jest wynik sprawdzenia: żadna teza nie została oceniona.
+              To nie jest wynik analizy: żadna teza nie została oceniona.
             </p>
           ) : null}
           {result.status === "out_of_scope" ? (

@@ -52,15 +52,14 @@ npx tsc --noEmit   # kontrola typów (po `npm run build` lub `npx next typegen`)
 
 | Adres               | Co zawiera                                                              |
 | ------------------- | ----------------------------------------------------------------------- |
-| `/`                 | Sprawdzanie treści: tekst, link albo zrzut ekranu.                      |
-| `/sprawdzenie/[id]` | Zapisany wynik sprawdzenia (stały link).                                |
-| `/zrodla`           | Katalog źródeł, zasady kwalifikowania, statystyki zbioru.               |
+| `/`                 | Sprawdzanie treści: tekst, link, zrzut ekranu albo nagranie głosowe.    |
+| `/analiza/[id]`     | Zapisany wynik analizy (stały link).                                    |
 | `/o-systemie`       | Jak to działa: zakres, oceny, prywatność, użycie AI, stan serwera.      |
-| `/moderator`        | Panel moderatora: sprawy, statystyki, zdarzenia, zgłoszenia, eksport.   |
+| `/moderator`        | Panel moderatora: twierdzenia, statystyki, zdarzenia, zgłoszenia, eksport. |
 
 ## Układ kodu
 
 - `src/app` – strony i układ główny.
-- `src/components` – komponenty pogrupowane według stron (`check`, `result`, `sources`, `moderator`, `about`) oraz wspólne (`ui`, `layout`).
+- `src/components` – komponenty pogrupowane według stron (`check`, `result`, `moderator`, `about`) oraz wspólne (`ui`, `layout`).
 - `src/lib` – typy zgodne z `backend/app/schemas.py`, klient API, formatowanie, etykiety.
 - `public` – logo.

@@ -1,22 +1,25 @@
 "use client";
 
-import { EyeOff, Quote, Scale } from "lucide-react";
+import { EyeOff, FileAudio, Quote, Scale, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageAttachment } from "@/components/check/useImageAttachment";
-import { ApiError, createCheck, createImageCheck, isAbort } from "@/lib/api";
+import { ApiError, createAudioCheck, createCheck, createImageCheck, isAbort } from "@/lib/api";
+import { toast } from "@/lib/toast";
+import { useAdminToken } from "@/lib/adminToken";
 import { cx } from "@/lib/cx";
 import { describeError } from "@/lib/errors";
-import { plural } from "@/lib/format";
 import { rememberCheck } from "@/lib/history";
 import { SHORT_VERDICT_LABELS } from "@/lib/labels";
 import { isSingleUrl } from "@/lib/links";
+import { maskPii } from "@/lib/pii";
 import { useNewCheckCount } from "@/lib/newCheck";
 import { cacheResult } from "@/lib/resultCache";
 import { ensureSessionId } from "@/lib/session";
 import type { CheckResponse } from "@/lib/types";
 import { ChatAnswer } from "./ChatAnswer";
-import { Composer, TEXT_LIMIT } from "./Composer";
+import { Composer, MIN_TEXT_LENGTH, TEXT_LIMIT } from "./Composer";
 import {
   addTurn,
   openConversation,
@@ -26,7 +29,9 @@ import {
   trackRequest,
   updateTurn,
   useTurns,
+  type NewTurn,
   type Turn,
+  type TurnKind,
 } from "./conversationStore";
 
 function announce(result: CheckResponse, t: ReturnType<typeof import("react-i18next").useTranslation>["t"]): string {
@@ -55,17 +60,22 @@ function UserMessage({ turn }: { turn: Turn }) {
           // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
           <img
             src={turn.imageUrl}
-            alt="Dołączony zrzut ekranu"
+            alt="Dołączone zdjęcie"
             className="mb-2 max-h-48 border border-line object-contain"
           />
         ) : turn.image ? (
           <p className="text-sm text-muted">Przesłane zdjęcie (podgląd nie jest zapisywany)</p>
         ) : null}
-        {turn.image ? null : (
+        {turn.kind === "audio" ? (
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <FileAudio aria-hidden="true" className="size-4" />
+            {t("composer.voiceMessage", { defaultValue: "Plik audio" })}
+          </p>
+        ) : turn.kind === "image" ? null : (
           <>
             <p
               className={cx(
-                "leading-relaxed break-words whitespace-pre-line",
+                "leading-relaxed wrap-break-words whitespace-pre-line",
                 long && !expanded && "line-clamp-6",
               )}
             >
@@ -80,6 +90,12 @@ function UserMessage({ turn }: { turn: Turn }) {
               >
                 {expanded ? t("chat.collapse") : t("chat.expand")}
               </button>
+            ) : null}
+            {turn.maskedPii.length > 0 ? (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+                <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+                Zamaskowano: {turn.maskedPii.join(", ")}.
+              </p>
             ) : null}
           </>
         )}
@@ -124,7 +140,7 @@ function Welcome({ title }: { title: ReactNode }) {
       <span aria-hidden="true" className="title-rule my-5" />
       <p className="text-lg leading-relaxed text-ink-soft">
         Wklej <Highlight>{t("nav.check").toLowerCase() === "sprawdź" ? "wiadomość" : "wiadomość"}</Highlight>, <Highlight>link</Highlight> albo{" "}
-        <Highlight>zrzut ekranu</Highlight>. Zobaczysz, co mówią o tym źródła i czego nie udało się
+        <Highlight>zdjęcie</Highlight>. Zobaczysz, co mówią o tym źródła i czego nie udało się
         ustalić.
       </p>
       <ul className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -139,6 +155,21 @@ function Welcome({ title }: { title: ReactNode }) {
   );
 }
 
+/** Skrót do panelu moderatora, widoczny tylko dla zalogowanych moderatorów. */
+function ModeratorShortcut() {
+  const token = useAdminToken();
+  if (!token) return null;
+  return (
+    <Link
+      href="/moderator"
+      className="absolute top-4 right-5 z-20 inline-flex min-h-11 items-center gap-2 rounded-lg border border-accent bg-surface px-4 font-semibold text-accent shadow-card transition-colors hover:bg-info-bg sm:right-8"
+    >
+      <ShieldCheck aria-hidden="true" className="size-5" />
+      Panel moderatora
+    </Link>
+  );
+}
+
 function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   const { t } = useTranslation();
   const turns = useTurns();
@@ -146,6 +177,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [waitSeconds, setWaitSeconds] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [replyToId, setReplyToId] = useState<string | null>(() => initialReplyTarget(turns));
   const image = useImageAttachment();
@@ -219,7 +251,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
 
   async function run(
     id: number,
-    payload: { text: string; file: File | null; parentId: string | null },
+    payload: { text: string; file: File | null; kind: TurnKind; parentId: string | null },
   ) {
     const controller = new AbortController();
     const untrack = trackRequest(controller);
@@ -228,7 +260,9 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     try {
       const sessionId = ensureSessionId();
       const result = payload.file
-        ? await createImageCheck(payload.file, sessionId, controller.signal)
+        ? payload.kind === "audio"
+          ? await createAudioCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct))
+          : await createImageCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct))
         : await createCheck(
             payload.parentId
               ? { text: payload.text, parent_check_id: payload.parentId, session_id: sessionId }
@@ -241,10 +275,16 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         cacheResult(result);
         rememberCheck(result);
       }
-      // A question about an image can only be answered in text, so hand the read text back.
-      if (result.status === "needs_clarification" && payload.file && result.input.text.trim()) {
+      // A question about an image or recording can only be answered in text, so hand the read text back.
+      if (
+        result.status === "needs_clarification" &&
+        payload.file &&
+        result.input.text.trim() &&
+        !result.clarification?.questions.length
+      ) {
         setText(result.input.text);
       }
+      setUploadProgress(null);
       updateTurn(id, { kind: "result", result });
       // The next message answers the question, until the user cancels or sends an image.
       if (result.status === "needs_clarification" && result.clarification?.questions.length) {
@@ -252,6 +292,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       }
       setStatus(announce(result, t));
     } catch (error) {
+      setUploadProgress(null);
       if (isAbort(error)) return;
       if (error instanceof ApiError && error.kind === "rate_limit") {
         const seconds = error.retryAfterSeconds ?? 0;
@@ -269,8 +310,15 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     if (busy || waiting) return;
     const trimmed = text.trim();
     const file = image.attachment?.file ?? null;
+    // An image is always a new check; only text can answer a question.
+    const replying = !file && replyTarget !== null;
     if (!file && !trimmed) {
       setFormError(t("composer.errorEmpty"));
+      textareaRef.current?.focus();
+      return;
+    }
+    if (!file && !replying && trimmed.length < MIN_TEXT_LENGTH) {
+      toast(t("composer.errorTooShort", { min: MIN_TEXT_LENGTH }), "error");
       textareaRef.current?.focus();
       return;
     }
@@ -280,23 +328,24 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       return;
     }
     setFormError(null);
+    const { text: sentText, masked: maskedPii } = maskPii(trimmed);
     setText("");
     image.clear();
     textareaRef.current?.focus();
-    // An image is always a new check; only text can answer a question.
-    submit(trimmed, file, file ? null : replyTarget);
+    submit({ text: trimmed, sentText, maskedPii, file, kind: file ? "image" : null }, replying ? replyTarget : null);
   }
 
-  function answer(parentId: string, option: string) {
+  function answer(parentId: string, reply: string) {
     if (busy || waiting || answered.has(parentId)) return;
-    submit(option, null, parentId);
+    const { text: sentText, masked: maskedPii } = maskPii(reply);
+    submit({ text: reply, sentText, maskedPii, file: null, kind: null }, parentId);
   }
 
-  function submit(message: string, file: File | null, parentId: string | null) {
-    const id = addTurn(message, file, parentId);
+  function submit(turn: Omit<NewTurn, "parentResultId">, parentId: string | null) {
+    const id = addTurn({ ...turn, parentResultId: parentId });
     scrollTo.current = id;
     setReplyToId(null);
-    void run(id, { text: message, file, parentId });
+    void run(id, { text: turn.sentText, file: turn.file, kind: turn.kind, parentId });
   }
 
   function reply(resultId: string) {
@@ -304,11 +353,20 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     focusComposer();
   }
 
+  function sendAudio(file: File) {
+    if (busy || waiting) return;
+    setFormError(null);
+    setText("");
+    image.clear();
+    const label = t("composer.voiceMessage", { defaultValue: "Nagranie głosowe" });
+    submit({ text: label, sentText: "", maskedPii: [], file, kind: "audio" }, null);
+  }
+
   function retry(turn: Turn) {
     if (busy || waiting) return;
     // A reopened message already has a check on the backend: load it again rather than re-check.
     if (turn.resultId) reloadResult(turn.id);
-    else void run(turn.id, { text: turn.text, file: turn.file, parentId: turn.parentResultId });
+    else void run(turn.id, { text: turn.sentText, file: turn.file, kind: turn.kind, parentId: turn.parentResultId });
   }
 
   function focusComposer() {
@@ -338,7 +396,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   return (
     <div
       className={cx(
-        "flex min-w-0 flex-1 flex-col",
+        "relative flex min-w-0 flex-1 flex-col",
         dragActive && "outline-3 -outline-offset-8 outline-focus outline-dashed",
       )}
       onDragOver={(event) => {
@@ -357,7 +415,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         if (file) image.attach(file);
       }}
     >
-      <div className="mx-auto flex w-full max-w-[50rem] flex-1 flex-col px-5 sm:px-8">
+      <ModeratorShortcut />
+      <div className="mx-auto flex w-full max-w-200 flex-1 flex-col px-5 sm:px-8">
         {turns.length === 0 ? (
           <Welcome title={title} />
         ) : (
@@ -379,14 +438,13 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
                     onRetry={() => retry(turn)}
                     answered={turn.resultId !== null && answered.has(turn.resultId)}
                     busy={busy || waiting}
-                    onReply={() => (turn.resultId ? reply(turn.resultId) : focusComposer())}
+                    onReply={() => (turn.resultId && waitsForAnswer(turn) ? reply(turn.resultId) : focusComposer())}
                     onAnswer={(option) => {
                       if (turn.resultId) answer(turn.resultId, option);
                     }}
                   />
                 </div>
               ))}
-              {/* Leaves room so the newest message can scroll to the top of the screen. */}
               <div aria-hidden="true" className="min-h-[40vh]" />
             </section>
           </>
@@ -406,8 +464,10 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
           imageError={image.error}
           onPickImage={image.attach}
           onClearImage={image.clear}
+          onAudio={sendAudio}
           onSubmit={send}
           busy={busy}
+          uploadProgress={uploadProgress}
           error={formError}
           waitSeconds={waitSeconds}
           textareaRef={textareaRef}

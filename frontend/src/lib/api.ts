@@ -1,18 +1,26 @@
 import type {
-  AdminCheckItem,
-  AdminMetrics,
+  ArchiveOut,
+  CaseOut,
+  CaseStatus,
+  CaseUpdate,
+  CheckListItem,
   CheckRequest,
   CheckResponse,
-  ClaimResult,
-  Evidence,
-  FactCheckResult,
+  Comment,
+  ConsentResponse,
   HealthResponse,
-  IncidentMatch,
-  ModeratorCaseInfo,
-  SourceRef,
-  StrengthLevel,
-  Verdict,
-  Warning,
+  LlmProvider,
+  LlmSettings,
+  LlmSettingsUpdate,
+  MetricsResponse,
+  Moderator,
+  ModeratorCreated,
+  ModeratorLoginResponse,
+  ModeratorPasswordReset,
+  Profile,
+  ProfileUpdate,
+  PushPublicKey,
+  SecurityEventOut,
 } from "./types";
 
 interface SessionDeleteResponse {
@@ -54,7 +62,7 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const CHECK_TIMEOUT_MS = 120_000;
+const CHECK_TIMEOUT_MS = 180_000;
 
 interface RequestOptions extends RequestInit {
   timeoutMs?: number;
@@ -117,6 +125,9 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       ...init,
+      // Numer sesji i zgoda jadą w ciasteczkach, więc backend musi je dostać.
+      // Wymaga allow_credentials=True w CORS po stronie backendu.
+      credentials: "include",
       signal: controller.signal,
     });
     if (!response.ok) throw await toApiError(response);
@@ -144,148 +155,6 @@ export function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-// --- Backend response → frontend shape adapter ---
-
-/** Backend returns old verdict codes; map them to the frontend's Verdict type. */
-function mapVerdict(raw: string | null | undefined): Verdict | null {
-  if (!raw) return null;
-  const MAP: Record<string, Verdict> = {
-    fake_news: "falszywe",
-    prawdziwe: "potwierdzone",
-    niepewne: "brak_wystarczajacych_dowodow",
-    satyna: "nie_podlega_weryfikacji",
-    opinia: "nie_podlega_weryfikacji",
-    // new values pass through if they already match
-    falszywe: "falszywe",
-    potwierdzone: "potwierdzone",
-    wprowadzajace_w_blad: "wprowadzajace_w_blad",
-    brak_wystarczajacych_dowodow: "brak_wystarczajacych_dowodow",
-    nie_podlega_weryfikacji: "nie_podlega_weryfikacji",
-  };
-  return MAP[raw] ?? "brak_wystarczajacych_dowodow";
-}
-
-function confidenceToLevel(c: number | null): StrengthLevel {
-  if (c === null) return "brak";
-  if (c >= 0.75) return "mocna";
-  if (c >= 0.5) return "umiarkowana";
-  return "slaba";
-}
-
-function factCheckToEvidence(fc: FactCheckResult, index: number): Evidence {
-  const r = (fc.rating ?? "").toLowerCase();
-  const stance =
-    r.includes("false") || r.includes("fałsz") || r.includes("nieprawda")
-      ? "refutes"
-      : r.includes("true") || r.includes("prawda") || r.includes("potwierdz")
-        ? "supports"
-        : "context";
-  return {
-    id: `fc-${index}`,
-    stance,
-    source: {
-      doc_id: `fc-${index}`,
-      title: fc.claim_review_title || fc.claim,
-      publisher: fc.publisher_name,
-      url: fc.claim_review_url,
-      published_at: fc.claim_date,
-      retrieved_at: null,
-      source_type: "factcheck",
-      source_name: fc.publisher_site,
-      rating: fc.rating,
-    },
-  };
-}
-
-/** Adapt a raw backend CheckResponse into the shape the UI expects. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function adaptResponse(raw: any): CheckResponse {
-  const verdict = mapVerdict(raw.verdict ?? raw.verdict_label);
-  const confidence: number | null = raw.confidence ?? null;
-  const justification: string | null = raw.justification ?? null;
-  const factChecks: FactCheckResult[] = raw.fact_check_results ?? [];
-  const sourceArticles: SourceRef[] = raw.source_articles ?? [];
-
-  const claims: ClaimResult[] =
-    raw.claims && Array.isArray(raw.claims) && raw.claims.length > 0
-      ? raw.claims
-      : verdict
-        ? [
-            {
-              id: raw.id,
-              text: raw.input?.title || raw.input?.url || raw.input?.text?.slice(0, 200) || "Artykuł",
-              verdict,
-              confidence: confidence ?? 0,
-              strength: {
-                level: confidenceToLevel(confidence),
-                score: confidence ?? 0,
-                factors: [],
-              },
-              risk: confidence !== null && confidence < 0.5 ? "high" : "low",
-              justification: justification ?? "",
-              evidence: factChecks.map(factCheckToEvidence),
-            },
-          ]
-        : [];
-
-  const warnings: Warning[] =
-    raw.warnings && Array.isArray(raw.warnings) ? raw.warnings : [];
-
-  const moderatorCase: ModeratorCaseInfo = raw.moderator_case ?? { state: "none" };
-
-  const relatedMaterials: SourceRef[] =
-    raw.related_materials && Array.isArray(raw.related_materials)
-      ? raw.related_materials
-      : sourceArticles;
-
-  const incidentMatches: IncidentMatch[] = raw.incident_matches ?? [];
-
-  return {
-    id: raw.id,
-    created_at: raw.created_at,
-    channel: raw.channel,
-    status: raw.status,
-    status_message: raw.status_message ?? null,
-    error_code: raw.error_code ?? null,
-    input: { ...raw.input, kind: raw.input?.kind ?? "url" },
-    claims,
-    verdict,
-    verdict_label: verdict,
-    confidence,
-    justification,
-    summary: raw.summary ?? justification,
-    keywords: raw.keywords ?? [],
-    main_topic: raw.main_topic ?? "",
-    fact_check_results: factChecks,
-    source_articles: sourceArticles,
-    related_materials: relatedMaterials,
-    incident_matches: incidentMatches,
-    limitations: raw.limitations ?? [],
-    warnings,
-    moderator_case: moderatorCase,
-    parent_check_id: raw.parent_check_id ?? null,
-    clarification: raw.clarification ?? null,
-    meta: raw.meta ?? {
-      duration_ms: 0,
-      stages_ms: {},
-      provider: null,
-      model: null,
-      bielik_model: null,
-      llm_calls: 0,
-      tokens_in: 0,
-      tokens_out: 0,
-      cost_usd: null,
-      processing_location: "",
-      cached: false,
-    },
-  };
-}
-
-async function getAdapted(path: string, options?: RequestOptions): Promise<CheckResponse> {
-  const raw = await getJson<unknown>(path, options);
-  return adaptResponse(raw);
-}
-
 // --- Public API ---
 
 export function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
@@ -296,40 +165,153 @@ export async function createCheck(
   body: CheckRequest,
   signal?: AbortSignal,
 ): Promise<CheckResponse> {
+  if (!body.parent_check_id && !body.url && !body.text) {
+    throw new ApiError("validation", {
+      detail: "Podaj link lub tekst do sprawdzenia.",
+    });
+  }
+  const payload: Record<string, unknown> = { session_id: body.session_id };
   // An answer to a clarifying question is always text, even when it looks like a link.
-  const payload = body.parent_check_id
-    ? { text: body.text ?? body.url, parent_check_id: body.parent_check_id }
-    : body.url
-      ? { url: body.url }
-      : { text: body.text };
-  return getAdapted("/checks", {
+  if (body.parent_check_id) {
+    payload.parent_check_id = body.parent_check_id;
+    payload.text = body.text ?? body.url;
+  } else {
+    if (body.url) payload.url = body.url;
+    if (body.text) payload.text = body.text;
+  }
+  return getJson<CheckResponse>("/checks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, session_id: body.session_id }),
+    body: JSON.stringify(payload),
     timeoutMs: CHECK_TIMEOUT_MS,
     signal,
   });
 }
 
+/** XHR-based multipart upload that fires `onUploadProgress(0..100)` during the upload phase. */
+function xhrUpload<T>(
+  path: string,
+  form: FormData,
+  onUploadProgress: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`, true);
+    xhr.withCredentials = true;
+    xhr.timeout = CHECK_TIMEOUT_MS;
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as T);
+        } catch {
+          reject(new ApiError("http", { status: xhr.status }));
+        }
+      } else {
+        let detail: string | undefined;
+        try {
+          const body: unknown = JSON.parse(xhr.responseText);
+          if (body && typeof body === "object" && "detail" in body) {
+            const d = (body as { detail: unknown }).detail;
+            if (typeof d === "string" && d.trim()) detail = d;
+          }
+        } catch { /* ignore */ }
+        const status = xhr.status;
+        if (status === 429) reject(new ApiError("rate_limit", { status, detail }));
+        else if (status === 422 || status === 400 || status === 413 || status === 415) reject(new ApiError("validation", { status, detail }));
+        else if (status === 404) reject(new ApiError("not_found", { status, detail }));
+        else if (status === 401 || status === 403) reject(new ApiError("unauthorized", { status, detail }));
+        else reject(new ApiError("http", { status, detail }));
+      }
+    };
+
+    xhr.onerror = () => reject(new ApiError("network"));
+    xhr.ontimeout = () => reject(new ApiError("timeout"));
+
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener("abort", onAbort);
+    xhr.onabort = () => {
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+
+    xhr.send(form);
+  });
+}
+
 export async function createImageCheck(
   file: File,
-  sessionId: string | undefined,
+  sessionId?: string,
   signal?: AbortSignal,
+  onUploadProgress?: (pct: number) => void,
 ): Promise<CheckResponse> {
-  const form = new FormData();
-  form.append("file", file);
-  if (sessionId) form.append("session_id", sessionId);
+  const body = new FormData();
+  body.append("file", file);
+  if (sessionId) body.append("session_id", sessionId);
+  if (onUploadProgress) {
+    return xhrUpload<CheckResponse>("/checks/image", body, onUploadProgress, signal);
+  }
   // No Content-Type header: the browser sets the multipart boundary itself.
-  return getAdapted("/checks/image", {
+  return getJson<CheckResponse>("/checks/image", {
     method: "POST",
-    body: form,
+    body,
+    timeoutMs: CHECK_TIMEOUT_MS,
+    signal,
+  });
+}
+
+export async function createAudioCheck(
+  file: File,
+  sessionId?: string,
+  signal?: AbortSignal,
+  onUploadProgress?: (pct: number) => void,
+): Promise<CheckResponse> {
+  const body = new FormData();
+  body.append("file", file);
+  if (sessionId) body.append("session_id", sessionId);
+  if (onUploadProgress) {
+    return xhrUpload<CheckResponse>("/checks/audio", body, onUploadProgress, signal);
+  }
+  return getJson<CheckResponse>("/checks/audio", {
+    method: "POST",
+    body,
     timeoutMs: CHECK_TIMEOUT_MS,
     signal,
   });
 }
 
 export function getCheck(id: string, signal?: AbortSignal): Promise<CheckResponse> {
-  return getAdapted(`/checks/${encodeURIComponent(id)}`, { signal });
+  return getJson<CheckResponse>(`/checks/${encodeURIComponent(id)}`, { signal });
+}
+
+export function archiveCheck(
+  checkId: string,
+  sessionId?: string,
+): Promise<ArchiveOut> {
+  return getJson<ArchiveOut>("/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ check_id: checkId, session_id: sessionId }),
+  });
+}
+
+export function getArchive(id: string): Promise<ArchiveOut> {
+  return getJson<ArchiveOut>(`/archive/${encodeURIComponent(id)}`);
+}
+
+export function deleteArchive(id: string): Promise<{ deleted: boolean }> {
+  return getJson(`/archive/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function deleteSession(sessionId: string): Promise<SessionDeleteResponse> {
@@ -338,11 +320,244 @@ export function deleteSession(sessionId: string): Promise<SessionDeleteResponse>
   });
 }
 
-function adminHeaders(token: string): HeadersInit {
-  return { "X-Admin-Token": token };
+export function recordConsent(
+  sessionId: string,
+  policyVersion: string,
+  accepted = true,
+): Promise<ConsentResponse> {
+  return getJson<ConsentResponse>("/consent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      policy_version: policyVersion,
+      accepted,
+    }),
+  });
 }
 
-export function getMetrics(token: string, signal?: AbortSignal): Promise<AdminMetrics> {
+export async function hasConsent(
+  sessionId: string,
+  policyVersion: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    await getJson<ConsentResponse>(
+      `/consent/${encodeURIComponent(sessionId)}?policy_version=${encodeURIComponent(policyVersion)}`,
+      { signal },
+    );
+    return true;
+  } catch (error) {
+    // 404 simply means this session has not accepted this policy version yet.
+    if (error instanceof ApiError && error.kind === "not_found") return false;
+    throw error;
+  }
+}
+
+function adminHeaders(token: string): HeadersInit {
+  // `X-Admin-Token` zachowuje zgodność z tokenem technicznym; `Authorization`
+  // obsługuje sesję konta moderatora. Wysłanie obu pozwala używać obu trybów.
+  return { Authorization: `Bearer ${token}`, "X-Admin-Token": token };
+}
+
+// Token sesji moderatora. Wysyłamy go w nagłówku Authorization; przeglądarka
+// dostaje też ciasteczko HttpOnly, więc panel działa również po odświeżeniu.
+function authHeaders(token: string): HeadersInit {
+  return adminHeaders(token);
+}
+
+export function loginModerator(
+  email: string,
+  password: string,
+): Promise<ModeratorLoginResponse> {
+  return getJson<ModeratorLoginResponse>("/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function logoutModerator(token: string): Promise<{ logged_out: boolean }> {
+  return getJson("/admin/auth/logout", { method: "POST", headers: authHeaders(token) });
+}
+
+export function getProfile(token: string, signal?: AbortSignal): Promise<Profile> {
+  return getJson("/admin/auth/me", { headers: authHeaders(token), signal });
+}
+
+export function updateProfile(token: string, update: ProfileUpdate): Promise<Profile> {
+  return getJson("/admin/auth/me", {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+}
+
+export function changePassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ changed: boolean; logged_out: boolean }> {
+  return getJson("/admin/auth/me/password", {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
+export function getCaseComments(
+  token: string,
+  caseId: number,
+  signal?: AbortSignal,
+): Promise<Comment[]> {
+  return getJson(`/admin/cases/${caseId}/comments`, {
+    headers: authHeaders(token),
+    signal,
+  });
+}
+
+export function addCaseComment(
+  token: string,
+  caseId: number,
+  body: string,
+): Promise<Comment> {
+  return getJson(`/admin/cases/${caseId}/comments`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function getArticleComments(
+  token: string,
+  articleId: number,
+  signal?: AbortSignal,
+): Promise<Comment[]> {
+  return getJson(`/admin/articles/${articleId}/comments`, {
+    headers: authHeaders(token),
+    signal,
+  });
+}
+
+export function addArticleComment(
+  token: string,
+  articleId: number,
+  body: string,
+): Promise<Comment> {
+  return getJson(`/admin/articles/${articleId}/comments`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function deleteComment(token: string, commentId: number): Promise<{ deleted: boolean }> {
+  return getJson(`/admin/comments/${commentId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+}
+
+export function listModerators(token: string, signal?: AbortSignal): Promise<Moderator[]> {
+  return getJson("/admin/moderators", { headers: authHeaders(token), signal });
+}
+
+export function createModerator(
+  token: string,
+  payload: {
+    email: string;
+    display_name: string;
+    role: "moderator" | "superuser";
+    password?: string;
+    must_change_password?: boolean;
+  },
+): Promise<ModeratorCreated> {
+  return getJson("/admin/moderators", {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateModerator(
+  token: string,
+  id: number,
+  payload: {
+    display_name?: string;
+    role?: "moderator" | "superuser";
+    is_active?: boolean;
+    must_change_password?: boolean;
+  },
+): Promise<Moderator> {
+  return getJson(`/admin/moderators/${id}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resetModeratorPassword(
+  token: string,
+  id: number,
+): Promise<ModeratorPasswordReset> {
+  return getJson(`/admin/moderators/${id}/reset-password`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export function getLlmProviders(
+  token: string,
+  signal?: AbortSignal,
+): Promise<LlmProvider[]> {
+  return getJson("/admin/llm/providers", { headers: authHeaders(token), signal });
+}
+
+export function getLlmSettings(token: string, signal?: AbortSignal): Promise<LlmSettings> {
+  return getJson("/admin/llm/settings", { headers: authHeaders(token), signal });
+}
+
+export function saveLlmSettings(
+  token: string,
+  settings: LlmSettingsUpdate,
+): Promise<LlmSettings> {
+  return getJson("/admin/llm/settings", {
+    method: "PUT",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+}
+
+export function getPushPublicKey(token: string): Promise<PushPublicKey> {
+  return getJson("/admin/auth/me/push-public-key", { headers: authHeaders(token) });
+}
+
+export function savePushSubscription(
+  token: string,
+  subscription: PushSubscriptionJSON,
+): Promise<void> {
+  return send("/admin/auth/me/push-subscription", {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint: subscription.endpoint,
+      keys: subscription.keys,
+      user_agent: navigator.userAgent,
+    }),
+  }).then(() => undefined);
+}
+
+export function deletePushSubscription(token: string, endpoint: string): Promise<void> {
+  return send(
+    `/admin/auth/me/push-subscription?endpoint=${encodeURIComponent(endpoint)}`,
+    { method: "DELETE", headers: authHeaders(token) },
+  ).then(() => undefined);
+}
+
+export function getMetrics(token: string, signal?: AbortSignal): Promise<MetricsResponse> {
   return getJson("/admin/metrics", { headers: adminHeaders(token), signal });
 }
 
@@ -350,8 +565,40 @@ export function getRecentChecks(
   token: string,
   signal?: AbortSignal,
   limit = 50,
-): Promise<AdminCheckItem[]> {
+): Promise<CheckListItem[]> {
   return getJson(`/admin/checks?limit=${limit}`, {
+    headers: adminHeaders(token),
+    signal,
+  });
+}
+
+export function getCases(
+  token: string,
+  status: CaseStatus | null,
+  signal?: AbortSignal,
+): Promise<CaseOut[]> {
+  const query = status ? `?${new URLSearchParams({ status })}` : "";
+  return getJson(`/admin/cases${query}`, { headers: adminHeaders(token), signal });
+}
+
+export function updateCase(
+  token: string,
+  id: number,
+  update: CaseUpdate,
+): Promise<CaseOut> {
+  return getJson(`/admin/cases/${id}`, {
+    method: "PATCH",
+    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+}
+
+export function getSecurityEvents(
+  token: string,
+  signal?: AbortSignal,
+  limit = 50,
+): Promise<SecurityEventOut[]> {
+  return getJson(`/admin/events?limit=${limit}`, {
     headers: adminHeaders(token),
     signal,
   });
@@ -359,9 +606,10 @@ export function getRecentChecks(
 
 export async function downloadExport(
   token: string,
-  format: "csv" | "json",
+  format: "csv" | "json" | "stix",
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const response = await send(`/admin/export?format=${format}`, {
+  const path = format === "stix" ? "/admin/export/stix" : `/admin/export?format=${format}`;
+  const response = await send(path, {
     headers: adminHeaders(token),
     timeoutMs: 60_000,
   });

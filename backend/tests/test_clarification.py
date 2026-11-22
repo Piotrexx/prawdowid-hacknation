@@ -1,234 +1,181 @@
-"""Doprecyzowanie: system dopytuje, gdy nie wie, co sprawdzić, a odpowiedź wraca jako kontekst."""
+"""Doprecyzowanie: gdy nie wiadomo, które twierdzenie sprawdzić, system pyta, a odpowiedzi wracają jako kontekst."""
 
 import pytest
+from fastapi.testclient import TestClient
 
-from app.llm.base import LLMUnavailable, Usage
-from app.schemas import ClarifyingQuestion, ClarityCheck, KeywordExtraction, VerdictLabel
-from app.security.ratelimit import RateLimiter
+from app.api.deps import CONSENT_COOKIE, SESSION_COOKIE
+from app.main import build_state, create_app
+from app.retrieval.corpus import CorpusStore
+from app.schemas import ClarifyingQuestion
+from app.store.db import Store
+from tests.conftest import TEST_SESSION, claim, extraction, seed_corpus
 
 API = "/api/v1"
-VAGUE = "Słyszałem, że on znowu to zrobił w tym mieście, czy to prawda?"
-
-ASK = ClarityCheck(
-    needs_clarification=True,
-    questions=[
-        ClarifyingQuestion(text="O kim jest ta wiadomość?"),
-        ClarifyingQuestion(text="Które twierdzenie sprawdzić?", options=["podwyżka cen", "zamknięcie szkoły", " "]),
-    ],
-    missing=["kto", "miejsce"],
-)
-CLEAR = ClarityCheck()
-KEYWORDS = KeywordExtraction(keywords=["Kowalski", "Gdańsk"], main_topic="Prezydent Gdańska", summary="Twierdzenie.")
+VAGUE = "Słyszałem, że on znowu podniósł te opłaty w naszym mieście, czy to prawda?"
+QUESTIONS = [
+    ClarifyingQuestion(text="Kto miał podnieść opłaty?"),
+    ClarifyingQuestion(text="O jakie opłaty chodzi?", options=["za wodę", "za śmieci", " "]),
+]
 
 
-class Bielik:
-    """Tylko słowa kluczowe."""
-
-    name = "openai_compatible"
-    model = "bielik:4.5b-instruct"
-
-    def __init__(self, fail: Exception | None = None):
-        self.prompts: list[str] = []
-        self.fail = fail
-
-    async def structured(self, *, system, user, schema, effort="medium", images=None):
-        assert schema is KeywordExtraction
-        self.prompts.append(user)
-        if self.fail:
-            raise self.fail
-        return KEYWORDS, Usage(100, 20, 1)
+def asking(*, questions=QUESTIONS, missing=("kto", "jakie opłaty"), claims=()):
+    result = extraction(*claims, status="needs_clarification", message=questions[0].text if questions else "")
+    result.questions = list(questions)
+    result.missing = list(missing)
+    return result
 
 
-class MainModel:
-    """Główny model (DeepSeek): ocena doprecyzowania według scenariusza oraz werdykt."""
-
-    name = "openai_compatible"
-    model = "deepseek-flash"
-
-    def __init__(self, *clarity: ClarityCheck | Exception):
-        self.clarity = list(clarity) or [CLEAR]
-        self.clarity_prompts: list[str] = []
-        self.verdict_prompts: list[str] = []
-
-    async def structured(self, *, system, user, schema, effort="medium", images=None):
-        if schema is ClarityCheck:
-            self.clarity_prompts.append(user)
-            response = self.clarity.pop(0) if len(self.clarity) > 1 else self.clarity[0]
-            if isinstance(response, Exception):
-                raise response
-            return response, Usage(300, 50, 1)
-        self.verdict_prompts.append(user)
-        return schema(verdict=VerdictLabel.FAKE, confidence=0.8, justification="Uzasadnienie."), Usage(500, 100, 1)
+def answered_ok(user: str):
+    if "Odpowiedź:" in user:
+        return extraction(claim("Prezydent Warszawy podniósł ceny biletów komunikacji miejskiej od stycznia 2026."))
+    return asking()
 
 
 @pytest.fixture
-def make_client(make_client):
-    # Wspólna fabryka ustawia limiter na None, a zależność limitu zakłada, że istnieje.
-    def factory(**overrides):
-        client = make_client(**overrides)
-        client.app.state.limiter = RateLimiter(1000)
+def make_ask_client(settings, provider):
+    # Wspólna fabryka nie podaje modelu słów kluczowych, a bez niego wstępny filtr odrzuca każdą treść.
+    def factory(session: str = TEST_SESSION) -> TestClient:
+        app = create_app(with_lifespan=False)
+        corpus = CorpusStore(Store(settings.database_url).engine)
+        seed_corpus(corpus)
+        build_state(app, settings, provider=provider, bielik_provider=provider, embedder=None, corpus=corpus)
+        app.state.store.record_consent(session, settings.privacy_policy_version, True)
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE, session)
+        client.cookies.set(CONSENT_COOKIE, settings.privacy_policy_version)
         return client
 
     return factory
 
 
 @pytest.fixture
-def client(make_client):
-    return make_client()
+def client(make_ask_client) -> TestClient:
+    return make_ask_client()
 
 
-def _client(make_client, main: MainModel, bielik: Bielik | None = None):
-    return make_client(provider=main, bielik_provider=bielik or Bielik())
+def post(client, body, status=200):
+    response = client.post(f"{API}/checks", json=body)
+    assert response.status_code == status, response.text
+    return response.json()
 
 
-def test_short_text_asks_without_calling_models(make_client):
-    main, bielik = MainModel(), Bielik()
-    client = _client(make_client, main, bielik)
-
-    data = client.post(f"{API}/checks", json={"text": "szczepionki"}).json()
-
-    assert data["status"] == "needs_clarification"
-    assert data["verdict"] is None
-    assert data["input"]["kind"] == "text"
-    assert data["clarification"]["round"] == 1
-    assert data["clarification"]["max_rounds"] == 2
-    assert len(data["clarification"]["questions"]) == 1
-    assert bielik.prompts == [] and main.clarity_prompts == [] and main.verdict_prompts == []
+def extract_calls(provider):
+    return [(system, user) for name, system, user in provider.calls if name == "Extraction"]
 
 
-def test_main_model_asks_and_no_verdict_is_given(make_client):
-    main = MainModel(ASK)
-    client = _client(make_client, main)
+def test_vague_message_gets_questions_not_a_verdict(client, provider):
+    provider.extract = lambda user: asking()
 
-    data = client.post(f"{API}/checks", json={"text": VAGUE}).json()
+    data = post(client, {"text": VAGUE})
 
     assert data["status"] == "needs_clarification"
-    assert data["verdict"] is None
+    assert data["verdict"] is None and data["claims"] == []
     questions = data["clarification"]["questions"]
-    assert [q["text"] for q in questions] == ["O kim jest ta wiadomość?", "Które twierdzenie sprawdzić?"]
-    assert questions[1]["options"] == ["podwyżka cen", "zamknięcie szkoły"]
-    assert data["clarification"]["missing"] == ["kto", "miejsce"]
-    assert "O kim jest ta wiadomość?" in data["status_message"]
-    assert main.verdict_prompts == []
+    assert [q["text"] for q in questions] == ["Kto miał podnieść opłaty?", "O jakie opłaty chodzi?"]
+    assert questions[1]["options"] == ["za wodę", "za śmieci"]
+    assert data["clarification"]["missing"] == ["kto", "jakie opłaty"]
+    assert (data["clarification"]["round"], data["clarification"]["max_rounds"]) == (1, 2)
+    assert "1. Kto miał podnieść opłaty?" in data["status_message"]
+    assert not any(name == "ClaimAssessment" for name, _, _ in provider.calls)
 
 
-def test_clear_text_goes_straight_to_verdict(make_client):
-    main = MainModel(CLEAR)
-    data = _client(make_client, main).post(f"{API}/checks", json={"text": VAGUE}).json()
+def test_model_message_becomes_the_question_when_it_gives_no_list(client, provider):
+    provider.extract = lambda user: extraction(status="needs_clarification", message="O którą informację chodzi?")
 
-    assert data["status"] == "completed"
-    assert data["clarification"] is None
-    assert data["keywords"] == ["Kowalski", "Gdańsk"]
+    data = post(client, {"text": "czy to prawda?"})
+
+    assert [q["text"] for q in data["clarification"]["questions"]] == ["O którą informację chodzi?"]
 
 
-def test_answer_continues_the_original_check(make_client):
-    main, bielik = MainModel(ASK, CLEAR), Bielik()
-    client = _client(make_client, main, bielik)
-    asked = client.post(f"{API}/checks", json={"text": VAGUE}).json()
+def test_answer_continues_the_original_check(client, provider):
+    provider.extract = answered_ok
+    asked = post(client, {"text": VAGUE})
 
-    data = client.post(
-        f"{API}/checks", json={"text": "Prezydent Gdańska, chodzi o podwyżkę cen", "parent_check_id": asked["id"]}
-    ).json()
+    data = post(client, {"text": "Prezydent Warszawy, bilety od stycznia", "parent_check_id": asked["id"]})
 
     assert data["status"] == "completed"
-    assert data["verdict"] == "fake_news"
     assert data["parent_check_id"] == asked["id"]
     assert data["input"]["text"] == VAGUE
-    history = data["clarification"]["history"]
-    assert history == [
-        {"questions": ["O kim jest ta wiadomość?", "Które twierdzenie sprawdzić?"], "answer": "Prezydent Gdańska, chodzi o podwyżkę cen"}
-    ]
     assert data["clarification"]["questions"] == []
-    # Słowa kluczowe z pierwszej rundy mogły zostać anulowane po pytaniu, więc bierzemy ostatnie.
-    for prompt in (main.clarity_prompts[1], bielik.prompts[-1], main.verdict_prompts[0]):
-        assert "Odpowiedź: Prezydent Gdańska" in prompt
+    assert data["clarification"]["history"] == [
+        {"questions": ["Kto miał podnieść opłaty?", "O jakie opłaty chodzi?"], "answer": "Prezydent Warszawy, bilety od stycznia"}
+    ]
+    system, user = extract_calls(provider)[-1]
+    assert "Doprecyzowanie od użytkownika:" in user and "Odpowiedź: Prezydent Warszawy" in user
+    assert "Nie używaj" not in system
 
 
-def test_stops_asking_after_max_rounds(make_client):
-    client = _client(make_client, MainModel(ASK))
-    first = client.post(f"{API}/checks", json={"text": VAGUE}).json()
-    second = client.post(f"{API}/checks", json={"text": "nie wiem", "parent_check_id": first["id"]}).json()
-    assert second["status"] == "needs_clarification"
+def test_answers_are_masked_like_any_other_input(client, provider):
+    provider.extract = answered_ok
+    asked = post(client, {"text": VAGUE})
+
+    data = post(client, {"text": "Napisał mi o tym jan.kowalski@example.com", "parent_check_id": asked["id"]})
+
+    assert "jan.kowalski@example.com" not in extract_calls(provider)[-1][1]
+    assert any(w["code"] == "pii_masked" for w in data["warnings"])
+
+
+def test_stops_asking_after_max_rounds(client, provider):
+    provider.extract = lambda user: asking()
+    first = post(client, {"text": VAGUE})
+    second = post(client, {"text": "nie wiem", "parent_check_id": first["id"]})
     assert second["clarification"]["round"] == 2
 
-    third = client.post(f"{API}/checks", json={"text": "naprawdę nie wiem", "parent_check_id": second["id"]}).json()
+    third = post(client, {"text": "naprawdę nie wiem", "parent_check_id": second["id"]})
+
+    system, _ = extract_calls(provider)[-1]
+    assert "Nie używaj" in system
+    assert third["status"] == "needs_clarification"
+    assert third["clarification"]["questions"] == []
+    assert len(third["clarification"]["history"]) == 2
+    assert "Mimo doprecyzowania" in third["status_message"]
+    post(client, {"text": "jeszcze raz", "parent_check_id": third["id"]}, status=409)
+
+
+def test_after_max_rounds_claims_are_checked_with_a_note(client, provider):
+    provider.extract = lambda user: asking() if user.count("Odpowiedź:") < 2 else asking(
+        claims=[claim("Opłaty za wodę w Warszawie wzrosły.")]
+    )
+    first = post(client, {"text": VAGUE})
+    second = post(client, {"text": "nie wiem", "parent_check_id": first["id"]})
+
+    third = post(client, {"text": "chyba za wodę", "parent_check_id": second["id"]})
 
     assert third["status"] == "completed"
-    assert len(third["clarification"]["history"]) == 2
+    assert len(third["claims"]) == 1
     assert any("Mimo doprecyzowania" in note for note in third["limitations"])
 
 
-def test_failed_clarity_check_does_not_block_the_check(make_client):
-    data = _client(make_client, MainModel(LLMUnavailable("brak połączenia"))).post(
-        f"{API}/checks", json={"text": VAGUE}
-    ).json()
+def test_answer_to_a_page_fetches_the_page_again(client, provider, mock_fetch_page):
+    provider.extract = answered_ok
+    asked = post(client, {"url": "https://example.org/artykul"})
+
+    data = post(client, {"text": "chodzi o ceny", "parent_check_id": asked["id"]})
 
     assert data["status"] == "completed"
-    assert data["verdict"] == "fake_news"
+    assert (data["input"]["kind"], data["input"]["url"]) == ("url", "https://example.org/artykul")
 
 
-def test_question_wins_over_failed_keywords(make_client):
-    data = _client(make_client, MainModel(ASK), Bielik(fail=LLMUnavailable("brak"))).post(
-        f"{API}/checks", json={"text": VAGUE}
-    ).json()
+def test_replies_to_unknown_foreign_or_finished_checks_are_rejected(client, make_ask_client, provider):
+    provider.extract = lambda user: asking()
+    asked = post(client, {"text": VAGUE})
+    stranger = make_ask_client(session="inna-sesja-0002")
+    provider.extract = lambda user: extraction(claim("Twierdzenie testowe."))
+    done = post(client, {"text": "Most w Testowie zawalił się podczas powodzi."})
 
-    assert data["status"] == "needs_clarification"
-
-
-def test_clarification_model_off_never_asks(make_client, settings):
-    settings.clarification_model = "off"
-    main = MainModel(ASK)
-    data = _client(make_client, main).post(f"{API}/checks", json={"text": VAGUE}).json()
-
-    assert data["status"] == "completed"
-    assert main.clarity_prompts == []
-
-
-def test_clarification_by_bielik(make_client, settings):
-    settings.clarification_model = "bielik"
-
-    class AskingBielik(Bielik):
-        async def structured(self, *, system, user, schema, effort="medium", images=None):
-            if schema is ClarityCheck:
-                return ASK, Usage(100, 20, 1)
-            return await super().structured(system=system, user=user, schema=schema)
-
-    main = MainModel(CLEAR)
-    data = _client(make_client, main, AskingBielik()).post(f"{API}/checks", json={"text": VAGUE}).json()
-
-    assert data["status"] == "needs_clarification"
-    assert main.clarity_prompts == []
-
-
-def test_answer_to_url_check_refetches_the_article(make_client):
-    client = _client(make_client, MainModel(ASK, CLEAR))
-    asked = client.post(f"{API}/checks", json={"url": "https://example.org/artykul"}).json()
-
-    data = client.post(f"{API}/checks", json={"text": "chodzi o ceny", "parent_check_id": asked["id"]}).json()
-
-    assert data["status"] == "completed"
-    assert data["input"]["kind"] == "url"
-    assert data["input"]["url"] == "https://example.org/artykul"
-
-
-def test_reply_to_unknown_or_finished_check_is_rejected(make_client):
-    client = _client(make_client, MainModel(CLEAR))
-    done = client.post(f"{API}/checks", json={"text": VAGUE}).json()
-    assert done["status"] == "completed"
-
-    assert client.post(f"{API}/checks", json={"text": "x", "parent_check_id": "0" * 32}).status_code == 404
-    assert client.post(f"{API}/checks", json={"text": "x", "parent_check_id": done["id"]}).status_code == 409
+    post(client, {"text": "x", "parent_check_id": "0" * 32}, status=404)
+    post(stranger, {"text": "x", "parent_check_id": asked["id"]}, status=404)
+    post(client, {"text": "x", "parent_check_id": done["id"]}, status=409)
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        {},
-        {"url": "https://example.org", "text": "oba naraz"},
         {"parent_check_id": "a" * 32},
+        {"parent_check_id": "a" * 32, "text": "   "},
         {"parent_check_id": "a" * 32, "text": "x", "url": "https://example.org"},
         {"parent_check_id": "nie-hex", "text": "x"},
     ],
 )
-def test_invalid_requests(client, body):
-    assert client.post(f"{API}/checks", json=body).status_code == 422
+def test_invalid_replies(client, body):
+    post(client, body, status=422)

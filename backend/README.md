@@ -1,154 +1,146 @@
-# Prawdowid – backend (FastAPI)
+# Prawdowid — backend
 
-Wykrywanie fake news: **URL → trafilatura → Bielik 4.5B Instruct (keywords) → Google Fact Check Tools → DeepSeek (verdict)**
+Weryfikacja informacji oparta na jawnym korpusie źródeł i cytatach. Każde twierdzenie
+jest oceniane osobno; werdykt wynika z cytatów zweryfikowanych automatycznie w źródle
+(`app/core/verdict.py`). Model językowy proponuje ocenę, ale nie jest jedyną podstawą
+werdyktu. Gdy brakuje dowodów, usługa wstrzymuje się od rozstrzygnięcia.
 
-## Uruchomienie (Docker - zalecane)
+## Architektura
+
+- **FastAPI** — jeden kontrakt API dla WWW, obrazów i nagrań.
+- **PostgreSQL + pgvector** — jedyne źródło prawdy dla przebiegu sprawdzeń, spraw
+  moderatora, zgód, archiwum, korpusu i przebiegów ingestu.
+- **Ingest w kodzie** (`app/ingest/registry.py`) — źródła urzędowe, prawne i
+  fact-checkingowe są pobierane na bieżąco i zapisywane w tabeli `articles`.
+  Nie ma pliku `sources.yaml` ani statycznego korpusu JSONL.
+- **Wyszukiwanie** — embeddingi fastembed + pgvector; przy braku embeddingów działa
+  uczciwy fallback leksykalny.
+- **Model językowy** — wymienny dostawca (`openai_compatible` lub `anthropic`);
+  Bielik lokalnie odpowiada za słowa kluczowe.
+- **Głos** — nagranie jest przesyłane na serwer i transkrybowane lokalnie przez
+  faster-whisper; dźwięk nie jest zapisywany.
+- **Archiwum** — kontrolowana, ograniczona retencją kopia fragmentu materiału,
+  wyłącznie na wyraźne żądanie użytkownika i po zgodzie na politykę prywatności.
+- **Eksport** — CSV, JSON i bundle STIX 2.1 z przybliżonym mapowaniem DISARM.
+
+## Uruchomienie
 
 ```bash
-cp backend/.env.example backend/.env     # Wypełnij klucze API
+# 1. Baza z pgvector
+docker compose up -d postgres
+
+# 2. Zależności
+cd backend
+uv sync
+
+# 3. Konfiguracja
+cp .env.example .env
+# uzupełnij LLM_API_KEY (opcjonalnie GOOGLE_FACTCHECK_API_KEY, ADMIN_TOKEN)
+
+# 4. Ingest źródeł (wymaga sieci)
+uv run python -m app.ingest.run --max 10
+
+# 5. Usługa
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+Bez ingestu usługa odpowiada, ale korpus jest pusty i twierdzenia kończą się
+„brak wystarczających dowodów”. To poprawne zachowanie, nie werdykt.
+
+### Docker
+
+```bash
 docker compose up --build
 ```
 
-- Backend API: <http://localhost:8000>
-- Dokumentacja OpenAPI: <http://localhost:8000/docs>
-- Frontend: <http://localhost:3000>
-- Ollama (Bielik): <http://localhost:11434>
+`docker-compose.yml` uruchamia PostgreSQL/pgvector, backend, Ollamę z Bielikiem i
+frontend. Modele embeddingów i Whisper są cache'owane w wolumenie `backend-var`.
 
-## Uruchomienie lokalne (bez Docker)
+## Endpointy
 
-```bash
-cd backend
-cp .env.example .env     # Wypełnij: LLM_API_KEY (DeepSeek), GOOGLE_FACTCHECK_API_KEY, ADMIN_TOKEN, ID_HASH_SALT
-# Uruchom Ollama z modelem Bielik:
-ollama pull bielik:4.5b-instruct
-ollama serve
-# W drugim terminalu:
-uv sync
-uv run uvicorn app.main:app --port 8000
-```
+Publiczne:
 
-## Konfiguracja
+- `POST /api/v1/checks` — tekst lub URL
+- `POST /api/v1/checks/image` — zrzut ekranu/zdjęcie: odczyt tekstu (OCR) + analiza obrazu
+- `POST /api/v1/checks/audio` — nagranie (webm/wav/ogg)
+- `POST /api/v1/channels/demo` — adapter demonstracyjnego drugiego kanału (ta sama ścieżka weryfikacji)
+- `GET /api/v1/checks/{id}`
+- `GET /api/v1/health`
+- `POST /api/v1/consent`, `GET /api/v1/consent/{session_id}`
+- `DELETE /api/v1/sessions/{session_id}`
+- `POST /api/v1/archive`, `GET /api/v1/archive/{id}`, `DELETE /api/v1/archive/{id}`
 
-Wszystkie ustawienia to zmienne środowiskowe – pełna lista w [.env.example](.env.example) i [app/config.py](app/config.py).
+Wszystkie zapisy sprawdzeń i archiwum wymagają aktywnej zgody na aktualną wersję
+polityki prywatności (ciasteczko + wpis w bazie). Brak zgody to `428`, nie werdykt.
 
-| Zmienna | Znaczenie |
-|---|---|
-| `LLM_PROVIDER`, `LLM_MODEL` | `openai_compatible` (domyślnie `deepseek-flash` - DeepSeek V4.1 Flash; także Mistral, Ollama, vLLM) |
-| `LLM_BASE_URL`, `LLM_API_KEY` | Dostęp do modelu DeepSeek |
-| `BIELIK_BASE_URL`, `BIELIK_MODEL` | Ollama/vLLM endpoint dla Bielik 4.5B (domyślnie `http://localhost:11434`, `bielik:4.5b-instruct`) |
-| `GOOGLE_FACTCHECK_API_KEY` | Klucz Google Fact Check Tools API (https://developers.google.com/fact-check/tools/api) |
-| `ADMIN_TOKEN` | Token panelu admina (bez niego panel wyłączony) |
-| `ID_HASH_SALT` | Sól do skracania identyfikatorów (adresy IP w limicie żądań) |
-| `RATE_LIMIT_PER_MINUTE` | Limit żądań na IP |
-| `RETENTION_DAYS` | Retencja danych |
-| `IMAGE_SEARCH_ENGINES` | Silniki odwrotnego wyszukiwania obrazu (domyślnie `yandex,tineye`; dostępny też `bing`) |
-| `IMAGE_SEARCH_TIMEOUT_S`, `IMAGE_CACHE_HOURS` | Limit czasu na silnik; jak długo wynik dla tych samych bajtów zdjęcia jest brany z bazy |
+Panel moderatora (konto e-mail/hasło albo zgodnościowo `X-Admin-Token`):
 
-## API (`/api/v1`)
+- `POST /api/v1/admin/auth/login`, `POST /api/v1/admin/auth/logout`
+- `GET/PATCH /api/v1/admin/auth/me` — konto, ustawienia powiadomień, historia opinii i zmian
+- `POST /api/v1/admin/auth/me/password`
+- `GET /api/v1/admin/auth/me/push-public-key`, `POST/DELETE /api/v1/admin/auth/me/push-subscription`
+- `GET/POST /api/v1/admin/moderators`, `PATCH /api/v1/admin/moderators/{id}`,
+  `POST /api/v1/admin/moderators/{id}/reset-password` (superużytkownik)
+- `GET /api/v1/admin/metrics`
+- `GET /api/v1/admin/checks`, `GET /api/v1/admin/events`
+- `GET/PATCH /api/v1/admin/cases` — każdy moderator może poprawić treść, wagę i status
+- `GET/POST /api/v1/admin/cases/{id}/comments`, `GET/POST /api/v1/admin/articles/{id}/comments`,
+  `DELETE /api/v1/admin/comments/{id}`
+- `GET/PUT /api/v1/admin/llm/providers`, `GET/PUT /api/v1/admin/llm/settings`
+- `GET /api/v1/admin/export?format=csv|json`
+- `GET /api/v1/admin/export/stix`
+- `POST /api/v1/admin/corpus/ingest`, `GET /api/v1/admin/corpus/stats`
+- `GET/DELETE /api/v1/admin/archive`
 
-| Metoda | Ścieżka | Opis |
-|---|---|---|
-| POST | `/checks` | Sprawdzenie URL artykułu (`{url, session_id?}`) |
-| POST | `/checks/image` | Sprawdzenie, czy zdjęcie nie zostało zmienione (multipart: `file`, `session_id?`) |
-| GET | `/checks/{id}` | Zapisany wynik |
-| DELETE | `/sessions/{session_id}` | Usunięcie danych sesji |
-| GET | `/health` | Stan usługi, modele, miejsce przetwarzania |
-| GET | `/admin/metrics`, `/admin/checks`, `/admin/export` | Panel admina (`X-Admin-Token`) |
-
-### Przykład żądania:
+Pierwsze konto superużytkownika powstaje przy starcie z `MODERATOR_BOOTSTRAP_EMAIL`
+(bez hasła zostanie ono wygenerowane i wypisane w logu) albo przez:
 
 ```bash
-curl -s localhost:8000/api/v1/checks -H 'Content-Type: application/json' \
-  -d '{"url": "https://example.org/artykul-do-sprawdzenia"}'
+uv run python scripts/create_superuser.py --email admin@prawdowid.pl
 ```
 
-### Przykład odpowiedzi:
+Skrypt wypisuje jednorazowy link `…/moderator#token=…`, który od razu loguje do panelu,
+i domyślnie otwiera go w przeglądarce. Przy lokalnym starcie taki link pojawia się też
+w logu, gdy konto zostało właśnie utworzone z `.env`. Flaga `--no-open` zostawia tylko
+link, a `--no-link` pomija link.
 
-```json
-{
-  "id": "abc123...",
-  "created_at": "2024-11-21T10:00:00Z",
-  "channel": "web",
-  "status": "completed",
-  "input": {
-    "kind": "url",
-    "text": "Treść artykułu...",
-    "url": "https://example.org/artykul-do-sprawdzenia",
-    "title": "Tytuł artykułu"
-  },
-  "verdict": "fake_news",
-  "verdict_label": "fake_news",
-  "confidence": 0.92,
-  "justification": "Artykuł zawiera fałszywe informacje...",
-  "keywords": ["fake news", "dezinformacja", "weryfikacja", ...],
-  "main_topic": "Artykuł szerzy dezinformację na temat...",
-  "fact_check_results": [
-    {
-      "claim": "Twierdzenie do sprawdzenia",
-      "claimant": "Jan Kowalski",
-      "claim_date": "2024-01-15",
-      "claim_review_url": "https://demagog.org.pl/sprawdzenie/123",
-      "claim_review_title": "Sprawdzenie: Twierdzenie jest fałszywe",
-      "publisher_name": "Demagog",
-      "publisher_site": "demagog.org.pl",
-      "rating": "Fałsz",
-      "textual_rating": "Fałsz",
-      "url": "https://demagog.org.pl/sprawdzenie/123"
-    }
-  ],
-  "limitations": [
-    "Analiza opiera się na treści artykułu pobranej w momencie sprawdzenia...",
-    "Werdykt to interpretacja modelu językowego..."
-  ],
-  "meta": {
-    "duration_ms": 3500,
-    "stages_ms": {"fetch": 800, "keywords": 1200, "factcheck": 500, "verdict": 1000},
-    "provider": "openai_compatible",
-    "model": "deepseek-flash",
-    "bielik_model": "bielik:4.5b-instruct",
-    "llm_calls": 2,
-    "tokens_in": 1500,
-    "tokens_out": 300,
-    "cost_usd": 0.0012,
-    "processing_location": "...",
-    "cached": false
-  }
-}
-```
+Powiadomienia o komentarzach są opcjonalne i włączane w profilu każdego konta:
+Discord (webhook wspólny lub prywatny), e-mail (SMTP) i Web Push (VAPID).
+Wysyłamy je, gdy sprawa albo artykuł osiągnie ustawiony próg opinii (domyślnie 2).
 
-## Pipeline - jak to działa
+Nie ma publicznego endpointu `/sources`; katalog źródeł jest w kodzie i służy do
+audytu oraz metadanych cytowań.
 
-1. **Pobranie artykułu (trafilatura)** - Użytkownik podaje URL, system pobiera stronę i ekstrahuje czysty tekst (tytuł + treść) używając `trafilatura`.
+### Weryfikacja zdjęć
 
-2. **Ekstrakcja słów kluczowych (Bielik 4.5B Instruct)** - Model Bielik analizuje tytuł i treść, wyciąga do 10 najważniejszych słów kluczowych/fraz do wyszukiwania fact-checków. Prompt **wyłącznie po polsku**.
+Jedno żądanie do `/api/v1/checks/image` uruchamia równolegle trzy rzeczy. OCR jest
+niezależny od analizy obrazu: awaria wyszukiwarek obrazów nie przerywa sprawdzenia,
+dodaje tylko ostrzeżenie, a werdykt twierdzeń liczy się dalej.
 
-3. **Google Fact Check Tools API** - Słowa kluczowe wysyłane do Google Fact Check API, pobierane **top 5** najbardziej pasujących sprawdzeń faktów.
+1. **OCR** — model odczytuje tekst widoczny na obrazie; ten tekst przechodzi tę samą
+   weryfikację twierdzeń co wklejona wiadomość.
+2. **Odwrotne wyszukiwanie** ([PicImageSearch](https://github.com/kitUIN/PicImageSearch),
+   scraping) — Yandex i TinEye równolegle, do 10 kopii. Pełny obraz ze strony źródłowej
+   pobieramy z ochroną SSRF jak przy artykułach; w razie błędu bierzemy miniaturę.
+   Awaria jednego silnika daje ostrzeżenie, wszystkich — ostrzeżenie zamiast werdyktu
+   o obrazie.
+3. **Porównanie** ([app/core/image_compare.py](app/core/image_compare.py)) —
+   dopasowanie kopii do zdjęcia (SIFT + RANSAC, obsługuje kadrowanie i skalowanie),
+   dopasowanie jasności i kontrastu z pominięciem odstających pikseli, różnica w siatce
+   8×8. Globalny hash (pHash) **nie wystarcza** — doklejony obiekt zmienia go o 1–2 bity.
+   Zdjęcie jest podejrzane, gdy **w tym samym miejscu** różni się od większości
+   (≥60%, min. 2) kopii; różnice tylko w pojedynczych kopiach (podpisy, znaki wodne)
+   nie są brane pod uwagę.
 
-4. **Werdykt (DeepSeek)** - DeepSeek analizuje: treść artykułu, słowa kluczowe, znalezione fact-checki i wydaje ostateczny werdykt:
-   - `fake_news` - fałszywe informacje (dezinformacja)
-   - `prawdziwe` - informacje potwierdzone przez źródła
-   - `niepewne` - brak wystarczających dowodów
-   - `satyna` - artykuł satyryczny
-   - `opinia` - wyrażenie opinii, nie faktów
-
-## Weryfikacja zdjęć – jak to działa
-
-`POST /checks/image` nie używa modelu językowego ani płatnych API:
-
-1. **Przygotowanie** – walidacja (JPEG/PNG/WebP/GIF, max 10 MB, max 40 Mpx), odczyt EXIF (bez GPS), kopia JPEG **bez metadanych** do wysłania dalej.
-2. **Odwrotne wyszukiwanie** ([PicImageSearch](https://github.com/kitUIN/PicImageSearch), scraping) – Yandex i TinEye równolegle. Awaria jednego silnika daje ostrzeżenie, awaria wszystkich – błąd (nie werdykt).
-3. **Pobranie kopii** – do 10 kopii, pełny obraz ze strony źródłowej (z ochroną SSRF jak przy artykułach), w razie błędu miniatura z wyszukiwarki.
-4. **Porównanie** ([app/core/image_compare.py](app/core/image_compare.py)) – dopasowanie kopii do zdjęcia (SIFT + RANSAC, obsługuje kadrowanie i skalowanie), dopasowanie jasności/kontrastu z pominięciem odstających pikseli, różnica w siatce 8×8. Globalny hash (pHash) **nie wystarcza** – doklejony obiekt zmienia go o 1–2 bity.
-5. **Ocena** – zdjęcie jest podejrzane, gdy **w tym samym miejscu** różni się od większości (≥60%, min. 2) kopii. Różnice tylko w pojedynczych kopiach (podpisy, znaki wodne) nie są brane pod uwagę.
-
-| `image_analysis.assessment` | Werdykt | Znaczenie |
+| `image_analysis.assessment` | Wpływ na werdykt | Znaczenie |
 |---|---|---|
-| `manipulation_suspected` | `fake_news` | Fragment różni się od większości kopii; `changed_regions` wskazuje gdzie (współrzędne 0–1) |
-| `consistent_with_copies` | `prawdziwe` | Co najmniej jedna kopia zgodna w całości, brak wspólnej różnicy |
-| `insufficient_copies` | `niepewne` | Znaleziono obrazy, ale za mało kopii tego samego ujęcia do porównania |
-| `no_matches` | `niepewne` | Zdjęcia nie ma w indeksach wyszukiwarek |
+| `manipulation_suspected` | `falszywe` | Fragment różni się od większości kopii; `changed_regions` wskazuje gdzie (współrzędne 0–1) |
+| `consistent_with_copies` | bez zmian | Co najmniej jedna kopia zgodna w całości, brak wspólnej różnicy |
+| `insufficient_copies` | bez zmian | Znaleziono obrazy, ale za mało kopii tego samego ujęcia do porównania |
+| `no_matches` | bez zmian | Zdjęcia nie ma w indeksach wyszukiwarek |
 
-**Ślady AI w samym pliku** ([app/core/image_provenance.py](app/core/image_provenance.py)) – odczytywane z oryginalnych bajtów, zanim usuniemy metadane:
+**Ślady AI w samym pliku** ([app/core/image_provenance.py](app/core/image_provenance.py))
+— odczytywane z oryginalnych bajtów, zanim usuniemy metadane:
 
 | Źródło | Co sprawdzamy | Pewność |
 |---|---|---|
@@ -157,59 +149,80 @@ curl -s localhost:8000/api/v1/checks -H 'Content-Type: application/json' \
 | Parametry generatorów | PNG `parameters` (A1111), `prompt`/`workflow` (ComfyUI), InvokeAI, EXIF `UserComment`; nazwy generatorów tylko w polach „program” | wysoka, bez podpisu |
 | Data najstarszej kopii | kopia w sieci sprzed 2022 r. → `predates_generative_ai` | tylko wskazówka, nie zmienia werdyktu |
 
-`image_analysis.ai.result`: `ai_generated` → werdykt `fake_news` (pewność 0.95 z ważnym podpisem C2PA, 0.85 bez), `ai_edited` → werdykt `prawdziwe` obniżany do `niepewne`, `predates_generative_ai` / `no_signals` → bez zmian. Brak śladów niczego nie dowodzi – media społecznościowe i zrzuty ekranu usuwają metadane.
+`image_analysis.ai.result`: `ai_generated` → werdykt `falszywe` (pewność 0.95 z ważnym
+podpisem C2PA, 0.85 bez), `ai_edited` → werdykt `potwierdzone` obniżany do
+`brak_wystarczajacych_dowodow`, `predates_generative_ai` / `no_signals` → bez zmian.
+Brak śladów niczego nie dowodzi — media społecznościowe i zrzuty ekranu usuwają metadane.
 
-Dodatkowo: data najstarszej kopii z TinEye (`earliest_seen`, ostrzeżenie `archival_material` dla zdjęć starszych niż rok) i program do edycji z EXIF (`image_edit_software`). Wynik dla tych samych bajtów jest cache'owany (domyślnie 24 h), żeby nie odpytywać wyszukiwarek ponownie.
+Dodatkowo: data najstarszej kopii z TinEye (`earliest_seen`, ostrzeżenie
+`archival_material` dla zdjęć starszych niż rok) i program do edycji z EXIF
+(`image_edit_software`). Zdjęcie jest wysyłane do wyszukiwarek bez metadanych EXIF;
+samego pliku nie zapisujemy w bazie.
 
-**Ograniczenia:** obrazy z AI bez metadanych (np. po zrzucie ekranu) nie zostaną rozpoznane; zdjęcia spoza indeksów wyszukiwarek nie zostaną porównane; subtelne zmiany o niskim kontraście mogą umknąć; scraping może przestać działać po zmianie stron wyszukiwarek. Zdjęcie trafia do Yandex (Rosja) i TinEye (Kanada).
+| Zmienna | Znaczenie |
+|---|---|
+| `IMAGE_SEARCH_ENGINES` | Silniki odwrotnego wyszukiwania (domyślnie `yandex,tineye`; `bing` jest niedostępny w PicImageSearch 3.12.11) |
+| `IMAGE_SEARCH_TIMEOUT_S` | Limit czasu jednego silnika (domyślnie 25 s) |
+| `IMAGE_CACHE_HOURS` | Jak długo wynik dla tych samych bajtów zdjęcia jest brany z bazy |
+| `IMAGE_MAX_BYTES` | Limit rozmiaru przesłanego pliku (domyślnie 5 MB) |
 
-## Testy i ewaluacja
+**Ograniczenia analizy obrazu:** obrazy z AI bez metadanych (np. po zrzucie ekranu) nie
+zostaną rozpoznane; zdjęcia spoza indeksów wyszukiwarek nie zostaną porównane; subtelne
+zmiany o niskim kontraście mogą umknąć; scraping może przestać działać po zmianie stron
+wyszukiwarek. Zdjęcie trafia do Yandex (Rosja) i TinEye (Kanada).
+
+## Źródła i aktualizacja
+
+Katalog źródeł znajduje się w `app/ingest/registry.py`. Każdy wpis ma nazwę,
+wydawcę, typ, poziom (1–3), licencję, politykę przechowywania, uzasadnienie
+kwalifikacji i sposób aktualizacji. Ingest respektuje robots.txt i nie obchodzi
+zabezpieczeń serwisów. Źródła fact-checkingowe (ClaimReview) trafiają do korpusu
+jako dane strukturalne: twierdzenie, ocena i link.
+
+Status źródła (np. sankcje UE) jest osobnym, neutralnym ostrzeżeniem w
+`app/security/source_status.py`; nigdy nie przesądza o prawdziwości treści.
+
+## Prywatność i bezpieczeństwo
+
+- Maskowanie oczywistych danych osobowych przed wysłaniem do modelu.
+- Minimalizacja: dla stron zapisujemy tylko początek treści; nagrań nie zapisujemy.
+- Retencja sprawdzeń `RETENTION_DAYS`, archiwum `ARCHIVE_RETENTION_DAYS`; usuwanie
+  sesji usuwa sprawdzenia, zgodę, powiązania spraw i archiwum.
+- Instrukcje w treści i źródłach są traktowane jako dane; prompt injection jest
+  wykrywany i logowany, ale nigdy nie zmienia zasad systemu.
+- Sekrety wyłącznie w `.env`; `.env` nie trafia do repozytorium.
+
+## Testy
 
 ```bash
+docker compose up -d postgres
 cd backend
-uv run pytest                       # testy jednostkowe i integracyjne (z mockami)
-uv run ruff check .
-uv run python -m eval.run_eval      # ewaluacja na prawdziwym modelu (kosztuje)
+uv run pytest
+uv run ruff check app tests
 ```
 
-## Struktura projektu
+Testy wymagają PostgreSQL z pgvector (`prawdowid_test`). `backend/eval/cases.jsonl`
+zawiera ≥30 przypadków referencyjnych; `uv run python -m eval.run_eval` mierzy
+macro-F1, pokrycie cytowań, wstrzymanie się, odporność na prompt injection,
+spójność i czas odpowiedzi.
 
-```
-backend/
-├── app/
-│   ├── api/              # Endpointy FastAPI
-│   │   ├── checks.py     # POST /checks, GET /health
-│   │   ├── admin.py      # Panel admina
-│   │   └── deps.py       # Rate limiting, auth
-│   ├── core/
-│   │   ├── pipeline.py   # GŁÓWNY PIPELINE: fetch → keywords → factcheck → verdict
-│   │   └── prompts.py    # Prompty dla Bielik i DeepSeek (TYLKO PO POLSKU)
-│   ├── llm/              # Providerzy LLM (DeepSeek, Bielik via OpenAI-compat)
-│   ├── security/         # URL fetch (trafilatura), rate limiting
-│   ├── schemas.py        # Modele Pydantic (API contract)
-│   ├── config.py         # Konfiguracja (pydantic-settings)
-│   ├── store/            # SQLite storage
-│   ├── textutil.py       # Utility functions
-│   └── main.py           # FastAPI app factory
-├── tests/                # Testy (conftest, test_units, test_pipeline)
-├── eval/                 # Ewaluacja na prawdziwym modelu
-├── data/                 # Baza danych SQLite
-├── pyproject.toml        # Zależności
-├── Dockerfile
-├── .env.example
-└── README.md
-```
+## Ograniczenia
 
-## Wymagane klucze API
-
-1. **DeepSeek API** - https://platform.deepseek.com/ (dla werdyktu)
-2. **Google Fact Check Tools API** - https://developers.google.com/fact-check/tools/api (dla fact-checków)
-3. **Ollama + Bielik 4.5B** - `ollama pull bielik:4.5b-instruct` (dla słów kluczowych)
-
-## Uwagi
-
-- Backend sprawdza artykuły z URL oraz zdjęcia (`/checks/image`); nie ma endpointu dla czystego tekstu
-- `pyproject.toml` nadpisuje wymaganie `lxml<6` z PicImageSearch (`override-dependencies`), bo trafilatura 2.3 wymaga lxml 6; PicImageSearch działa z lxml 6 poprawnie
-- Wszystkie prompty są **wyłącznie po polsku**
-- System zapisuje wyniki do SQLite (`data/prawdowid.db`)
-- Limity zapytań: domyślnie 10/min na IP
+- Korpus zależy od dostępności źródeł i działania ingestu.
+- Model językowy może się mylić; cytaty są weryfikowane, ale interpretacja nie jest
+  nieomylna.
+- Transkrypcja lokalna może zawierać błędy; nie oceniamy autentyczności nagrania.
+- Porównanie zdjęć wykrywa doklejone, usunięte lub zmienione fragmenty względem kopii
+  w sieci; nie oceni zdjęć, których nie ma w indeksach wyszukiwarek. Media
+  społecznościowe i zrzuty ekranu usuwają metadane, więc brak śladów AI niczego nie
+  wyklucza.
+- Wyszukiwarki obrazów bywają niedostępne (captcha, limity); wynik opiera się wtedy na
+  tych, które odpowiedziały.
+- Nawet niezmienione zdjęcie może zostać użyte w fałszywym kontekście.
+- Archiwum przechowuje tylko fragment i metadane, nie pełne treści chronione prawem
+  autorskim.
+- Integracja z OpenCTI jest eksportem STIX (plik), nie synchronicznym push do
+  instancji.
+- `pyproject.toml` nadpisuje wymaganie `lxml<6` z PicImageSearch
+  (`override-dependencies`), bo trafilatura 2.3 wymaga lxml 6; PicImageSearch działa
+  z lxml 6 poprawnie.

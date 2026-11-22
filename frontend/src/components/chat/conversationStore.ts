@@ -3,10 +3,17 @@ import { getCheck } from "@/lib/api";
 import { cachedResult } from "@/lib/resultCache";
 import type { TurnState } from "./ChatAnswer";
 
+export type TurnKind = "image" | "audio" | null;
+
 export interface Turn {
   id: number;
+  /** What the user typed, shown in the thread. */
   text: string;
+  /** What was sent: `text` with personal data masked in the browser. */
+  sentText: string;
+  maskedPii: string[];
   file: File | null;
+  kind: TurnKind;
   /** Own object URL, so clearing the composer does not break the image in the thread. */
   imageUrl: string | null;
   /** The message was an image; after a reload only this flag is left, not the picture. */
@@ -27,8 +34,10 @@ export interface Turn {
  * even after a reload or when the result was opened from the session list.
  */
 interface StoredTurn {
+  /** Masked text only: the raw message never reaches browser storage. */
   text: string;
   image: boolean;
+  kind?: TurnKind;
   resultId: string;
   parentResultId?: string;
 }
@@ -107,8 +116,9 @@ function persist(): void {
     turn.resultId
       ? [
           {
-            text: turn.image ? "" : turn.text.slice(0, MAX_STORED_TEXT),
+            text: turn.kind ? "" : turn.sentText.slice(0, MAX_STORED_TEXT),
             image: turn.image,
+            ...(turn.kind ? { kind: turn.kind } : {}),
             resultId: turn.resultId,
             ...(turn.parentResultId ? { parentResultId: turn.parentResultId } : {}),
           },
@@ -128,21 +138,21 @@ export function useTurns(): Turn[] {
   );
 }
 
-export function addTurn(text: string, file: File | null, parentResultId: string | null = null): number {
+export interface NewTurn {
+  text: string;
+  sentText: string;
+  maskedPii: string[];
+  file: File | null;
+  kind: TurnKind;
+  parentResultId: string | null;
+}
+
+export function addTurn(turn: NewTurn): number {
   const id = nextId++;
-  const imageUrl = file ? URL.createObjectURL(file) : null;
+  const imageUrl = turn.file && turn.kind === "image" ? URL.createObjectURL(turn.file) : null;
   turns = [
     ...turns,
-    {
-      id,
-      text,
-      file,
-      imageUrl,
-      image: file !== null,
-      resultId: null,
-      parentResultId,
-      state: { kind: "loading" },
-    },
+    { ...turn, id, imageUrl, image: turn.kind === "image", resultId: null, state: { kind: "loading" } },
   ];
   emit();
   return id;
@@ -216,7 +226,10 @@ export function openConversation(id: string): boolean {
   turns = stored.turns.map((turn) => ({
     id: nextId++,
     text: turn.text,
+    sentText: turn.text,
+    maskedPii: [],
     file: null,
+    kind: turn.kind ?? (turn.image ? "image" : null),
     imageUrl: null,
     image: turn.image,
     resultId: turn.resultId,

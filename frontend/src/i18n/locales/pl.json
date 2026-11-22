@@ -2,11 +2,13 @@
   "nav": {
     "check": "Sprawdź",
     "sources": "Źródła",
+    "privacy": "Prywatność",
     "mainNav": "Główna nawigacja",
     "homeLink": " – strona główna"
   },
   "sidebar": {
     "sessions": "Twoje sesje",
+    "clearHistory": "Wyczyść historię",
     "newSession": "Nowa sesja",
     "menuLabel": "Menu boczne",
     "openMenu": "Otwórz menu",
@@ -17,7 +19,7 @@
   },
   "welcome": {
     "title": "Sprawdź informację w źródłach",
-    "instruction": "Wklej <1>wiadomość</1>, <3>link</3> albo <5>zrzut ekranu</5>. Zobaczysz, co mówią o tym źródła i czego nie udało się ustalić.",
+    "instruction": "Wklej <1>wiadomość</1>, <3>link</3> albo <5>zdjęcie</5>. Zobaczysz, co mówią o tym źródła i czego nie udało się ustalić.",
     "privacy": "Przed sprawdzeniem ukrywamy dane osobowe.",
     "quotes": "Pokazujemy dosłowne cytaty i linki do źródeł.",
     "judgment": "Ocena należy do Ciebie – system tylko porządkuje dowody."
@@ -25,7 +27,7 @@
   "composer": {
     "placeholder": "Wklej wiadomość, wpis albo link do sprawdzenia…",
     "submit": "Sprawdź",
-    "screenshot": "Zrzut ekranu",
+    "screenshot": "Zdjęcie",
     "otherImage": "Inny obraz",
     "removeImage": "Usuń obraz",
     "contentLabel": "Treść do sprawdzenia",
@@ -35,7 +37,18 @@
     "imageWillCheck": "Sprawdzę tekst widoczny na obrazie.",
     "waitSeconds": "Możesz wysłać kolejne sprawdzenie za {{seconds}} {{unit}}.",
     "errorTooLong": "Tekst jest za długi. Skróć go i spróbuj ponownie.",
-    "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zrzut ekranu.",
+    "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zdjęcie.",
+    "errorTooShort": "Treść jest za krótka – wpisz co najmniej {{min}} znaków.",
+    "sending": "Wysyłanie…",
+    "uploading": "Wysyłanie pliku…",
+    "audio": "Plik audio",
+    "voiceMessage": "Nagranie głosowe",
+    "audioOther": "Inny plik audio",
+    "audioLoadingModel": "Ładowanie modelu: {{progress}}%",
+    "audioTranscribing": "Transkrypcja: {{progress}}%",
+    "audioWaiting": "Poczekaj na zakończenie transkrypcji przed wysłaniem.",
+    "audioSuccess": "Transkrypcja zakończona pomyślnie",
+    "audioError": "Błąd transkrypcji",
     "replyPlaceholder": "Napisz odpowiedź na pytanie…",
     "replyingTo": "Odpowiadasz na pytanie doprecyzowujące",
     "replyCancel": "Sprawdź coś innego",
@@ -54,7 +67,7 @@
     "resultReady_many": "Wynik gotowy: {{count}} twierdzeń. {{verdicts}}."
   },
   "result": {
-    "title": "Wynik sprawdzenia",
+    "title": "Wynik analizy",
     "claimsCount_one": "{{count}} twierdzenie",
     "claimsCount_few": "{{count}} twierdzenia",
     "claimsCount_many": "{{count}} twierdzeń",
@@ -72,7 +85,7 @@
     "evidenceCount_many": "{{count}} materiałów ze źródeł",
     "noEvidence": "Brak materiałów ze źródeł dla tego twierdzenia.",
     "humanReview": "Zalecamy ocenę przez człowieka",
-    "waitingModerator": "Sprawa czeka na moderatora",
+    "waitingModerator": "Twierdzenie czeka na moderatora",
     "strengthLabel": "Siła podstawy:",
     "highRisk": "Wysokie ryzyko",
     "relatedMaterials": "Materiały, które mogą pomóc – oceń je samodzielnie:"
@@ -96,7 +109,7 @@
     "clarifySubmitCount": "Wyślij odpowiedzi ({{count}} z {{total}})",
     "clarifyFreeText": "Wolę opisać to własnymi słowami",
     "retry": "Spróbuj ponownie",
-    "notResult": "To nie jest wynik sprawdzenia."
+    "notResult": "To nie jest wynik analizy."
   },
   "verdict": {
     "potwierdzone": "Potwierdzone",

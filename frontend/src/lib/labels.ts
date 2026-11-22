@@ -1,8 +1,8 @@
 import type {
+  CaseStatus,
   CheckStatus,
   RetrievalMode,
   Stance,
-  StoragePolicy,
   StrengthLevel,
   SourceType,
   Verdict,
@@ -32,6 +32,7 @@ export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   international: "Organizacja międzynarodowa",
   factcheck: "Organizacja fact-checkingowa",
   media: "Media",
+  reverse_image: "Wyszukiwanie obrazu",
 };
 
 export const SOURCE_TYPES = Object.keys(SOURCE_TYPE_LABELS) as SourceType[];
@@ -49,17 +50,19 @@ export const STRENGTH_LABELS: Record<StrengthLevel, string> = {
   brak: "brak",
 };
 
-export const STORAGE_LABELS: Record<StoragePolicy, string> = {
-  full_text: "pełny tekst",
-  excerpt: "fragment i link",
-  structured: "dane strukturalne",
-};
-
 export const RETRIEVAL_LABELS: Record<RetrievalMode, string> = {
   hybrid: "hybrydowe (słowa kluczowe i znaczenie)",
   bm25: "słowa kluczowe (BM25)",
   none: "bez wyszukiwania",
 };
+
+export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
+  open: "Otwarta",
+  in_review: "W trakcie",
+  resolved: "Zamknięta",
+};
+
+export const CASE_STATUSES = Object.keys(CASE_STATUS_LABELS) as CaseStatus[];
 
 export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
   completed: "Zakończone",
@@ -76,6 +79,7 @@ const INPUT_KIND_LABELS: Record<string, string> = {
   url: "Link",
   text: "Tekst",
   image: "Zdjęcie",
+  audio: "Nagranie",
 };
 
 /** Labels for open-ended backend keys: fall back to the raw key instead of guessing. */

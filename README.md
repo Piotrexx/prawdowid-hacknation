@@ -10,7 +10,10 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 ## Co robi
 
 - Wydziela z treści twierdzenia do sprawdzenia i oddziela fakty od opinii oraz prognoz.
-- Szuka wyłącznie w opisanym, polskojęzycznym korpusie (obecnie 575 dokumentów z 11 domen, 4 typy źródeł – [docs/ZRODLA.md](docs/ZRODLA.md)).
+- Szuka w polskojęzycznym korpusie **źródeł urzędowych, prawnych i fact-checkingowych**
+  (maks. `INGEST_MAX_PER_SOURCE` dokumentów na źródło na przebieg – [docs/ZRODLA.md](docs/ZRODLA.md)).
+- Każde twierdzenie jest osobno zestawiane z fragmentami źródeł przez **PostgreSQL + pgvector**
+  i reguły werdyktu; przy braku embeddingów działa jawny fallback leksykalny.
 - Dla każdego twierdzenia zwraca jeden z wyników: **potwierdzone**, **fałszywe**, **wprowadzające w błąd**,
   **brak wystarczających dowodów**, **nie podlega weryfikacji**.
 - Awarię, prośbę o doprecyzowanie i treść poza zakresem komunikuje osobno – to nie są werdykty.
@@ -19,8 +22,8 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 - Nierozstrzygnięte zgłoszenia trafiają do kolejki moderatora; podobne zgłoszenia są grupowane w jedną sprawę.
 - Ignoruje i odnotowuje próby prompt injection, maskuje dane osobowe, nie zapisuje obrazów.
 
-> **Uwaga:** obecnie działa tylko kanał WWW. Wymagania konkursu przewidują drugi kanał albo adapter
-> demonstracyjny – trzeba go dodać przed oceną.
+> **Drugi kanał:** `POST /api/v1/channels/demo` to adapter demonstracyjny, który woła tę samą
+> ścieżkę weryfikacji co WWW (spójność wyniku i cytatów jest testowana).
 
 ## Architektura w skrócie
 
@@ -28,14 +31,15 @@ zwięzły wynik z cytatami ze źródeł, oceną siły podstawy i uczciwą inform
 frontend/  Next.js (kanał WWW, katalog źródeł, panel moderatora)
     │  HTTP/JSON
 backend/   FastAPI
-    ├─ api/                 kanał WWW i panel moderatora
+    ├─ api/                 kanał WWW i panel moderatora (+ ingest)
     ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
-    ├─ core/verdict.py      deterministyczne reguły werdyktu i siły podstawy
-    ├─ retrieval/           BM25 + embeddingi (lokalnie), katalog incydentów
+    ├─ core/prompts.py      prompty Bielika i DeepSeeka (kontekst + fact-checki)
+    ├─ ingest/              konektory źródeł → tekst → embedding → PostgreSQL
+    ├─ retrieval/           pgvector + rerank; fallback leksykalny
     ├─ llm/                 wymienny dostawca modelu (API zgodne z OpenAI, domyślnie DeepSeek | Anthropic | brak)
-    ├─ security/            PII, prompt injection, SSRF, limity żądań
-    ├─ store/               SQLite: przebieg sprawdzeń, sprawy, zdarzenia
-    └─ ingest/              konektory źródeł → data/corpus/
+    ├─ security/            PII, prompt injection, SSRF, statusy źródeł, limity żądań
+    ├─ integrations/        eksport STIX 2.1 + mapowanie DISARM
+    └─ store/               PostgreSQL: sprawdzenia, sprawy, zgody, archiwum, korpus, ingest
 ```
 
 `frontend/` i `backend/` to dwa niezależne projekty (osobne zależności, osobne uruchamianie, brak wspólnego
@@ -43,24 +47,29 @@ narzędzia typu monorepo). Szczegóły, przepływ danych i uzasadnienie wyborów
 
 ## Uruchomienie
 
-Wymagania: [uv](https://docs.astral.sh/uv/) (sam pobierze Pythona 3.13), Node.js 20+, klucz API modelu.
+Wymagania: [uv](https://docs.astral.sh/uv/) (sam pobierze Pythona 3.13), Node.js 20+, Docker
+(dla PostgreSQL + pgvector), klucz API modelu.
 
 ```bash
-# 1. Backend – http://localhost:8000 (dokumentacja API: /docs)
+# 1. Baza danych – PostgreSQL z pgvector (port 5432)
+docker compose up -d postgres
+
+# 2. Backend – http://localhost:8000 (dokumentacja API: /docs)
 cd backend
 cp .env.example .env        # uzupełnij LLM_API_KEY (klucz DeepSeek), ADMIN_TOKEN, ID_HASH_SALT
 uv sync
+uv run python -m app.ingest.run --max 10   # opcjonalnie: od razu zbuduj korpus
 uv run uvicorn app.main:app --port 8000
 
-# 2. Frontend – http://localhost:3000
+# 3. Frontend – http://localhost:3000
 cd frontend
 cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-Pierwszy start backendu pobiera lokalny model embeddingów (ok. 220 MB) i liczy indeks (ok. 40 s); kolejne starty
-trwają kilka sekund. Korpus demonstracyjny jest w repozytorium, więc nic nie trzeba pobierać ręcznie.
+Pierwsze uruchomienie pobiera lokalny model embeddingów (ok. 470 MB) oraz model Whisper
+(dla nagrań). Ingest źródeł z limitem dokumentów na źródło tworzy korpus w PostgreSQL.
 
 Bez klucza API usługa też się uruchomi: wyszukiwanie działa, a każde sprawdzenie kończy się jawnym
 komunikatem o problemie technicznym (nigdy pozornym werdyktem) wraz z listą znalezionych materiałów.
@@ -69,16 +78,18 @@ Alternatywnie w kontenerach: `docker compose up --build` (wymaga pliku `backend/
 
 ### Scenariusz demonstracyjny
 
-1. `http://localhost:3000` – wklej treść lub link, kliknij „Sprawdź”.
-2. `http://localhost:3000/zrodla` – katalog źródeł z licencjami i zasadami kwalifikacji.
-3. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa, eksport CSV/JSON
-   (token = `ADMIN_TOKEN`).
+1. `http://localhost:3000` – wklej treść, link, zrzut ekranu albo nagraj głos; kliknij „Sprawdź”.
+2. `http://localhost:3000/moderator` – kolejka spraw, statystyki, zdarzenia bezpieczeństwa,
+   archiwum i eksport CSV/JSON/STIX (token = `ADMIN_TOKEN`).
+3. Po zaakceptowaniu polityki prywatności sprawdzenia i archiwum są zapisywane w PostgreSQL;
+   usunięcie sesji usuwa powiązane dane.
 
 ## Testy i mierniki
 
 ```bash
+docker compose up -d postgres
 cd backend
-uv run pytest                      # 60 testów logiki, bezpieczeństwa, kanałów i dostawców modelu (bez sieci)
+uv run pytest                      # testy bez sieci (fake LLM + FakeEmbedder, realny PostgreSQL)
 uv run python -m eval.run_eval     # mierniki z sekcji 6 na prawdziwym modelu (kosztuje!)
 ```
 
@@ -97,5 +108,5 @@ Opis scenariuszy A–J, sposób liczenia mierników i stan pomiarów: [docs/TEST
 ## Pochodzenie
 
 Projekt rozwija pomysły z [ellmu](https://github.com/Piotrexx/ellmu): pobieranie artykułów (trafilatura),
-wyszukiwanie hybrydowe (BM25 + embeddingi) oraz walidator, który odrzuca odpowiedź modelu, gdy cytat nie
-występuje w źródle. W Prawdowidzie ten walidator stał się podstawą reguł werdyktu.
+wyszukiwanie semantyczne oraz walidator, który odrzuca odpowiedź modelu, gdy cytat nie występuje w źródle.
+W Prawdowidzie ten walidator stał się podstawą reguł werdyktu.

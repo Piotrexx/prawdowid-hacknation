@@ -5,7 +5,10 @@ import type { ModeratorCaseInfo, Warning, WarningCode } from "@/lib/types";
 
 type Tone = "neutral" | "info" | "warn" | "bad";
 
-const WARNING_CARDS: Record<WarningCode, { title: string; badge: string; tone: Tone }> = {
+/** Codes intentionally not shown to the end user (still logged server-side for observability). */
+const HIDDEN_WARNING_CODES: ReadonlySet<WarningCode> = new Set(["keywords_degraded"]);
+
+const WARNING_CARDS: Partial<Record<WarningCode, { title: string; badge: string; tone: Tone }>> = {
   pii_masked: { title: "Ukryto dane osobowe", badge: "Prywatność", tone: "info" },
   incident_match: { title: "Znany incydent", badge: "Uwaga", tone: "warn" },
   archival_material: { title: "Materiał archiwalny", badge: "Informacja", tone: "neutral" },
@@ -18,7 +21,13 @@ const WARNING_CARDS: Record<WarningCode, { title: string; badge: string; tone: T
   ai_generated: { title: "Obraz wygenerowany przez AI", badge: "Uwaga", tone: "bad" },
   ai_edited: { title: "Obraz edytowany z użyciem AI", badge: "Uwaga", tone: "warn" },
   content_credentials: { title: "Content Credentials (C2PA)", badge: "Informacja", tone: "info" },
+  image_analysis_unavailable: {
+    title: "Nie sprawdzono autentyczności zdjęcia",
+    badge: "Informacja",
+    tone: "neutral",
+  },
   input_truncated: { title: "Treść została skrócona", badge: "Informacja", tone: "neutral" },
+  factcheck_unavailable: { title: "Baza fact-checków niedostępna", badge: "Uwaga", tone: "warn" },
 };
 
 const FALLBACK = { title: "Uwaga", badge: "Informacja", tone: "neutral" as Tone };
@@ -45,7 +54,7 @@ function ModeratorCard({ info }: { info: ModeratorCaseInfo }) {
     // A recommendation only: nothing was queued, so it must not look like a handed-over case.
     return (
       <Card title="Zalecamy ocenę przez człowieka" badge="Zalecenie" tone="neutral">
-        {`${info.message ? `${info.message} ` : ""}To tylko zalecenie. Ta sprawa nie została przekazana moderatorowi.`}
+        {`${info.message ? `${info.message} ` : ""}To tylko zalecenie. To twierdzenie nie zostało przekazane moderatorowi.`}
       </Card>
     );
   }
@@ -63,8 +72,8 @@ function ModeratorCard({ info }: { info: ModeratorCaseInfo }) {
     <Card
       title={
         info.case_id !== null
-          ? `Sprawa nr ${info.case_id} czeka na moderatora`
-          : "Sprawa czeka na moderatora"
+          ? `Twierdzenie nr ${info.case_id} czeka na moderatora`
+          : "Twierdzenie czeka na moderatora"
       }
       badge="Moderacja"
       tone="info"
@@ -81,11 +90,16 @@ interface WarningCardsProps {
   level?: 2 | 3;
 }
 
+/** Drops warning codes that are intentionally never shown to the end user. */
+export function visibleWarnings(warnings: Warning[]): Warning[] {
+  return warnings.filter((warning) => !HIDDEN_WARNING_CODES.has(warning.code));
+}
+
 export function hasWarningCards(warnings: Warning[], moderatorCase?: ModeratorCaseInfo): boolean {
   const moderatorShown =
     moderatorCase !== undefined &&
     ["recommended", "created", "updated"].includes(moderatorCase.state);
-  return warnings.length > 0 || moderatorShown;
+  return visibleWarnings(warnings).length > 0 || moderatorShown;
 }
 
 /** "Warto wiedzieć": the check's warnings and moderator status as small cards. */
@@ -99,7 +113,7 @@ export function WarningCards({ warnings, moderatorCase, headingId, level = 2 }: 
         Warto wiedzieć
       </Heading>
       {moderatorCase ? <ModeratorCard info={moderatorCase} /> : null}
-      {warnings.map((warning, index) => {
+      {visibleWarnings(warnings).map((warning, index) => {
         const card = WARNING_CARDS[warning.code] ?? FALLBACK;
         return (
           <Card key={`${warning.code}-${index}`} title={card.title} badge={card.badge} tone={card.tone}>

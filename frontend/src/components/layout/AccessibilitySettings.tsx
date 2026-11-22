@@ -77,7 +77,7 @@ export function AccessibilitySettings({ placement = "below" }: AccessibilitySett
           role="group"
           aria-label="Ustawienia dostępności"
           className={cx(
-            "absolute z-40 w-[min(22rem,calc(100vw-2.5rem))] border border-line-mid bg-surface p-5 shadow-card",
+            "absolute z-[70] w-[min(26rem,calc(100vw-2rem))] border border-line-mid bg-surface p-5 shadow-card",
             placement === "above" ? "bottom-full left-0 mb-2" : "right-0 mt-2",
           )}
         >
@@ -137,6 +137,16 @@ export function AccessibilitySettings({ placement = "below" }: AccessibilitySett
               className="size-5 accent-accent"
             />
             Wysoki kontrast
+          </label>
+
+          <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 font-bold">
+            <input
+              type="checkbox"
+              checked={settings.reduceMotion}
+              onChange={(event) => update({ reduceMotion: event.target.checked })}
+              className="size-5 accent-accent"
+            />
+            Ogranicz animacje
           </label>
 
           <p className="mt-3 text-sm text-muted">

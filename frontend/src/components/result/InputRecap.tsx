@@ -14,7 +14,7 @@ interface InputRecapProps {
 export function InputRecap({ input, id, level = 3 }: InputRecapProps) {
   const Heading = level === 2 ? "h2" : "h3";
   const text = input.text.trim();
-  const sameAsUrl = input.url !== null && text === input.url.trim();
+  const sameAsUrl = Boolean(input.url) && text === input.url!.trim();
 
   return (
     <section
@@ -32,6 +32,12 @@ export function InputRecap({ input, id, level = 3 }: InputRecapProps) {
           <ExternalLink href={input.url} className="inline-block py-2 break-all">
             {input.url}
           </ExternalLink>
+        </p>
+      ) : null}
+      {input.audio_metadata ? (
+        <p className="mt-1 text-sm text-muted">
+          Transkrypcja lokalna · {input.audio_metadata["model"] ?? "Whisper"} ·{" "}
+          {input.audio_metadata["czas"] ?? input.audio_metadata["rozmiar"] ?? ""}
         </p>
       ) : null}
       {text && !sameAsUrl ? (

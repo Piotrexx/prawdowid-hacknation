@@ -4,9 +4,9 @@
 
 | Co | Stan |
 |---|---|
-| Testy automatyczne (`uv run pytest`) | **60/60 przechodzi.** Model jest w nich podstawiony, więc sprawdzają logikę, reguły, bezpieczeństwo i kanały – nie jakość modelu. |
+| Testy automatyczne (`uv run pytest`) | **47/47 przechodzi.** Wymagają PostgreSQL z pgvector (`docker compose up -d postgres`). Model jest w nich podstawiony (fake LLM + `FakeEmbedder`), więc sprawdzają logikę, reguły, bezpieczeństwo, ingest i retrieval – nie jakość modelu. |
 | Żądania do dostawców modelu | Kształt żądań (API zgodne z OpenAI, w tym tryb `json_object` używany przez DeepSeek, oraz Anthropic) oraz obsługa odmowy, uciętej odpowiedzi, limitu i błędów są sprawdzone na atrapie transportu HTTP – **nie na prawdziwym API**. |
-| Wyszukiwanie na prawdziwym korpusie | Sprawdzone ręcznie na wcześniejszej, szerszej wersji korpusu: zapytania po polsku znajdują właściwe dokumenty; pytanie spoza korpusu zwraca 0 wyników. |
+| Wyszukiwanie na prawdziwym korpusie | Sprawdzone ręcznie na korpusie 10 źródeł: zapytanie hydrologiczne znajduje komunikaty IMGW i raport RCB; zapytanie spoza korpusu nie zwraca trafień. Progi similarity wymagają dalszego strojenia na większym zbiorze. |
 | Ścieżka bez klucza API (scenariusz J) | Sprawdzona na działającym serwerze: status `error`, brak werdyktu, lista materiałów. |
 | **Mierniki z sekcji 6 na prawdziwym modelu** | **Jeszcze niezmierzone** – środowisko, w którym powstał kod, nie miało klucza API. Tabelę poniżej trzeba uzupełnić po uruchomieniu `eval.run_eval`. |
 
@@ -21,8 +21,8 @@ Wynik: `eval/out/report.json` (mierniki), `results.csv` (każdy przypadek), `cit
 (pary twierdzenie–cytat do ręcznej oceny poprawności cytowania). Zestaw jury wystarczy zapisać w tym samym
 formacie: `{"id", "scenario", "text", "expected_verdict" | "expected_status", "attack"?, "consistency"?, "same_case_as"?}`.
 
-`eval/cases.jsonl` to 13 przypadków startowych opartych na rzeczywistych rekordach korpusu (pole `basis`).
-Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do co najmniej 30 przypadków.
+`eval/cases.jsonl` to 32 przypadki referencyjne oparte na rzeczywistych rekordach korpusu (pole `basis`).
+Nie są wpisane do promptów ani kodu. Zestaw obejmuje scenariusze A–J z sekcji 6 wymagań.
 
 | Miernik | Cel MVP | Jak liczymy | Wynik |
 |---|---|---|---|
@@ -67,7 +67,7 @@ Nie są wpisane do promptów ani kodu. Przed oceną warto rozszerzyć zestaw do 
 | Ryzyko | Ograniczenie w prototypie | Co zostaje |
 |---|---|---|
 | **Halucynacje** | werdykt tylko z cytatów potwierdzonych w źródle; metadane źródeł z korpusu, nie z modelu; model nie korzysta z własnej wiedzy (instrukcja) i zawsze może się wstrzymać | cytat może istnieć, ale być źle zinterpretowany – potrzebny ręczny przegląd próby i moderator przy sprawach wysokiego ryzyka |
-| **Stronniczość źródeł** | jawny katalog z uzasadnieniem kwalifikacji; siła podstawy premiuje niezależnych wydawców; sprzeczne źródła są pokazywane | korpus demonstracyjny jest mały (11 domen, przewaga jednej redakcji fact-checkingowej) i nierówny tematycznie; oceny redakcji fact-checkingowych przyjmujemy jako dowód poziomu 2 |
+| **Stronniczość źródeł** | jawny katalog z uzasadnieniem kwalifikacji; siła podstawy premiuje niezależnych wydawców; sprzeczne źródła są pokazywane | korpus demonstracyjny jest mały (10 źródeł urzędowych, maks. 10 dokumentów na źródło na przebieg) i nierówny tematycznie; to celowo wąski, weryfikowalny zbiór na MVP |
 | **Prywatność** | maskowanie PII przed modelem i zapisem; brak zapisu obrazów i adresów IP; retencja 30 dni; usuwanie sesji | maskowanie wyrażeniami regularnymi nie wykryje nazwisk ani adresów; treść trafia do zewnętrznego dostawcy modelu, jeśli nie wybrano modelu lokalnego |
 | **Prompt injection** | rozdzielenie instrukcji i danych, losowe znaczniki, brak narzędzi, wyjście wg schematu, walidacja cytatów, logowanie zdarzeń | heurystyki nie wykryją każdego ataku; atak może skłonić model do wstrzymania się (obniżenie użyteczności, nie fałszywy werdykt) |
 | **Dostępność** | jawne błędy techniczne; praca bez embeddingów; pamięć wyników; limit żądań | jedna instancja, limit w pamięci, zależność od jednego dostawcy modelu w danej konfiguracji |
