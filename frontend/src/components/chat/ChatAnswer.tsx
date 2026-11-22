@@ -27,20 +27,25 @@ import { cx } from "@/lib/cx";
 import { formatTime, plural } from "@/lib/format";
 import { STRENGTH_LABELS } from "@/lib/labels";
 import { checkPath } from "@/lib/links";
-import type { CheckResponse, ClaimResult, Evidence } from "@/lib/types";
+import type { CheckResponse, ClaimResult, ClarifyingQuestion, Evidence } from "@/lib/types";
 import { describeFailure } from "./failure";
-import Image from "next/image";
 
 export type TurnState =
   | { kind: "loading" }
   | { kind: "result"; result: CheckResponse }
   | { kind: "failure"; error: unknown };
 
+/** The assistant's side of the thread: a small mark in the margin, then the answer. */
 function AssistantRow({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
-      <Image src={"/maskotka-proper.png"} alt="Prawowid" width={100 / 0.67} height={100}/>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="relative">
+      <span
+        aria-hidden="true"
+        className="absolute top-1 right-full mr-3 hidden size-8 place-items-center bg-accent text-sm font-bold text-on-accent xl:grid"
+      >
+        P
+      </span>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
@@ -49,7 +54,7 @@ function Loading() {
   const { t } = useTranslation();
   return (
     <AssistantRow>
-      <div className="flex items-start gap-3 py-1.5">
+      <div className="flex items-center gap-3 py-1.5">
         <Loader aria-hidden="true" className="size-5 text-accent motion-safe:animate-spin" />
         <div>
           <p className="font-semibold">{t("chat.searching")}</p>
@@ -264,17 +269,142 @@ const STATUS_ICONS: Record<string, LucideIcon> = {
   error: Wrench,
 };
 
+interface ClarificationActions {
+  /** A later turn already answers this question. */
+  answered: boolean;
+  /** Another check is running, so a quick answer cannot be sent yet. */
+  busy: boolean;
+  /** Ties the composer to this question and focuses it. */
+  onReply: () => void;
+  /** Sends the answer to all questions as one reply. */
+  onAnswer: (text: string) => void;
+}
+
+/** One reply for every question, so the model thinks again only once. */
+function composeAnswer(questions: ClarifyingQuestion[], answers: string[]): string {
+  if (questions.length === 1) return answers[0];
+  return questions
+    .flatMap((question, index) => (answers[index] ? [`${question.text} – ${answers[index]}`] : []))
+    .join("\n");
+}
+
+/**
+ * Each question takes a ready option or a typed answer; nothing is sent until "Wyślij odpowiedzi",
+ * so the user can answer all of them first. Unanswered questions are simply left out.
+ */
+function ClarificationForm({
+  questions,
+  clarify,
+}: {
+  questions: ClarifyingQuestion[];
+  clarify: ClarificationActions;
+}) {
+  const { t } = useTranslation();
+  const baseId = useId();
+  const [picked, setPicked] = useState<string[]>(() => questions.map(() => ""));
+  const [typed, setTyped] = useState<string[]>(() => questions.map(() => ""));
+  const answers = questions.map((_, index) => typed[index].trim() || picked[index]);
+  const count = answers.filter(Boolean).length;
+  const total = questions.length;
+
+  function set(list: string[], index: number, value: string): string[] {
+    return list.map((item, i) => (i === index ? value : item));
+  }
+
+  function pick(index: number, option: string) {
+    setPicked((list) => set(list, index, list[index] === option ? "" : option));
+    setTyped((list) => set(list, index, ""));
+  }
+
+  function type(index: number, value: string) {
+    setTyped((list) => set(list, index, value));
+    if (value.trim()) setPicked((list) => set(list, index, ""));
+  }
+
+  return (
+    <form
+      noValidate
+      className="mt-2.5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (count > 0 && !clarify.busy) clarify.onAnswer(composeAnswer(questions, answers));
+      }}
+    >
+      <ol className={cx("flex flex-col gap-4", total > 1 && "list-decimal pl-5")}>
+        {questions.map((question, index) => {
+          const labelId = `${baseId}-q${index}`;
+          return (
+            <li key={index} className="leading-relaxed">
+              <p id={labelId} className="font-semibold">
+                {question.text}
+              </p>
+              {question.options.length > 0 ? (
+                <div role="group" aria-labelledby={labelId} className="mt-1.5 flex flex-wrap gap-2">
+                  {question.options.map((option) => {
+                    const pressed = picked[index] === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={pressed}
+                        onClick={() => pick(index, option)}
+                        className={cx(
+                          "inline-flex min-h-11 items-center gap-1.5 border px-3.5 text-sm font-semibold",
+                          pressed
+                            ? "border-accent bg-info-bg text-accent"
+                            : "border-line-strong bg-surface hover:border-accent hover:bg-subtle",
+                        )}
+                      >
+                        {pressed ? <Check aria-hidden="true" className="size-4" /> : null}
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <input
+                type="text"
+                value={typed[index]}
+                aria-labelledby={labelId}
+                maxLength={500}
+                placeholder={
+                  question.options.length > 0 ? t("status.clarifyOther") : t("status.clarifyPlaceholder")
+                }
+                onChange={(event) => type(index, event.target.value)}
+                className="mt-1.5 block min-h-11 w-full border border-line-strong bg-surface px-3 text-base placeholder:text-muted focus:border-accent focus:outline-none"
+              />
+            </li>
+          );
+        })}
+      </ol>
+      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+        <Button type="submit" variant="primary" disabled={count === 0 || clarify.busy}>
+          {total > 1 && count < total
+            ? t("status.clarifySubmitCount", { count, total })
+            : t("status.clarifySubmit")}
+        </Button>
+        <Button variant="quiet" onClick={clarify.onReply}>
+          {t("status.clarifyFreeText")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function StatusAnswer({
   result,
   onRetry,
-  onFocusComposer,
+  clarify,
 }: {
   result: CheckResponse;
   onRetry: () => void;
-  onFocusComposer: () => void;
+  clarify: ClarificationActions;
 }) {
   const { t } = useTranslation();
   const Icon = STATUS_ICONS[result.status] ?? Wrench;
+  const clarification = result.status === "needs_clarification" ? result.clarification : null;
+  const questions = clarification?.questions ?? [];
+  const asking = questions.length > 0 && !clarify.answered;
   const related = result.related_materials.slice(0, 3);
   const statusTitleKey = `status.${result.status}` as const;
   const statusFallbackKey = `status.${result.status}_fallback` as const;
@@ -286,9 +416,31 @@ function StatusAnswer({
           <Icon aria-hidden="true" className="size-5 text-muted" />
           {STATUS_TITLES[result.status] ?? STATUS_TITLES.error}
         </h2>
-        <p className="mt-1.5 leading-relaxed whitespace-pre-line">
-          {result.status_message || t(statusFallbackKey) || t("status.error_fallback")}
-        </p>
+        {questions.length > 0 ? (
+          <>
+            <p className="mt-1.5 leading-relaxed">{t("status.clarifyIntro")}</p>
+            {asking ? (
+              <ClarificationForm key={result.id} questions={questions} clarify={clarify} />
+            ) : (
+              <ol className={cx("mt-2.5 flex flex-col gap-3", questions.length > 1 && "list-decimal pl-5")}>
+                {questions.map((question, index) => (
+                  <li key={index} className="leading-relaxed font-semibold">
+                    {question.text}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {clarification && clarification.max_rounds > 1 && clarification.round > 1 ? (
+              <p className="mt-2.5 text-sm text-muted">
+                {t("status.clarifyRound", { round: clarification.round, max: clarification.max_rounds })}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="mt-1.5 leading-relaxed whitespace-pre-line">
+            {result.status_message || t(statusFallbackKey) || t("status.error_fallback")}
+          </p>
+        )}
         {result.status === "out_of_scope" ? (
           <p className="mt-1.5 text-sm text-muted">
             {t("status.out_of_scope_note")}
@@ -315,7 +467,11 @@ function StatusAnswer({
 
         <div className="mt-3.5 flex flex-wrap gap-2">
           {result.status === "needs_clarification" ? (
-            <Button onClick={onFocusComposer}>{t("status.clarify")}</Button>
+            clarify.answered ? (
+              <p className="text-sm text-muted">{t("status.clarifyAnswered")}</p>
+            ) : asking ? null : (
+              <Button onClick={clarify.onReply}>{t("status.clarify")}</Button>
+            )
           ) : null}
           {result.status === "error" ? (
             <Button onClick={onRetry}>
@@ -353,15 +509,14 @@ function FailureAnswer({ error, onRetry }: { error: unknown; onRetry: () => void
   );
 }
 
-interface ChatAnswerProps {
+interface ChatAnswerProps extends ClarificationActions {
   state: TurnState;
   onRetry: () => void;
-  onFocusComposer: () => void;
 }
 
-export function ChatAnswer({ state, onRetry, onFocusComposer }: ChatAnswerProps) {
+export function ChatAnswer({ state, onRetry, ...clarify }: ChatAnswerProps) {
   if (state.kind === "loading") return <Loading />;
   if (state.kind === "failure") return <FailureAnswer error={state.error} onRetry={onRetry} />;
   if (state.result.status === "completed") return <Verdicts result={state.result} />;
-  return <StatusAnswer result={state.result} onRetry={onRetry} onFocusComposer={onFocusComposer} />;
+  return <StatusAnswer result={state.result} onRetry={onRetry} clarify={clarify} />;
 }

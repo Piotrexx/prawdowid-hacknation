@@ -245,6 +245,26 @@ export interface CheckMeta {
   embedding_model?: string | null;
 }
 
+export interface ClarifyingQuestion {
+  text: string;
+  /** Ready answers the user can pick with one click; empty when the question is open. */
+  options: string[];
+}
+
+export interface ClarificationExchange {
+  questions: string[];
+  answer: string;
+}
+
+/** `questions` is non-empty only while the check waits for an answer (needs_clarification). */
+export interface Clarification {
+  questions: ClarifyingQuestion[];
+  missing: string[];
+  round: number;
+  max_rounds: number;
+  history: ClarificationExchange[];
+}
+
 export interface CheckResponse {
   id: string;
   created_at: string;
@@ -271,6 +291,9 @@ export interface CheckResponse {
   source_articles: SourceRef[];
   limitations: string[];
   image_analysis: ImageAnalysis | null;
+  /** The check whose question this one answers. */
+  parent_check_id: string | null;
+  clarification: Clarification | null;
   meta: CheckMeta;
   request_count: number;
 }
@@ -278,6 +301,8 @@ export interface CheckResponse {
 export interface CheckRequest {
   url?: string;
   text?: string;
+  /** Set when `text` answers the clarifying question of that check. */
+  parent_check_id?: string | null;
   session_id?: string | null;
 }
 

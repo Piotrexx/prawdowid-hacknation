@@ -160,14 +160,16 @@ Jedno zgłoszenie to 1 wywołanie modelu na wydzielenie twierdzeń + 1 na każde
 | Model | Cennik (USD / 1 mln tokenów) | ~ koszt 1 000 zgłoszeń |
 |---|---|---|
 | `deepseek-flash` (domyślny) | 0,30 / 1,20 w godzinach szczytu, połowa poza nimi | ok. 3–6 USD |
-| `claude-opus-5-5` | 4 / 20 | ok. 90 USD |
-| model lokalny (Ollama/vLLM) | – | koszt własnego serwera |
+| `gpt-5.2-mini` / `gemini-3-flash` (alternatywy z katalogu) | 0,25 / 2,00 i 0,30 / 2,50 | ok. 8–10 USD |
+| model lokalny (Ollama/vLLM, np. Bielik) | – | koszt własnego serwera |
 
 To założenia, nie pomiar: faktyczne zużycie tokenów podaje `meta` każdej odpowiedzi i raport ewaluacji.
+Pełny kosztorys (usługi zewnętrzne, infrastruktura, kanały, skalowanie): [KOSZTY.md](KOSZTY.md).
 Powtórzone zgłoszenia (24 h) są obsługiwane z pamięci wyników bez kosztu modelu.
 
-Większy ruch: wąskim gardłem jest model. Usługa jest bezstanowa poza bazą – można uruchomić wiele instancji
-po przeniesieniu limitu żądań do Redis i bazy do Postgresa. Indeks (kilkaset fragmentów) odpowiada w ~20 ms.
+Większy ruch: wąskim gardłem jest model (DeepSeek w API i lokalny Bielik na CPU). Usługa jest bezstanowa poza
+bazą, a baza to już PostgreSQL, więc można uruchomić wiele instancji backendu korzystających z jednej bazy.
+Wcześniej trzeba przenieść do Redis limit żądań i blokadę grupowania spraw, które dziś działają w pamięci procesu. Indeks (kilkaset fragmentów) odpowiada w ~20 ms.
 
 ## Najważniejsze ograniczenia
 

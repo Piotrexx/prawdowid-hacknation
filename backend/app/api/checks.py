@@ -2,18 +2,31 @@ import hashlib
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 
 from app.api.deps import CONSENT_COOKIE, enforce_rate_limit, session_from_cookie
 from app.config import Settings
 from app.core.pipeline import Submission, VerificationService
+from app.notifications import send_check_to_discord
 from app.retrieval.claims import ClaimRetriever
 from app.schemas import (
     ArchiveOut,
     ArchiveRequest,
     CheckRequest,
     CheckResponse,
+    CheckStatus,
+    ClarificationExchange,
     ConsentRequest,
     ConsentResponse,
     HealthResponse,
@@ -73,44 +86,77 @@ def health(request: Request) -> HealthResponse:
 
 
 @router.post("/checks", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
-async def create_check(request: Request, payload: CheckRequest) -> CheckResponse:
+async def create_check(
+    request: Request, payload: CheckRequest, background_tasks: BackgroundTasks
+) -> CheckResponse:
     service: VerificationService = request.app.state.service
+    settings: Settings = request.app.state.settings
     session_id = _session(request, payload.session_id)
     _require_consent(request, session_id)
-    if payload.url and not payload.text:
+    if payload.parent_check_id:
+        submission = _answer_submission(request, payload, session_id)
+    elif payload.url and not payload.text:
         submission = Submission(channel="web", session_id=session_id, url=payload.url.strip())
     else:
         submission = Submission.from_message("web", session_id, payload.text or "")
-    return await service.check(submission)
+    result = await service.check(submission)
+    background_tasks.add_task(send_check_to_discord, result, settings)
+    return result
+
+
+def _answer_submission(request: Request, payload: CheckRequest, session_id: str) -> Submission:
+    """Odpowiedź na pytanie doprecyzowujące: sprawdzamy pierwotną treść razem ze wszystkimi odpowiedziami."""
+    store = request.app.state.store
+    parent_id = payload.parent_check_id or ""
+    parent = store.get_check(parent_id)
+    # Cudze sprawdzenie traktujemy jak nieistniejące.
+    if parent is None or store.get_check_session(parent_id) != session_id:
+        raise HTTPException(404, "Nie znaleziono pytania, na które odpowiadasz. Wyślij treść jeszcze raz.")
+    asked = parent.clarification
+    if parent.status != CheckStatus.NEEDS_CLARIFICATION or asked is None or not asked.questions:
+        raise HTTPException(409, "To sprawdzenie nie czeka na doprecyzowanie.")
+    history = [
+        *asked.history,
+        ClarificationExchange(questions=[q.text for q in asked.questions], answer=(payload.text or "").strip()),
+    ]
+    # Zdjęcia i nagrania nie są przechowywane, więc przy odpowiedzi korzystamy z odczytanego z nich tekstu.
+    if parent.input.kind == "url" and parent.input.url:
+        return Submission(channel="web", session_id=session_id, url=parent.input.url, parent_check_id=parent_id, history=history)
+    return Submission(channel="web", session_id=session_id, text=parent.input.text, parent_check_id=parent_id, history=history)
 
 
 @router.post("/checks/image", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
 async def create_image_check(
     request: Request,
     file: Annotated[UploadFile, File()],
+    background_tasks: BackgroundTasks,
     session_id: Annotated[str | None, Form(pattern=_SESSION_PATTERN)] = None,
 ) -> CheckResponse:
-    limit = request.app.state.settings.image_max_bytes
-    # Czytamy o jeden bajt więcej niż limit: wystarczy, by wykryć za duży plik bez ładowania całości.
-    data = await file.read(limit + 1)
+    settings: Settings = request.app.state.settings
+    data = await file.read(settings.image_max_bytes + 1)
     session = _session(request, session_id)
     _require_consent(request, session)
     service: VerificationService = request.app.state.service
-    return await service.check(Submission(channel="web", session_id=session, image=data))
+    result = await service.check(Submission(channel="web", session_id=session, image=data))
+    background_tasks.add_task(send_check_to_discord, result, settings)
+    return result
 
 
 @router.post("/checks/audio", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
 async def create_audio_check(
     request: Request,
     file: Annotated[UploadFile, File()],
+    background_tasks: BackgroundTasks,
     session_id: Annotated[str | None, Form(pattern=_SESSION_PATTERN)] = None,
 ) -> CheckResponse:
-    limit = request.app.state.settings.audio_max_bytes
-    data = await file.read(limit + 1)
+    settings: Settings = request.app.state.settings
+    data = await file.read(settings.audio_max_bytes + 1)
     session = _session(request, session_id)
     _require_consent(request, session)
     service: VerificationService = request.app.state.service
-    return await service.check(Submission(channel="web", session_id=session, audio=data))
+    result = await service.check(Submission(channel="web", session_id=session, audio=data))
+    background_tasks.add_task(send_check_to_discord, result, settings)
+    return result
 
 
 class DemoMessage(BaseModel):
@@ -121,13 +167,18 @@ class DemoMessage(BaseModel):
 
 
 @router.post("/channels/demo", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
-async def demo_channel(request: Request, payload: DemoMessage) -> CheckResponse:
+async def demo_channel(
+    request: Request, payload: DemoMessage, background_tasks: BackgroundTasks
+) -> CheckResponse:
     """Drugi kanał demonstracyjny. Woła dokładnie tę samą ścieżkę weryfikacji,
     więc wynik merytoryczny dla tego samego zgłoszenia jest spójny z WWW."""
     service: VerificationService = request.app.state.service
+    settings: Settings = request.app.state.settings
     session_id = _session(request, payload.session_id)
     _require_consent(request, session_id)
-    return await service.check(Submission.from_message("demo", session_id, payload.message.strip()))
+    result = await service.check(Submission.from_message("demo", session_id, payload.message.strip()))
+    background_tasks.add_task(send_check_to_discord, result, settings)
+    return result
 
 
 @router.get("/checks/{check_id}", response_model=CheckResponse)
