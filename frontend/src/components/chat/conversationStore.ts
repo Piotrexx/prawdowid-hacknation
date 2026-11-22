@@ -23,6 +23,8 @@ export interface Turn {
   /** The check whose clarifying question this turn answers. */
   parentResultId: string | null;
   state: TurnState;
+  /** How long the user waited for the answer (request to response), measured in the browser. */
+  elapsedMs?: number;
 }
 
 /**
@@ -158,10 +160,12 @@ export function addTurn(turn: NewTurn): number {
   return id;
 }
 
-export function updateTurn(id: number, state: TurnState): void {
+export function updateTurn(id: number, state: TurnState, elapsedMs?: number): void {
   const resultId = state.kind === "result" ? state.result.id : undefined;
   turns = turns.map((turn) =>
-    turn.id === id ? { ...turn, state, resultId: resultId ?? turn.resultId } : turn,
+    turn.id === id
+      ? { ...turn, state, resultId: resultId ?? turn.resultId, elapsedMs: elapsedMs ?? turn.elapsedMs }
+      : turn,
   );
   emit();
   if (resultId) persist();

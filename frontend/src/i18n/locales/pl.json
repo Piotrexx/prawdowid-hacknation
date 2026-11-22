@@ -63,6 +63,7 @@
     "myMessage": "Twoja wiadomość",
     "answerLabel": "Odpowiedź na pytanie",
     "checkingStatus": "Sprawdzam w źródłach…",
+    "tookTime": "Analiza trwała {{time}}",
     "expand": "Pokaż całość",
     "collapse": "Zwiń",
     "resultReady": "Wynik gotowy: {{count}} twierdzenie. {{verdicts}}.",

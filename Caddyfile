@@ -1,0 +1,35 @@
+# Caddy jest jedynym publicznym wejściem do aplikacji.
+# Domenę i e-mail do Let's Encrypt podaje docker-compose.prod.yml (DOMAIN, ACME_EMAIL).
+#
+# Trasowanie:
+#   /api/*  -> backend FastAPI (port 8000)
+#   reszta  -> frontend Next.js (port 3000)
+# Dzięki jednemu origin przeglądarka wysyła ciasteczka sesji i zgody
+# (SameSite=Lax w frontend/src/lib/cookies.ts) do backendu.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Backend oczekuje pełnej ścieżki /api/v1/..., więc nie zmieniamy prefiksu.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

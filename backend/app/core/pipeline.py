@@ -92,6 +92,10 @@ _CLARIFY_EXHAUSTED = (
     "Mimo doprecyzowania nie udało mi się ustalić, co dokładnie sprawdzić. "
     "Napisz nową wiadomość z konkretnym twierdzeniem: kto, co, kiedy i gdzie."
 )
+_IMAGE_NO_CLAIMS = (
+    "Na tym obrazie nie znalazłem informacji, którą można sprawdzić w źródłach. "
+    "Wklej treść jako tekst albo dodaj zrzut ekranu z widocznym wpisem lub nagłówkiem."
+)
 _MAX_QUESTIONS = 3
 _MAX_OPTIONS = 5
 _LLM_MESSAGES = {
@@ -190,6 +194,8 @@ class _Run:
     image_limitations: list[str] = field(default_factory=list)
     # Nadpisanie werdyktu całego materiału, gdy samo zdjęcie jest dowodem fałszu.
     image_override: tuple[str, Verdict, float, str] | None = None
+    # Werdykt samej analizy zdjęcia – wynik zapasowy, gdy na obrazie nie ma tekstu do sprawdzenia.
+    image_verdict: tuple[Verdict, float, str] | None = None
     # Słowa kluczowe z Bielika, liczone w tle; None, gdy nie zdążył, zawiódł albo nic nie znalazł.
     bielik_keywords: KeywordExtraction | None = None
     parent_check_id: str | None = None
@@ -272,10 +278,15 @@ class VerificationService:
         try:
             response, cache_key, original = await self._verify(submission, run)
         except _Stop as stop:
-            response = self._response(run, stop.status, status_message=stop.message, error_code=stop.error_code)
-            _should_save = stop.save
-            if (stop.error_code or "").startswith("llm_") and run.material:
-                response.related_materials = await self._related_materials(run.material)
+            if self._can_answer_with_image(run, stop):
+                # Zdjęcie bez tekstu do sprawdzenia (albo z nieczytelnym tekstem) to nadal pełny wynik:
+                # porównanie z kopiami w sieci i ślady AI. Nie dopytujemy – obrazu i tak nie da się dosłać.
+                response = self._image_only_response(run, stop)
+            else:
+                response = self._response(run, stop.status, status_message=stop.message, error_code=stop.error_code)
+                _should_save = stop.save
+                if (stop.error_code or "").startswith("llm_") and run.material:
+                    response.related_materials = await self._related_materials(run.material)
         except Exception:
             log.exception("nieoczekiwany błąd sprawdzenia %s", run.check_id)
             response = self._response(
@@ -519,6 +530,7 @@ class VerificationService:
         ai = analysis.ai if analysis else None
         if inspection.verdict is None or inspection.confidence is None or not inspection.justification:
             return
+        run.image_verdict = (inspection.verdict, inspection.confidence, inspection.justification)
         # Zdjęcie z generatora AI albo z doklejonym fragmentem jest samo w sobie dowodem fałszu.
         if (ai and ai.result == "ai_generated") or (
             analysis and analysis.assessment == "manipulation_suspected"
@@ -553,6 +565,31 @@ class VerificationService:
             items.append("Nie udało się sprawdzić, czy obraz jest przerobiony ani gdzie pojawił się wcześniej.")
         return items
 
+    @staticmethod
+    def _can_answer_with_image(run: _Run, stop: _Stop) -> bool:
+        if run.input.kind != "image" or run.image_verdict is None:
+            return False
+        if stop.status in (CheckStatus.NEEDS_CLARIFICATION, CheckStatus.OUT_OF_SCOPE):
+            return True
+        # Przy awarii technicznej wynik samego zdjęcia zastępuje błąd tylko wtedy, gdy coś rozstrzyga.
+        return stop.status == CheckStatus.ERROR and run.image_verdict[0] != Verdict.INSUFFICIENT
+
+    def _image_only_response(self, run: _Run, stop: _Stop) -> CheckResponse:
+        assert run.image_verdict is not None
+        run.verdict, run.confidence, run.justification = run.image_verdict
+        run.clarification = None
+        if stop.status == CheckStatus.ERROR:
+            run.warn(
+                "image_text_unchecked",
+                "Nie udało się sprawdzić tekstu z obrazu w źródłach – wynik dotyczy tylko samego zdjęcia. "
+                "Możesz wkleić treść jako tekst.",
+            )
+            summary = "Oceniliśmy samo zdjęcie; tekstu z obrazu nie udało się sprawdzić."
+        else:
+            summary = "Na obrazie nie ma twierdzenia do sprawdzenia w źródłach – oceniliśmy samo zdjęcie."
+        limitations = self._with_image_limitations(self._limitations(run, False), run)
+        return self._response(run, CheckStatus.COMPLETED, summary=summary, limitations=limitations)
+
     async def _read_image(self, data: bytes, run: _Run) -> str:
         try:
             image, media_type, metadata = await asyncio.to_thread(prepare_image, data, self._settings.image_max_bytes)
@@ -561,8 +598,8 @@ class VerificationService:
         run.input = InputInfo(kind="image", text="", image_metadata=metadata)
         run.warn(
             "image_limits",
-            "Odczytujemy tylko tekst widoczny na obrazie. Nie sprawdzamy, czy obraz jest przerobiony, "
-            "ani gdzie pojawił się wcześniej. Obrazu nie zapisujemy.",
+            "Tekst widoczny na obrazie sprawdzamy w źródłach, a samo zdjęcie porównujemy z jego kopiami w sieci "
+            "i szukamy śladów AI. Obrazu nie zapisujemy.",
         )
         try:
             reading = await self._ask(
@@ -582,8 +619,14 @@ class VerificationService:
                 CheckStatus.NEEDS_CLARIFICATION,
                 "Nie udało się odczytać tekstu z tego obrazu. Wklej treść jako tekst albo dodaj wyraźniejszy zrzut ekranu.",
             )
-        dates = ", ".join(reading.visible_dates)
-        return reading.text + (f"\n\nDaty widoczne na obrazie: {dates}" if dates else "")
+        parts = [reading.text.strip()]
+        dates = ", ".join(d.strip() for d in reading.visible_dates if d.strip())
+        if dates:
+            parts.append(f"Daty widoczne na obrazie: {dates}")
+        if reading.description.strip():
+            # Kontekst dla wydzielania twierdzeń (np. „zrzut ekranu wpisu”), nie twierdzenie do sprawdzenia.
+            parts.append(f"Opis obrazu: {reading.description.strip()}")
+        return "\n\n".join(parts)
 
     async def _read_audio(self, data: bytes, run: _Run) -> str:
         try:
@@ -663,8 +706,12 @@ class VerificationService:
     ) -> tuple[list[ClaimResult], list[str]]:
         today = date.today()
         started = time.perf_counter()
-        can_ask = len(run.history) < self._settings.clarification_max_rounds
-        system, user = extract_prompts(run.material, today, self._settings.max_claims, allow_clarification=can_ask)
+        from_image = run.input.kind == "image"
+        # Obrazu nie zapisujemy, więc odpowiedź na pytanie nie mogłaby do niego wrócić – przy zdjęciu nie dopytujemy.
+        can_ask = not from_image and len(run.history) < self._settings.clarification_max_rounds
+        system, user = extract_prompts(
+            run.material, today, self._settings.max_claims, allow_clarification=can_ask, from_image=from_image
+        )
         extraction = await self._ask(run, system, user, Extraction, self._settings.llm_extract_effort)
         run.mark("extract", started)
         if extraction.injection_detected:
@@ -675,13 +722,15 @@ class VerificationService:
                 questions = _clean_questions(extraction.questions) or [ClarifyingQuestion(text=fallback)]
                 self._clarify(run, questions, [m.strip() for m in extraction.missing if m.strip()][:5])
             # Limit pytań wyczerpany, a model mimo zakazu dopytuje: sprawdzamy, co się da, albo kończymy bez pytań.
-            run.clarification_skipped = True
+            run.clarification_skipped = bool(run.history)
             if not extraction.claims:
-                raise _Stop(CheckStatus.NEEDS_CLARIFICATION, _CLARIFY_EXHAUSTED)
+                raise _Stop(CheckStatus.NEEDS_CLARIFICATION, _IMAGE_NO_CLAIMS if from_image else _CLARIFY_EXHAUSTED)
         if extraction.input_status == "out_of_scope":
             raise _Stop(
                 CheckStatus.OUT_OF_SCOPE,
-                extraction.message or "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
+                _IMAGE_NO_CLAIMS
+                if from_image
+                else extraction.message or "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
                 save=False,
             )
         extracted = extraction.claims[: self._settings.max_claims]

@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOff, FileAudio, Quote, Scale, ShieldCheck } from "lucide-react";
+import { EyeOff, FileAudio, Quote, Scale, ShieldCheck, Timer } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -102,6 +102,29 @@ function UserMessage({ turn }: { turn: Turn }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function formatDuration(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+}
+
+/** "Analiza trwała 19 s" above the answer: browser-measured wait, or the backend time for a reopened chat. */
+function ResponseTime({ turn }: { turn: Turn }) {
+  const { t } = useTranslation();
+  if (turn.state.kind !== "result") return null;
+  const ms = turn.elapsedMs ?? turn.state.result.meta?.duration_ms;
+  if (!ms) return null;
+  const time = formatDuration(ms);
+  return (
+    <p className="-mb-2 flex items-center gap-1.5 text-xs text-muted">
+      <Timer aria-hidden="true" className="size-3.5 shrink-0" />
+      {t("chat.tookTime", { time, defaultValue: `Analiza trwała ${time}` })}
+    </p>
   );
 }
 
@@ -257,6 +280,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     const controller = new AbortController();
     const untrack = trackRequest(controller);
     updateTurn(id, { kind: "loading" });
+    const startedAt = performance.now();
     setStatus(t("chat.checkingStatus"));
     try {
       const sessionId = ensureSessionId();
@@ -286,7 +310,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         setText(result.input.text);
       }
       setUploadProgress(null);
-      updateTurn(id, { kind: "result", result });
+      updateTurn(id, { kind: "result", result }, performance.now() - startedAt);
       // The next message answers the question, until the user cancels or sends an image.
       if (result.status === "needs_clarification" && result.clarification?.questions.length) {
         setReplyToId(result.id);
@@ -446,6 +470,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
                   className="flex scroll-mt-6 flex-col gap-4"
                 >
                   <UserMessage turn={turn} />
+                  <ResponseTime turn={turn} />
                   <ChatAnswer
                     state={turn.state}
                     onRetry={() => retry(turn)}

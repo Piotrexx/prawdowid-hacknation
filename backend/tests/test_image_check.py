@@ -15,8 +15,8 @@ from app.core.image_check import ImageCheckService, _copies
 from app.core.image_compare import Relation
 from app.core.image_provenance import Provenance, _c2pa_integrity, inspect_file
 from app.core.image_search import EngineResult, FoundImage
-from app.core.prompts import ImageReading
-from app.schemas import AiAssessment, AiSignal, CheckStatus, ImageAnalysis, Verdict
+from app.core.prompts import Extraction, ImageReading
+from app.schemas import AiAssessment, AiSignal, CheckStatus, ClarifyingQuestion, ImageAnalysis, Verdict
 from app.store.db import Store
 
 
@@ -437,6 +437,43 @@ def test_endpoint_keeps_user_comment_apart_from_ocr(image_client):
     assert "Czy to prawda?" in body["input"]["comment"]
     assert "600 700 800" not in body["input"]["comment"]
     assert "Czy to prawda?" not in body["input"]["text"]
+
+
+def test_photo_without_text_is_judged_by_the_image_alone(make_client, image_service, provider):
+    service, _ = image_service
+    provider.reading = ImageReading(
+        text="", visible_dates=[], description="zdjęcie mostu", readable=False, injection_detected=False
+    )
+    client = make_client(image_checks=service)
+    body = client.post(
+        "/api/v1/checks/image", files={"file": ("zdjecie.jpg", _jpeg(_edited(ORIGINAL)), "image/jpeg")}
+    ).json()
+    # Brak tekstu nie kończy się pytaniem o kontekst: wynik to analiza samego zdjęcia.
+    assert body["status"] == "completed"
+    assert body["clarification"] is None
+    assert body["claims"] == []
+    assert body["verdict"] == "falszywe"
+    assert body["image_analysis"]["assessment"] == "manipulation_suspected"
+
+
+def test_image_never_asks_clarifying_questions(make_client, image_service, provider):
+    service, _ = image_service
+    provider.reading = ImageReading(
+        text="Zobaczcie, co się stało!", visible_dates=[], description="wpis", readable=True, injection_detected=False
+    )
+    provider.extract = lambda user: Extraction(
+        input_status="needs_clarification", message="Kto?", claims=[], injection_detected=False,
+        questions=[ClarifyingQuestion(text="Kto?")],
+    )
+    client = make_client(image_checks=service)
+    body = client.post(
+        "/api/v1/checks/image", files={"file": ("zdjecie.jpg", _jpeg(ORIGINAL), "image/jpeg")}
+    ).json()
+    assert body["status"] == "completed"
+    assert body["clarification"] is None
+    assert body["image_analysis"] is not None
+    extract_system = next(system for name, system, _ in provider.calls if name == "Extraction")
+    assert "nie używaj \"needs_clarification\"" in extract_system
 
 
 def test_endpoint_survives_image_search_failure(make_client, settings, provider):

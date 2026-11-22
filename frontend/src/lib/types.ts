@@ -39,7 +39,8 @@ export type WarningCode =
   | "ai_generated"
   | "ai_edited"
   | "content_credentials"
-  | "image_analysis_unavailable";
+  | "image_analysis_unavailable"
+  | "image_text_unchecked";
 
 export interface Warning {
   code: WarningCode;

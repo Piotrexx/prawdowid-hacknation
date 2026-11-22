@@ -140,10 +140,22 @@ _NO_MORE_QUESTIONS = """
 Obywatel odpowiedział już na pytania doprecyzowujące tyle razy, ile to możliwe. Nie używaj "needs_clarification": wydziel twierdzenia najlepiej, jak się da, na podstawie materiału i odpowiedzi."""
 
 
-def extract_prompts(material: str, today: date, max_claims: int, allow_clarification: bool = True) -> tuple[str, str]:
+_FROM_IMAGE = """
+
+Materiał to tekst odczytany ze zrzutu ekranu lub zdjęcia, na końcu z krótkim opisem obrazu. Obywatela nie można dopytać – nie używaj "needs_clarification".
+   • Pomiń elementy interfejsu: przyciski, liczniki polubień i udostępnień, nazwy kont, godziny, menu, reklamy. Wydziel twierdzenia z właściwej treści wpisu, nagłówka lub podpisu – także gdy tekst jest urwany lub niepełny.
+   • Nazwę konta lub autora widoczną przy wpisie możesz wykorzystać jako kontekst („według wpisu konta X…”).
+   • „Opis obrazu” i „Daty widoczne na obrazie” to tylko kontekst, nie twierdzenia do sprawdzenia. Jeśli poza nimi nie ma żadnej treści do sprawdzenia, wybierz "out_of_scope" – samo zdjęcie oceniamy osobno."""
+
+
+def extract_prompts(
+    material: str, today: date, max_claims: int, allow_clarification: bool = True, from_image: bool = False
+) -> tuple[str, str]:
     tag, block = wrap_untrusted("material", material)
     system = EXTRACT_SYSTEM.format(max_claims=max_claims, today=today.isoformat())
-    if not allow_clarification:
+    if from_image:
+        system += _FROM_IMAGE
+    elif not allow_clarification:
         system += _NO_MORE_QUESTIONS
     return system, f"Materiał do analizy znajduje się w bloku <{tag}>.\n\n{block}"
 

@@ -120,6 +120,7 @@ class Warning(BaseModel):
         "ai_edited",
         "content_credentials",
         "image_analysis_unavailable",
+        "image_text_unchecked",
     ]
     message: str
 

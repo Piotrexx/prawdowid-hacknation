@@ -1,0 +1,147 @@
+# Produkcyjny stos Prawdowida (jedna maszyna, opis w DEPLOY.md):
+#   cp .env.production.example .env && cp deploy/backend.env.example backend/.env
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Bot Discord: dodaj --profile bot.
+#
+# Publiczne są tylko porty Caddy (80/443). Pozostałe usługi rozmawiają w sieci Compose.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-prawdowid}
+      POSTGRES_USER: ${POSTGRES_USER:-prawdowid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw POSTGRES_PASSWORD w .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/10-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      BIELIK_MODEL: ${BIELIK_MODEL:-SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0}
+      # Model zostaje w pamięci – bez tego pierwsze sprawdzenie po przerwie czeka na ponowne wczytanie.
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list > /dev/null 2>&1; do sleep 2; done
+        ollama list | grep -qiF "$$BIELIK_MODEL" || ollama pull "$$BIELIK_MODEL"
+        wait
+    healthcheck:
+      # „healthy” dopiero wtedy, gdy model jest pobrany – backend na to czeka.
+      test: ["CMD-SHELL", "ollama list | grep -qiF \"$$BIELIK_MODEL\""]
+      interval: 15s
+      timeout: 10s
+      retries: 240
+      start_period: 30s
+    logging: *logging
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-prawdowid}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-prawdowid}
+      BIELIK_BASE_URL: http://ollama:11434/v1
+      BIELIK_MODEL: ${BIELIK_MODEL:-SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0}
+      CORS_ORIGINS: https://${DOMAIN:?ustaw DOMAIN w .env}
+      PUBLIC_BASE_URL: https://${DOMAIN}
+      # Uvicorn ufa nagłówkom X-Forwarded-* od Caddy – limit zapytań liczy się po prawdziwym IP.
+      FORWARDED_ALLOW_IPS: "*"
+      FASTEMBED_CACHE_PATH: /app/.cache/fastembed
+      WHISPER_CACHE_DIR: /app/.cache/whisper
+      INGEST_CACHE_DIR: /app/var/ingest
+    volumes:
+      - backend-var:/app/var
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - .venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    logging: *logging
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Ten sam origin co strona – Caddy kieruje /api/* do backendu.
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?ustaw ACME_EMAIL w .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+      - backend
+    logging: *logging
+
+  discord-bot:
+    build: ./discord-bot
+    profiles: ["bot"]
+    restart: unless-stopped
+    env_file: ./discord-bot/.env
+    environment:
+      API_URL: http://backend:8000
+      FRONTEND_URL: https://${DOMAIN}
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  pgdata:
+  ollama-data:
+  backend-var:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,7 @@
+# Skrypty są uruchamiane na Linuksie — wymuszamy LF niezależnie od systemu,
+# z którego robisz checkout (Windows/OneDrive).
+*.sh text eol=lf
+Caddyfile text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
