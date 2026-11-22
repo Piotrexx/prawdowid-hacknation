@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "rea
 import { useTranslation } from "react-i18next";
 import { useImageAttachment } from "@/components/check/useImageAttachment";
 import { ApiError, createAudioCheck, createCheck, createImageCheck, isAbort } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { useAdminToken } from "@/lib/adminToken";
 import { cx } from "@/lib/cx";
 import { describeError } from "@/lib/errors";
@@ -18,7 +19,7 @@ import { cacheResult } from "@/lib/resultCache";
 import { ensureSessionId } from "@/lib/session";
 import type { CheckResponse } from "@/lib/types";
 import { ChatAnswer, type TurnState } from "./ChatAnswer";
-import { Composer, TEXT_LIMIT } from "./Composer";
+import { Composer, MIN_TEXT_LENGTH, TEXT_LIMIT } from "./Composer";
 
 interface Turn {
   id: number;
@@ -68,7 +69,7 @@ function UserMessage({ turn }: { turn: Turn }) {
           <>
             <p
               className={cx(
-                "leading-relaxed break-words whitespace-pre-line",
+                "leading-relaxed wrap-break-words whitespace-pre-line",
                 long && !expanded && "line-clamp-6",
               )}
             >
@@ -139,15 +140,13 @@ function ModeratorShortcut() {
   const token = useAdminToken();
   if (!token) return null;
   return (
-    <div className="flex justify-end pt-4">
-      <Link
-        href="/moderator"
-        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-accent bg-surface px-4 font-semibold text-accent transition-colors hover:bg-info-bg"
-      >
-        <ShieldCheck aria-hidden="true" className="size-5" />
-        Panel moderatora
-      </Link>
-    </div>
+    <Link
+      href="/moderator"
+      className="absolute top-4 right-5 z-20 inline-flex min-h-11 items-center gap-2 rounded-lg border border-accent bg-surface px-4 font-semibold text-accent shadow-card transition-colors hover:bg-info-bg sm:right-8"
+    >
+      <ShieldCheck aria-hidden="true" className="size-5" />
+      Panel moderatora
+    </Link>
   );
 }
 
@@ -158,6 +157,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [waitSeconds, setWaitSeconds] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const image = useImageAttachment();
 
@@ -217,8 +217,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       const sessionId = ensureSessionId();
       const result = payload.file
         ? payload.kind === "audio"
-          ? await createAudioCheck(payload.file, sessionId, controller.signal)
-          : await createImageCheck(payload.file, sessionId, controller.signal)
+          ? await createAudioCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct))
+          : await createImageCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct))
         : await createCheck(
             isSingleUrl(payload.text)
               ? { url: payload.text, session_id: sessionId }
@@ -233,9 +233,11 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       if (result.status === "needs_clarification" && payload.file && result.input.text.trim()) {
         setText(result.input.text);
       }
+      setUploadProgress(null);
       update(id, { kind: "result", result });
       setStatus(announce(result, t));
     } catch (error) {
+      setUploadProgress(null);
       if (isAbort(error)) return;
       if (error instanceof ApiError && error.kind === "rate_limit") {
         const seconds = error.retryAfterSeconds ?? 0;
@@ -255,6 +257,11 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     const file = image.attachment?.file ?? null;
     if (!file && !trimmed) {
       setFormError(t("composer.errorEmpty"));
+      textareaRef.current?.focus();
+      return;
+    }
+    if (!file && trimmed.length < MIN_TEXT_LENGTH) {
+      toast(t("composer.errorTooShort", { min: MIN_TEXT_LENGTH }), "error");
       textareaRef.current?.focus();
       return;
     }
@@ -339,7 +346,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   return (
     <div
       className={cx(
-        "flex min-w-0 flex-1 flex-col",
+        "relative flex min-w-0 flex-1 flex-col",
         dragActive && "outline-3 -outline-offset-8 outline-focus outline-dashed",
       )}
       onDragOver={(event) => {
@@ -358,8 +365,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         if (file) image.attach(file);
       }}
     >
-      <div className="mx-auto flex w-full max-w-[50rem] flex-1 flex-col px-5 sm:px-8">
-        <ModeratorShortcut />
+      <ModeratorShortcut />
+      <div className="mx-auto flex w-full max-w-200 flex-1 flex-col px-5 sm:px-8">
         {turns.length === 0 ? (
           <Welcome title={title} />
         ) : (
@@ -383,7 +390,6 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
                   />
                 </div>
               ))}
-              {/* Leaves room so the newest message can scroll to the top of the screen. */}
               <div aria-hidden="true" className="min-h-[40vh]" />
             </section>
           </>
@@ -406,6 +412,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
           onAudio={sendAudio}
           onSubmit={send}
           busy={busy}
+          uploadProgress={uploadProgress}
           error={formError}
           waitSeconds={waitSeconds}
           textareaRef={textareaRef}

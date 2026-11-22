@@ -1,3 +1,5 @@
+"use client";
+
 import { Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -9,7 +11,7 @@ import { clearSessionId, peekSessionId } from "@/lib/session";
 
 type Step = "idle" | "confirm" | "deleting";
 
-export function SessionControls({ onDeleted }: { onDeleted: () => void }) {
+export function SessionControls({ onDeleted = () => {} }: { onDeleted?: () => void }) {
   const [step, setStep] = useState<Step>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -48,9 +50,9 @@ export function SessionControls({ onDeleted }: { onDeleted: () => void }) {
 
   return (
     <section aria-labelledby="twoje-dane" className="border-t border-line pt-6">
-      <h2 id="twoje-dane" className="text-xl font-semibold">
+      <h3 id="twoje-dane" className="text-xl font-semibold">
         Twoje dane
-      </h2>
+      </h3>
       <p className="mt-1 text-muted">
         Sprawdzenia są zapisywane pod losowym numerem sesji. Ten numer jest
         przechowywany tylko w tej przeglądarce. Możesz usunąć swoje sprawdzenia w

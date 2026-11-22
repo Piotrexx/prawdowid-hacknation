@@ -255,6 +255,8 @@ class VerificationService:
                 status_message=f"Wystąpił nieoczekiwany błąd. {_NOT_A_VERDICT} Spróbuj ponownie.",
                 error_code="internal_error",
             )
+            # Błąd techniczny nie jest wynikiem sprawdzenia – nie zaśmiecamy bazy.
+            _should_save = False
         if _should_save:
             self._store.save_check(response, submission.session_id, cache_key)
         for kind, origin, detail in run.events:
@@ -549,7 +551,7 @@ class VerificationService:
         Zwraca:
             True  – znaleziono słowa kluczowe, kontynuuj analizę
             False – Bielik działał, ale nie znalazł twierdzeń – odrzuć bez zapisu
-            None  – Bielik niedostępny, kontynuuj (DeepSeek go zastąpi)
+            None  – Bielik niedostępny/błąd – odrzuć bez zapisu, bez wywoływania DeepSeek
         """
         if self._bielik_provider is None:
             return None
@@ -568,9 +570,10 @@ class VerificationService:
 
     async def _assess_material(self, run: _Run) -> tuple[list[ClaimResult], list[str]]:
         # Wstępny filtr: lokalny Bielik sprawdza, czy materiał zawiera twierdzenia.
-        # Jeśli Bielik działa i nie znajdzie żadnych – odrzucamy bez zapisu do bazy.
+        # Jeśli Bielik nie znajdzie żadnych słów kluczowych, albo w ogóle nie odpowie –
+        # odrzucamy od razu, bez zapisu do bazy i bez przełączania się na DeepSeek.
         bielik_result = await self._bielik_precheck(run)
-        if bielik_result is False:
+        if bielik_result is not True:
             raise _Stop(
                 CheckStatus.OUT_OF_SCOPE,
                 "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
@@ -593,6 +596,7 @@ class VerificationService:
             raise _Stop(
                 CheckStatus.OUT_OF_SCOPE,
                 extraction.message or "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
+                save=False,
             )
         extracted = extraction.claims[: self._settings.max_claims]
         if not extracted:

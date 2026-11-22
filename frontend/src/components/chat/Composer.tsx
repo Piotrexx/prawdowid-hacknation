@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "@/lib/cx";
 import { formatInteger, plural } from "@/lib/format";
+import { Spinner } from "@/components/ui/Spinner";
 import {
   IMAGE_ACCEPT,
   imageFromTransfer,
@@ -12,6 +13,7 @@ import {
 } from "@/components/check/useImageAttachment";
 
 export const TEXT_LIMIT = 20_000;
+export const MIN_TEXT_LENGTH = 20;
 const COUNTER_FROM = 18_000;
 const MAX_HEIGHT = 240;
 const AUDIO_ACCEPT = "audio/*,audio/mp3,audio/mpeg,audio/wav,audio/webm,audio/ogg,audio/m4a,audio/aac";
@@ -27,6 +29,8 @@ interface ComposerProps {
   onAudio: (file: File) => void;
   onSubmit: () => void;
   busy: boolean;
+  /** 0–100 podczas uploadu pliku, null poza nim. */
+  uploadProgress: number | null;
   error: string | null;
   waitSeconds: number;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -42,6 +46,7 @@ export function Composer({
   onAudio,
   onSubmit,
   busy,
+  uploadProgress,
   error,
   waitSeconds,
   textareaRef,
@@ -177,7 +182,11 @@ export function Composer({
             <button
               type="button"
               onClick={() => imageFileRef.current?.click()}
-              className="inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold text-link hover:bg-subtle"
+              disabled={blocked}
+              className={cx(
+                "inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold hover:bg-subtle",
+                blocked ? "cursor-not-allowed text-muted" : "text-link",
+              )}
             >
               <ImagePlus aria-hidden="true" className="size-5" />
               {attachment ? t("composer.otherImage") : t("composer.screenshot")}
@@ -186,10 +195,10 @@ export function Composer({
             <button
               type="button"
               onClick={() => audioFileRef.current?.click()}
-              disabled={busy || waitSeconds > 0}
+              disabled={blocked}
               className={cx(
                 "inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold hover:bg-subtle",
-                busy || waitSeconds > 0 ? "cursor-not-allowed text-muted" : "text-link",
+                blocked ? "cursor-not-allowed text-muted" : "text-link",
               )}
             >
               <FileAudio aria-hidden="true" className="size-5" />
@@ -208,14 +217,32 @@ export function Composer({
             <button
               type="submit"
               disabled={blocked}
-              className="grid size-11 place-items-center bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="grid size-11 place-items-center bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <ArrowUp aria-hidden="true" className="size-5.5" strokeWidth={2.5} />
-              <span className="sr-only">{t("composer.submit")}</span>
+              {busy ? (
+                <Spinner className="size-5" />
+              ) : (
+                <ArrowUp aria-hidden="true" className="size-5.5" strokeWidth={2.5} />
+              )}
+              <span className="sr-only">{busy ? t("composer.sending") : t("composer.submit")}</span>
             </button>
           </div>
         </div>
 
+        {uploadProgress !== null ? (
+          <div className="mt-2 space-y-1">
+            <div className="flex justify-between text-xs text-muted">
+              <span>{t("composer.uploading")}</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-200"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
         {error || imageError ? (
           <p id="czat-blad" role="alert" className="mt-2 text-sm font-semibold text-bad-fg">
             {error || imageError}

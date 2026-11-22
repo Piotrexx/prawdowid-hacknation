@@ -283,9 +283,12 @@ def unsubscribe_push(
 
 
 # --- komentarze do spraw i artykułów ---
+# Opinie moderatorów są na razie wyłączone także w backendzie.
+# Zostawiamy implementację, ale nie rejestrujemy tras, żeby nie było
+# niedziałających elementów w panelu.
 
 
-@router.get("/cases/{case_id}/comments", response_model=list[CommentOut])
+# @router.get("/cases/{case_id}/comments", response_model=list[CommentOut])
 def list_case_comments(
     request: Request,
     case_id: int,
@@ -296,7 +299,7 @@ def list_case_comments(
     return _moderators(request).list_comments(case_id=case_id, limit=limit)
 
 
-@router.post("/cases/{case_id}/comments", response_model=CommentOut, status_code=201)
+# @router.post("/cases/{case_id}/comments", response_model=CommentOut, status_code=201)
 def add_case_comment(
     request: Request,
     background: BackgroundTasks,
@@ -323,7 +326,7 @@ def add_case_comment(
     return comment
 
 
-@router.get("/articles/{article_id}/comments", response_model=list[CommentOut])
+# @router.get("/articles/{article_id}/comments", response_model=list[CommentOut])
 def list_article_comments(
     request: Request,
     article_id: int,
@@ -334,7 +337,7 @@ def list_article_comments(
     return _moderators(request).list_comments(article_id=article_id, limit=limit)
 
 
-@router.post("/articles/{article_id}/comments", response_model=CommentOut, status_code=201)
+# @router.post("/articles/{article_id}/comments", response_model=CommentOut, status_code=201)
 def add_article_comment(
     request: Request,
     background: BackgroundTasks,
@@ -361,7 +364,7 @@ def add_article_comment(
     return comment
 
 
-@router.delete("/comments/{comment_id}")
+# @router.delete("/comments/{comment_id}")
 def delete_comment(
     request: Request,
     comment_id: int,

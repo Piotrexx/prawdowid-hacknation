@@ -5,7 +5,6 @@ self.addEventListener("push", (event) => {
   try {
     if (event.data) payload = event.data.json();
   } catch {
-    // Puste powiadomienie ma znaczenie samo w sobie: nowy komentarz w panelu.
   }
   const title = payload.title || "Prawdowid – nowy komentarz";
   const options = {

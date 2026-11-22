@@ -2,6 +2,7 @@ import { CheckCircle2, Cpu, KeyRound, Save, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBlock, LoadingBlock } from "@/components/ui/LoadState";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Tag } from "@/components/ui/Tag";
 import { getLlmProviders, getLlmSettings, saveLlmSettings } from "@/lib/api";
 import { describeError } from "@/lib/errors";
@@ -10,6 +11,8 @@ import { guarded, useAdminData, type AdminAccess } from "./useAdminData";
 
 const FIELD_CLASS =
   "mt-1 block min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3";
+const PASSWORD_FIELD_CLASS =
+  "block min-h-11 w-full rounded-lg border border-line-strong bg-surface py-2 pr-12 pl-3";
 
 interface Bundle {
   providers: LlmProvider[];
@@ -39,7 +42,6 @@ function LlmForm({
   initial: LlmSettings;
 }) {
   const [settings, setSettings] = useState(initial);
-  const selected = providers.find((provider) => provider.key === providerKey);
   const [providerKey, setProviderKey] = useState(settings.provider);
   const [model, setModel] = useState(settings.model);
   const [baseUrl, setBaseUrl] = useState(settings.base_url);
@@ -54,6 +56,9 @@ function LlmForm({
   const [clearKey, setClearKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Musi być po deklaracji providerKey – wcześniej odwołanie kończyło się błędem.
+  const selected = providers.find((provider) => provider.key === providerKey);
 
   function chooseProvider(key: string) {
     const provider = providers.find((candidate) => candidate.key === key);
@@ -105,7 +110,7 @@ function LlmForm({
       setFeedback({
         ok: saved.configured,
         text: saved.configured
-          ? "Model zapisany i aktywny od następnego sprawdzenia."
+          ? "Model zapisany i aktywny od następnej analizy."
           : "Zapisano, ale model nie jest aktywny – sprawdź klucz API i adres.",
       });
     } catch (error) {
@@ -140,7 +145,7 @@ function LlmForm({
 
         {!settings.configured ? (
           <p className="mt-3 rounded-lg border border-warn-line bg-warn-bg px-3 py-2 text-warn-fg">
-            Brak wymaganego klucza albo adres jest nieosiągalny. Sprawdzenia będą kończyć się
+            Brak wymaganego klucza albo adres jest nieosiągalny. Analizy będą kończyć się
             błędem technicznym, dopóki model nie będzie skonfigurowany.
           </p>
         ) : null}
@@ -241,13 +246,13 @@ function LlmForm({
           </label>
           <label className="block font-medium sm:col-span-2">
             Klucz API
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="off"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
               placeholder={keyPlaceholder}
-              className={FIELD_CLASS}
+              containerClassName="mt-1"
+              className={PASSWORD_FIELD_CLASS}
             />
             <span className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
               <KeyRound aria-hidden="true" className="size-4" />

@@ -2,6 +2,7 @@
 
 import { LogOut } from "lucide-react";
 import { useId, useRef, useState, useEffect, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { ErrorBlock, LoadingBlock } from "@/components/ui/LoadState";
 import { getProfile, logoutModerator } from "@/lib/api";
@@ -25,6 +26,23 @@ interface TabDefinition {
   Panel: (props: { access: AdminAccess }) => ReactNode;
 }
 
+function AccountBadge({ profile, onLogout }: { profile: Profile; onLogout: () => void }) {
+  const { display_name, email } = profile.moderator;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-2 border-line-strong bg-surface px-3 py-2">
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="font-semibold">{display_name || email}</span>
+        {display_name ? <span className="text-sm text-muted">{email}</span> : null}
+      </p>
+      <Button variant="danger" onClick={onLogout}>
+        <LogOut aria-hidden="true" className="size-5" />
+        Wyloguj
+      </Button>
+    </div>
+  );
+}
+
 function Dashboard({
   access,
   profile,
@@ -35,9 +53,13 @@ function Dashboard({
   onLogout: () => void;
 }) {
   const baseId = useId();
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  const [lowerSlot, setLowerSlot] = useState<HTMLDivElement | null>(null);
+  const [stixHelpOpen, setStixHelpOpen] = useState(false);
+  const accountSlot = stixHelpOpen ? lowerSlot : headerSlot;
   const isSuperuser = profile.moderator.role === "superuser";
   const tabs: TabDefinition[] = [
-    { key: "cases", label: "Sprawy", Panel: CasesTab },
+    { key: "cases", label: "Twierdzenia", Panel: CasesTab },
     { key: "account", label: "Konto", Panel: AccountTab },
     { key: "metrics", label: "Statystyki", Panel: MetricsTab },
     { key: "events", label: "Zdarzenia bezpieczeństwa", Panel: EventsTab },
@@ -52,6 +74,12 @@ function Dashboard({
   const [active, setActive] = useState<string>("cases");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const ActivePanel = tabs.find((tab) => tab.key === active)?.Panel ?? CasesTab;
+
+  useEffect(() => {
+    // Konto jest renderowane w nagłówku strony, obok tytułu „Panel moderatora”.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- docelowy element istnieje tylko w DOM
+    setHeaderSlot(document.getElementById("moderator-account-slot"));
+  }, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const current = tabs.findIndex((tab) => tab.key === active);
@@ -74,21 +102,13 @@ function Dashboard({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-wrap items-start gap-3">
-          <ExportButtons access={access} />
-          <Button onClick={onLogout}>
-            <LogOut aria-hidden="true" className="size-5" />
-            Wyloguj
-          </Button>
-        </div>
-        <div className="text-right">
-          <p className="font-semibold">
-            {profile.moderator.display_name || profile.moderator.email}
-          </p>
-          <p className="text-sm text-muted">{profile.moderator.email}</p>
-        </div>
-      </div>
+      {accountSlot
+        ? createPortal(<AccountBadge profile={profile} onLogout={onLogout} />, accountSlot)
+        : null}
+
+      <ExportButtons access={access} onStixHelpToggle={setStixHelpOpen} />
+      {/* Konto przenosi się tutaj, gdy rozwinięta jest pomoc eksportu STIX. */}
+      <div ref={setLowerSlot} className="flex justify-end empty:hidden" />
 
       {profile.moderator.must_change_password ? (
         <p

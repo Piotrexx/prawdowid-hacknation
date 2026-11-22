@@ -62,7 +62,7 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const CHECK_TIMEOUT_MS = 120_000;
+const CHECK_TIMEOUT_MS = 180_000;
 
 interface RequestOptions extends RequestInit {
   timeoutMs?: number;
@@ -182,14 +182,80 @@ export async function createCheck(
   });
 }
 
+/** XHR-based multipart upload that fires `onUploadProgress(0..100)` during the upload phase. */
+function xhrUpload<T>(
+  path: string,
+  form: FormData,
+  onUploadProgress: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`, true);
+    xhr.withCredentials = true;
+    xhr.timeout = CHECK_TIMEOUT_MS;
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as T);
+        } catch {
+          reject(new ApiError("http", { status: xhr.status }));
+        }
+      } else {
+        let detail: string | undefined;
+        try {
+          const body: unknown = JSON.parse(xhr.responseText);
+          if (body && typeof body === "object" && "detail" in body) {
+            const d = (body as { detail: unknown }).detail;
+            if (typeof d === "string" && d.trim()) detail = d;
+          }
+        } catch { /* ignore */ }
+        const status = xhr.status;
+        if (status === 429) reject(new ApiError("rate_limit", { status, detail }));
+        else if (status === 422 || status === 400 || status === 413 || status === 415) reject(new ApiError("validation", { status, detail }));
+        else if (status === 404) reject(new ApiError("not_found", { status, detail }));
+        else if (status === 401 || status === 403) reject(new ApiError("unauthorized", { status, detail }));
+        else reject(new ApiError("http", { status, detail }));
+      }
+    };
+
+    xhr.onerror = () => reject(new ApiError("network"));
+    xhr.ontimeout = () => reject(new ApiError("timeout"));
+
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener("abort", onAbort);
+    xhr.onabort = () => {
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+
+    xhr.send(form);
+  });
+}
+
 export async function createImageCheck(
   file: File,
   sessionId?: string,
   signal?: AbortSignal,
+  onUploadProgress?: (pct: number) => void,
 ): Promise<CheckResponse> {
   const body = new FormData();
   body.append("file", file);
   if (sessionId) body.append("session_id", sessionId);
+  if (onUploadProgress) {
+    return xhrUpload<CheckResponse>("/checks/image", body, onUploadProgress, signal);
+  }
   // No Content-Type header: the browser sets the multipart boundary itself.
   return getJson<CheckResponse>("/checks/image", {
     method: "POST",
@@ -203,10 +269,14 @@ export async function createAudioCheck(
   file: File,
   sessionId?: string,
   signal?: AbortSignal,
+  onUploadProgress?: (pct: number) => void,
 ): Promise<CheckResponse> {
   const body = new FormData();
   body.append("file", file);
   if (sessionId) body.append("session_id", sessionId);
+  if (onUploadProgress) {
+    return xhrUpload<CheckResponse>("/checks/audio", body, onUploadProgress, signal);
+  }
   return getJson<CheckResponse>("/checks/audio", {
     method: "POST",
     body,

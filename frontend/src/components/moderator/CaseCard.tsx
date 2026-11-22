@@ -1,15 +1,15 @@
-import { ShieldAlert } from "lucide-react";
+import { ChevronDown, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { updateCase } from "@/lib/api";
+import { cx } from "@/lib/cx";
 import { describeError } from "@/lib/errors";
 import { formatShortDateTime } from "@/lib/format";
 import { CASE_STATUSES, CASE_STATUS_LABELS, channelLabel } from "@/lib/labels";
 import { checkPath } from "@/lib/links";
 import type { CaseOut, CaseStatus, Risk } from "@/lib/types";
-import { CaseComments } from "./CaseComments";
 import { guarded, type AdminAccess } from "./useAdminData";
 
 const NOTE_LIMIT = 2000;
@@ -33,10 +33,9 @@ interface CaseCardProps {
   item: CaseOut;
   access: AdminAccess;
   onUpdated: (updated: CaseOut) => void;
-  onCommented?: (delta: number) => void;
 }
 
-export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps) {
+export function CaseCard({ item, access, onUpdated }: CaseCardProps) {
   const id = useId();
   const [status, setStatus] = useState<CaseStatus>(item.status);
   const [note, setNote] = useState(item.note);
@@ -44,6 +43,7 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
   const [risk, setRisk] = useState<Risk>(item.risk);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [open, setOpen] = useState(true);
 
   const changed =
     status !== item.status ||
@@ -75,19 +75,37 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
 
   return (
     <li className="rounded-xl border border-line bg-surface p-4 sm:p-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-lg font-semibold">Sprawa nr {item.id}</h3>
-        <Tag tone={STATUS_TAG_TONES[item.status] ?? "neutral"}>
-          {CASE_STATUS_LABELS[item.status] ?? item.status}
-        </Tag>
-        {item.risk === "high" ? (
-          <Tag tone="warn" icon={ShieldAlert}>
-            Wysokie ryzyko
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-lg font-semibold">Twierdzenie nr {item.id}</h3>
+          <Tag tone={STATUS_TAG_TONES[item.status] ?? "neutral"}>
+            {CASE_STATUS_LABELS[item.status] ?? item.status}
           </Tag>
-        ) : null}
+          {item.risk === "high" ? (
+            <Tag tone="warn" icon={ShieldAlert}>
+              Wysokie ryzyko
+            </Tag>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${id}-twierdzenie`}
+          onClick={() => setOpen((current) => !current)}
+          className="grid size-11 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-subtle hover:text-ink"
+        >
+          <ChevronDown
+            aria-hidden="true"
+            className={cx("size-5 transition-transform", open && "rotate-180")}
+          />
+          <span className="sr-only">
+            {open ? "Zwiń twierdzenie" : "Rozwiń twierdzenie"} nr {item.id}
+          </span>
+        </button>
       </div>
 
-      <p className="mt-2 text-lg">{item.claim_text}</p>
+      <div id={`${id}-twierdzenie`} hidden={!open}>
+        <p className="mt-2 text-lg">{item.claim_text}</p>
 
       <dl className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-2">
         {[
@@ -106,13 +124,13 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
 
       {item.check_ids.length > 0 ? (
         <div className="mt-3">
-          <p className="text-muted">Powiązane sprawdzenia:</p>
+          <p className="text-muted">Powiązane analizy:</p>
           <ul className="flex flex-wrap gap-x-4">
             {item.check_ids.map((checkId, index) => (
               <li key={checkId}>
                 <Link href={checkPath(checkId)} className="link inline-flex min-h-11 items-center">
-                  Sprawdzenie {index + 1}
-                  <span className="sr-only"> w sprawie nr {item.id}</span>
+                  Analiza {index + 1}
+                  <span className="sr-only"> w twierdzeniu nr {item.id}</span>
                 </Link>
               </li>
             ))}
@@ -128,7 +146,7 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
         }}
       >
         <label htmlFor={`${id}-claim`} className="block font-medium">
-          Treść sprawy
+          Treść twierdzenia
           <span className="ml-2 text-sm font-normal text-muted">
             każde pole możesz poprawić
           </span>
@@ -144,7 +162,7 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label htmlFor={`${id}-status`} className="block font-medium">
-            Stan sprawy
+            Stan twierdzenia
             <div className="relative mt-1">
               <span
                 aria-hidden="true"
@@ -166,7 +184,7 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
             </div>
           </label>
           <label htmlFor={`${id}-risk`} className="block font-medium">
-            Waga sprawy
+            Waga twierdzenia
             <select
               id={`${id}-risk`}
               value={risk}
@@ -200,7 +218,8 @@ export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps
         </div>
       </form>
 
-      <CaseComments caseId={item.id} access={access} onChanged={onCommented} />
+      {/* Opinie moderatorów są na razie wyłączone (front i backend). */}
+      </div>
     </li>
   );
 }

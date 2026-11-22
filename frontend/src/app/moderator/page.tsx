@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BackButton } from "@/components/layout/BackButton";
 import { PageShell } from "@/components/layout/PageShell";
 import { ModeratorPanel } from "@/components/moderator/ModeratorPanel";
 
@@ -9,9 +10,13 @@ export default function ModeratorPage() {
     <PageShell
       wide
       title="Panel moderatora"
-      lead="Sprawy przekazane do sprawdzenia przez człowieka, statystyki i zdarzenia bezpieczeństwa."
+      lead="Twierdzenia przekazane do analizy przez człowieka, statystyki i zdarzenia bezpieczeństwa."
+      headerAside={<div id="moderator-account-slot" />}
     >
-      <ModeratorPanel />
+      <BackButton label="Wróć do analizy" />
+      <div className="mt-4">
+        <ModeratorPanel />
+      </div>
     </PageShell>
   );
 }

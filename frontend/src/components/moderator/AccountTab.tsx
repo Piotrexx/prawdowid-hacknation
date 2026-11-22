@@ -1,4 +1,4 @@
-import { Bell, BellRing, MessageSquare, Save, Trash2 } from "lucide-react";
+import { Bell, BellRing, Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorBlock, LoadingBlock } from "@/components/ui/LoadState";
@@ -23,7 +23,7 @@ const PASSWORD_FIELD_CLASS =
   "block min-h-11 w-full rounded-lg border border-line-strong bg-surface py-2 pr-12 pl-3";
 const ACTION_LABELS: Record<string, string> = {
   status_change: "Zmiana statusu",
-  edit: "Edycja sprawy",
+  edit: "Edycja twierdzenia",
   comment: "Opinia",
   comment_deleted: "Usunięcie opinii",
   account: "Konto",
@@ -212,25 +212,25 @@ function AccountContent({
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Opinie" value={String(profile.stats.comments)} />
         <StatTile label="Zmiany statusu" value={String(profile.stats.status_changes)} />
-        <StatTile label="Edycje spraw" value={String(profile.stats.edits)} />
-        <StatTile label="Sprawy w historii" value={String(profile.stats.cases_touched)} />
+        <StatTile label="Edycje twierdzeń" value={String(profile.stats.edits)} />
+        <StatTile label="Twierdzenia w historii" value={String(profile.stats.cases_touched)} />
       </dl>
 
       {!technical ? (
         <section className="rounded-xl border border-line bg-surface p-5">
           <h2 className="text-lg font-semibold">Powiadomienia</h2>
           <p className="mt-1 text-muted">
-            Powiadomienia wysyłamy, gdy sprawa albo artykuł osiągnie wskazaną liczbę opinii.
+            Powiadomienia wysyłamy, gdy twierdzenie albo artykuł osiągnie wskazaną liczbę opinii.
           </p>
           <div className="mt-4 space-y-4">
             <label className="block font-medium">
               Adres webhooka Discorda
-              <input
-                type="url"
+              <PasswordInput
                 value={webhook}
                 onChange={(event) => setWebhook(event.target.value)}
                 placeholder="https://discord.com/api/webhooks/…"
-                className={FIELD_CLASS}
+                containerClassName="mt-1"
+                className={PASSWORD_FIELD_CLASS}
               />
               <span className="mt-1 block text-sm font-normal text-muted">
                 Powiadomienia na Discorda wysyłamy, gdy adres jest wpisany.
@@ -374,6 +374,7 @@ function AccountContent({
         </section>
       ) : null}
 
+      {/* Opinie moderatorów są na razie wyłączone (front i backend).
       <section className="rounded-xl border border-line bg-surface p-5">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <MessageSquare aria-hidden="true" className="size-5" />
@@ -388,7 +389,7 @@ function AccountContent({
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="font-semibold">
                     {comment.case_id != null
-                      ? `Sprawa nr ${comment.case_id}`
+                      ? `Twierdzenie nr ${comment.case_id}`
                       : comment.article_title ?? `Artykuł nr ${comment.article_id}`}
                   </span>
                   <time dateTime={comment.created_at} className="text-muted">
@@ -404,11 +405,12 @@ function AccountContent({
           </ul>
         )}
       </section>
+      */}
 
       <section className="rounded-xl border border-line bg-surface p-5">
-        <h2 className="text-lg font-semibold">Historia zmian spraw</h2>
+        <h2 className="text-lg font-semibold">Historia zmian twierdzeń</h2>
         <p className="text-muted">
-          Tutaj widzisz sprawy, którym zmieniłeś(-aś) status albo treść.
+          Tutaj widzisz twierdzenia, którym zmieniłeś(-aś) status albo treść.
         </p>
         {profile.actions.length === 0 ? (
           <p className="mt-2 text-muted">Brak zapisanych zmian.</p>
@@ -419,7 +421,7 @@ function AccountContent({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold">
                     {ACTION_LABELS[action.action] ?? action.action}
-                    {action.case_id != null ? ` · sprawa nr ${action.case_id}` : ""}
+                    {action.case_id != null ? ` · twierdzenie nr ${action.case_id}` : ""}
                   </span>
                   <time dateTime={action.created_at} className="text-sm text-muted">
                     {formatShortDateTime(action.created_at) ?? action.created_at}

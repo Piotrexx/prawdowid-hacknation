@@ -38,6 +38,9 @@
     "waitSeconds": "Możesz wysłać kolejne sprawdzenie za {{seconds}} {{unit}}.",
     "errorTooLong": "Tekst jest za długi. Skróć go i spróbuj ponownie.",
     "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zdjęcie.",
+    "errorTooShort": "Treść jest za krótka – wpisz co najmniej {{min}} znaków.",
+    "sending": "Wysyłanie…",
+    "uploading": "Wysyłanie pliku…",
     "audio": "Plik audio",
     "voiceMessage": "Nagranie głosowe",
     "audioOther": "Inny plik audio",
@@ -59,7 +62,7 @@
     "resultReady_many": "Wynik gotowy: {{count}} twierdzeń. {{verdicts}}."
   },
   "result": {
-    "title": "Wynik sprawdzenia",
+    "title": "Wynik analizy",
     "claimsCount_one": "{{count}} twierdzenie",
     "claimsCount_few": "{{count}} twierdzenia",
     "claimsCount_many": "{{count}} twierdzeń",
@@ -77,7 +80,7 @@
     "evidenceCount_many": "{{count}} materiałów ze źródeł",
     "noEvidence": "Brak materiałów ze źródeł dla tego twierdzenia.",
     "humanReview": "Zalecamy ocenę przez człowieka",
-    "waitingModerator": "Sprawa czeka na moderatora",
+    "waitingModerator": "Twierdzenie czeka na moderatora",
     "strengthLabel": "Siła podstawy:",
     "highRisk": "Wysokie ryzyko",
     "relatedMaterials": "Materiały, które mogą pomóc – oceń je samodzielnie:"
@@ -93,7 +96,7 @@
     "error_note": "Ta treść nie została oceniona.",
     "clarify": "Dopisz szczegóły poniżej",
     "retry": "Spróbuj ponownie",
-    "notResult": "To nie jest wynik sprawdzenia."
+    "notResult": "To nie jest wynik analizy."
   },
   "verdict": {
     "potwierdzone": "Potwierdzone",

@@ -23,7 +23,7 @@ export function EventsTab({ access }: { access: AdminAccess }) {
       event.detail,
       event.check_id ? (
         <Link key="check" href={checkPath(event.check_id)} className="link">
-          Otwórz<span className="sr-only"> sprawdzenie {event.check_id}</span>
+          Otwórz<span className="sr-only"> analizę {event.check_id}</span>
         </Link>
       ) : (
         "brak"
@@ -34,7 +34,7 @@ export function EventsTab({ access }: { access: AdminAccess }) {
   return (
     <DataTable
       caption="Ostatnie zdarzenia bezpieczeństwa (do 50)"
-      columns={["Czas", "Rodzaj", "Pochodzenie", "Szczegóły", "Sprawdzenie"]}
+      columns={["Czas", "Rodzaj", "Pochodzenie", "Szczegóły", "Analiza"]}
       rows={rows}
       emptyText="Nie odnotowano żadnych zdarzeń."
     />
