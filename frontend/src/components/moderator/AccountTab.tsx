@@ -107,6 +107,10 @@ function AccountContent({
       setPasswordFeedback("Nowe hasła nie są takie same.");
       return;
     }
+    if (newPassword.length < 10) {
+      setPasswordFeedback("Nowe hasło musi mieć co najmniej 10 znaków.");
+      return;
+    }
     setPasswordBusy(true);
     setPasswordFeedback(null);
     try {

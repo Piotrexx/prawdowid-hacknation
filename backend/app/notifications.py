@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 from app.config import Settings
-from app.schemas import CommentOut, ModeratorOut, PushPublicKeyOut
+from app.schemas import CheckResponse, CommentOut, ModeratorOut, PushPublicKeyOut
 from app.store.db import Store
 from app.store.moderators import ModeratorStore
 
@@ -322,3 +322,65 @@ class NotificationService:
             return False
         self._moderators.touch_push_subscription(endpoint)
         return True
+
+
+# ---------------------------------------------------------------------------
+# Publiczny webhook: powiadomienie o każdej nowej analizie fact-check
+# ---------------------------------------------------------------------------
+
+_STATUS_LABELS: dict[str, str] = {
+    "completed": "Zakończone",
+    "needs_clarification": "Wymaga doprecyzowania",
+    "out_of_scope": "Poza zakresem",
+    "error": "Problem techniczny",
+}
+
+_VERDICT_COLORS: dict[str, int] = {
+    "potwierdzone": 0x57F287,
+    "falszywe": 0xED4245,
+    "wprowadzajace_w_blad": 0xE67E22,
+    "brak_wystarczajacych_dowodow": 0x95A5A6,
+    "nie_podlega_weryfikacji": 0x95A5A6,
+}
+
+
+async def send_check_to_discord(result: CheckResponse, settings: Settings) -> None:
+    """Wysyła wynik analizy na kanał Discord przez webhook (embed identyczny z botem)."""
+    url = settings.fact_check_webhook_url
+    if not url:
+        return
+
+    status_label = _STATUS_LABELS.get(str(result.status), str(result.status))
+    embed: dict = {
+        "title": f"Wynik sprawdzenia: {status_label}",
+        "url": f"{settings.public_base_url}/analiza/{result.id}",
+        "footer": {"text": "Pełna analiza na stronie Prawdowid"},
+    }
+
+    if result.status != "completed":
+        embed["color"] = 0x95A5A6
+        embed["description"] = result.status_message or "Nie udało się przeprowadzić sprawdzenia."
+    else:
+        embed["color"] = _VERDICT_COLORS.get(str(result.verdict or ""), 0x5865F2)
+        confidence = (
+            f" ({round(result.confidence * 100)}% pewności)" if result.confidence is not None else ""
+        )
+        embed["description"] = f"**Werdykt: {result.verdict_label or '—'}{confidence}**"
+        fields = []
+        if result.summary:
+            fields.append({"name": "Podsumowanie", "value": result.summary[:1024]})
+        if result.justification:
+            fields.append({"name": "Uzasadnienie", "value": result.justification[:1024]})
+        if result.warnings:
+            warnings_text = "\n".join(f"• {w.message}" for w in result.warnings[:5])[:1024]
+            fields.append({"name": "Ostrzeżenia", "value": warnings_text})
+        if fields:
+            embed["fields"] = fields
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(url, json={"embeds": [embed]})
+        if response.status_code >= 300:
+            log.warning("Discord webhook (fact-check) odrzucił żądanie: %s", response.status_code)
+    except Exception:
+        log.warning("Błąd wysyłania fact-check do webhooka Discord", exc_info=True)

@@ -138,6 +138,9 @@ class Settings(BaseSettings):
     case_notify_threshold: int = 2
     moderator_webhook_url: str | None = None
 
+    # --- webhook do powiadamiania o każdej nowej analizie fact-check ---
+    fact_check_webhook_url: str | None = None
+
     # --- baza danych ---
     database_url: str = "postgresql+psycopg://prawdowid:prawdowid@localhost:5432/prawdowid"
 
