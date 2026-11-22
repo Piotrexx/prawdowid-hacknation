@@ -48,12 +48,17 @@
     "audioTranscribing": "Transkrypcja: {{progress}}%",
     "audioWaiting": "Poczekaj na zakończenie transkrypcji przed wysłaniem.",
     "audioSuccess": "Transkrypcja zakończona pomyślnie",
-    "audioError": "Błąd transkrypcji"
+    "audioError": "Błąd transkrypcji",
+    "replyPlaceholder": "Napisz odpowiedź na pytanie…",
+    "replyingTo": "Odpowiadasz na pytanie doprecyzowujące",
+    "replyCancel": "Sprawdź coś innego",
+    "replyHelp": "Odpowiedź dołączę do poprzedniej wiadomości i dopiero wtedy ją sprawdzę."
   },
   "chat": {
     "searching": "Szukam w źródłach…",
     "usuallySeconds": "Zwykle trwa to kilkanaście sekund.",
     "myMessage": "Twoja wiadomość",
+    "answerLabel": "Odpowiedź na pytanie",
     "checkingStatus": "Sprawdzam w źródłach…",
     "expand": "Pokaż całość",
     "collapse": "Zwiń",
@@ -95,6 +100,14 @@
     "out_of_scope_note": "To nie jest ocena prawdziwości. Odpowiadam tylko na podstawie opisanego zbioru źródeł.",
     "error_note": "Ta treść nie została oceniona.",
     "clarify": "Dopisz szczegóły poniżej",
+    "clarifyIntro": "Zanim sprawdzę, potrzebuję kilku szczegółów.",
+    "clarifyRound": "Pytanie {{round}} z {{max}}. Jeśli dalej nie będzie jasne, sprawdzę treść w obecnej postaci.",
+    "clarifyAnswered": "Odpowiedź znajdziesz poniżej.",
+    "clarifyOther": "Albo wpisz inną odpowiedź…",
+    "clarifyPlaceholder": "Twoja odpowiedź…",
+    "clarifySubmit": "Wyślij odpowiedzi",
+    "clarifySubmitCount": "Wyślij odpowiedzi ({{count}} z {{total}})",
+    "clarifyFreeText": "Wolę opisać to własnymi słowami",
     "retry": "Spróbuj ponownie",
     "notResult": "To nie jest wynik analizy."
   },

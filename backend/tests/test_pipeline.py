@@ -186,7 +186,9 @@ def test_clarification_and_out_of_scope_are_separate_from_verdicts(client, provi
     provider.extract = lambda user: extraction(status="out_of_scope", message="To nie jest informacja do sprawdzenia.")
     off_topic = check(client, "Napisz mi wiersz.")
 
-    assert (unclear["status"], unclear["status_message"]) == ("needs_clarification", "O którą informację chodzi?")
+    assert unclear["status"] == "needs_clarification"
+    assert "O którą informację chodzi?" in unclear["status_message"]
+    assert [q["text"] for q in unclear["clarification"]["questions"]] == ["O którą informację chodzi?"]
     assert off_topic["status"] == "out_of_scope"
     assert unclear["claims"] == off_topic["claims"] == []
     assert check(client, "   ")["status"] == "needs_clarification"

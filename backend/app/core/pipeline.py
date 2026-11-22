@@ -55,6 +55,9 @@ from app.schemas import (
     CheckResponse,
     CheckStatus,
     ClaimResult,
+    Clarification,
+    ClarificationExchange,
+    ClarifyingQuestion,
     FactCheckResult,
     ImageAnalysis,
     IncidentMatch,
@@ -83,6 +86,13 @@ _MAX_KEYWORDS = 10
 _BIELIK_INPUT_CHARS = 4000
 _KEYWORD_SYSTEM = "Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON."
 _NOT_A_VERDICT = "To problem techniczny, a nie wynik sprawdzenia."
+_CLARIFY_INTRO = "Zanim sprawdzę, potrzebuję kilku szczegółów."
+_CLARIFY_EXHAUSTED = (
+    "Mimo doprecyzowania nie udało mi się ustalić, co dokładnie sprawdzić. "
+    "Napisz nową wiadomość z konkretnym twierdzeniem: kto, co, kiedy i gdzie."
+)
+_MAX_QUESTIONS = 3
+_MAX_OPTIONS = 5
 _LLM_MESSAGES = {
     "llm_not_configured": f"Usługa nie ma teraz dostępu do modelu językowego, więc nie mogę ocenić tej treści. {_NOT_A_VERDICT}",
     "llm_unavailable": f"Nie mogę teraz połączyć się z modelem językowym, więc nie sprawdzę tej treści. {_NOT_A_VERDICT} Spróbuj ponownie za chwilę.",
@@ -114,6 +124,9 @@ class Submission:
     url: str | None = None
     image: bytes | None = None
     audio: bytes | None = None
+    # Odpowiedź na pytanie doprecyzowujące: pierwotna treść + wszystkie dotychczasowe pytania i odpowiedzi.
+    parent_check_id: str | None = None
+    history: list[ClarificationExchange] = field(default_factory=list)
 
     @classmethod
     def from_message(cls, channel: str, session_id: str | None, message: str) -> "Submission":
@@ -176,6 +189,10 @@ class _Run:
     image_override: tuple[str, Verdict, float, str] | None = None
     # Słowa kluczowe z Bielika, liczone w tle; None, gdy nie zdążył, zawiódł albo nic nie znalazł.
     bielik_keywords: KeywordExtraction | None = None
+    parent_check_id: str | None = None
+    history: list[ClarificationExchange] = field(default_factory=list)
+    clarification: Clarification | None = None
+    clarification_skipped: bool = False
 
     def warn(self, code: str, message: str) -> None:
         self.warnings.setdefault(code, Warning(code=code, message=message))
@@ -243,7 +260,7 @@ class VerificationService:
             return None
 
     async def check(self, submission: Submission) -> CheckResponse:
-        run = _Run(channel=submission.channel)
+        run = _Run(channel=submission.channel, parent_check_id=submission.parent_check_id, history=submission.history)
         cache_key = None
         _should_save = True
         original: CheckResponse | None = None
@@ -305,6 +322,8 @@ class VerificationService:
                     "cost_usd": response.meta.cost_usd,
                     "quotes_rejected": run.quotes_rejected,
                     "cached": response.meta.cached,
+                    "parent_check_id": run.parent_check_id,
+                    "clarification_round": response.clarification.round if response.clarification else 0,
                     "security_events": len(run.events),
                 }
             )
@@ -409,7 +428,13 @@ class VerificationService:
         run.input.text = truncate(material, _STORED_PAGE_CHARS) if run.input.kind == "url" else material
         if not material:
             raise _Stop(CheckStatus.NEEDS_CLARIFICATION, "Wklej treść wiadomości albo link, który chcesz sprawdzić.")
-        found = scan_injection(material)
+        if run.history:
+            # Odpowiedzi to też treść od użytkownika: maskowanie i skan jak dla reszty, ale w `input` zostaje oryginał.
+            answers, masked = mask_pii(sanitize_untrusted(_clarification_section(run.history)))
+            if masked:
+                run.warn("pii_masked", "Przed analizą ukryliśmy dane wyglądające na osobowe (np. telefon, e-mail, PESEL).")
+            run.material = f"{material}\n\n{answers}"
+        found = scan_injection(run.material)
         if found:
             run.flag_injection(origin, "; ".join(found))
 
@@ -615,16 +640,21 @@ class VerificationService:
     ) -> tuple[list[ClaimResult], list[str]]:
         today = date.today()
         started = time.perf_counter()
-        system, user = extract_prompts(run.material, today, self._settings.max_claims)
+        can_ask = len(run.history) < self._settings.clarification_max_rounds
+        system, user = extract_prompts(run.material, today, self._settings.max_claims, allow_clarification=can_ask)
         extraction = await self._ask(run, system, user, Extraction, self._settings.llm_extract_effort)
         run.mark("extract", started)
         if extraction.injection_detected:
             run.flag_injection("model_flag", "model zgłosił polecenia w analizowanym materiale")
         if extraction.input_status == "needs_clarification":
-            raise _Stop(
-                CheckStatus.NEEDS_CLARIFICATION,
-                extraction.message or "Napisz dokładniej, którą informację mam sprawdzić.",
-            )
+            if can_ask:
+                fallback = extraction.message or "Napisz dokładniej, którą informację mam sprawdzić."
+                questions = _clean_questions(extraction.questions) or [ClarifyingQuestion(text=fallback)]
+                self._clarify(run, questions, [m.strip() for m in extraction.missing if m.strip()][:5])
+            # Limit pytań wyczerpany, a model mimo zakazu dopytuje: sprawdzamy, co się da, albo kończymy bez pytań.
+            run.clarification_skipped = True
+            if not extraction.claims:
+                raise _Stop(CheckStatus.NEEDS_CLARIFICATION, _CLARIFY_EXHAUSTED)
         if extraction.input_status == "out_of_scope":
             raise _Stop(
                 CheckStatus.OUT_OF_SCOPE,
@@ -665,6 +695,19 @@ class VerificationService:
         await self._summarize(run, claims)
         run.mark("summary", started)
         return claims, self._limitations(run, len(extraction.claims) > len(extracted))
+
+    def _clarify(self, run: _Run, questions: list[ClarifyingQuestion], missing: list[str]) -> None:
+        """Kończy sprawdzenie pytaniami do użytkownika. To nie jest werdykt."""
+        run.clarification = Clarification(
+            questions=questions,
+            missing=missing,
+            round=len(run.history) + 1,
+            max_rounds=self._settings.clarification_max_rounds,
+            history=run.history,
+        )
+        # Pełna treść pytań w komunikacie, żeby kanały bez obsługi `clarification` (np. bot) też je pokazały.
+        listed = "\n".join(f"{n}. {q.text}" for n, q in enumerate(questions, 1))
+        raise _Stop(CheckStatus.NEEDS_CLARIFICATION, f"{_CLARIFY_INTRO}\n{listed}")
 
     async def _assess_claim(
         self, run: _Run, claim_id: str, claim: ExtractedClaim, today: date
@@ -874,6 +917,8 @@ class VerificationService:
             items.append("Nagranie zostało zamienione na tekst lokalnie; transkrypcja może zawierać błędy. Nie oceniamy autentyczności nagrania.")
         if claims_truncated:
             items.append(f"Sprawdziliśmy {self._settings.max_claims} najważniejsze twierdzenia z tej treści.")
+        if run.clarification_skipped:
+            items.append("Mimo doprecyzowania nie było w pełni jasne, co sprawdzić. Sprawdziliśmy treść w obecnej postaci.")
         return items
 
     async def _related_materials(self, material: str) -> list[SourceRef]:
@@ -894,6 +939,11 @@ class VerificationService:
         cached: bool = False,
     ) -> CheckResponse:
         provider = self._provider
+        clarification = run.clarification
+        if clarification is None and run.history:
+            clarification = Clarification(
+                round=len(run.history), max_rounds=self._settings.clarification_max_rounds, history=run.history
+            )
         override = self._price_override or (
             self._settings.llm_price_input_per_mtok,
             self._settings.llm_price_output_per_mtok,
@@ -921,6 +971,8 @@ class VerificationService:
             source_articles=[*_used_sources(claims or []), *run.image_sources],
             limitations=limitations or [],
             image_analysis=run.image_analysis,
+            parent_check_id=run.parent_check_id,
+            clarification=clarification,
             meta=CheckMeta(
                 duration_ms=int((time.perf_counter() - run.started) * 1000),
                 stages_ms=run.stages_ms,
@@ -941,6 +993,24 @@ class VerificationService:
                 embedding_model=self._retriever.embedder.model if self._retriever.embedder else None,
             ),
         )
+
+
+def _clarification_section(history: list[ClarificationExchange]) -> str:
+    lines = ["Doprecyzowanie od użytkownika:"]
+    for exchange in history:
+        lines.extend(f"Pytanie: {question}" for question in exchange.questions)
+        lines.append(f"Odpowiedź: {exchange.answer}")
+    return "\n".join(lines)
+
+
+def _clean_questions(questions: list[ClarifyingQuestion]) -> list[ClarifyingQuestion]:
+    cleaned = []
+    for question in questions:
+        text = question.text.strip()
+        if text:
+            options = [o.strip() for o in question.options if o.strip()][:_MAX_OPTIONS]
+            cleaned.append(ClarifyingQuestion(text=text, options=options))
+    return cleaned[:_MAX_QUESTIONS]
 
 
 def _used_sources(claims: list[ClaimResult]) -> list[SourceRef]:

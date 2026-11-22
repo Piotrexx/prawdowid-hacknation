@@ -13,13 +13,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HistoryList } from "@/components/chat/HistoryList";
 import { cx } from "@/lib/cx";
+import { useStartNewSession } from "@/components/chat/useStartNewSession";
 import { clearHistory, useHistory } from "@/lib/history";
-import { requestNewCheck } from "@/lib/newCheck";
 import { setSidebarCollapsed, useSidebarCollapsed } from "@/lib/sidebar";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
@@ -83,16 +83,6 @@ function Brand({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** Starts a fresh conversation, from any page. */
-function useStartNewCheck(onNavigate?: () => void) {
-  const router = useRouter();
-  return () => {
-    requestNewCheck();
-    if (window.location.pathname !== "/") router.push("/");
-    onNavigate?.();
-  };
-}
-
 function CollapseToggle() {
   const { t } = useTranslation();
   const collapsed = useSidebarCollapsed();
@@ -122,7 +112,7 @@ interface SidebarContentProps {
 
 function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
   const { t } = useTranslation();
-  const startNewCheck = useStartNewCheck(onNavigate);
+  const startNewCheck = useStartNewSession(onNavigate);
   const historyId = `${idPrefix}-historia`;
   const history = useHistory();
 
@@ -193,7 +183,7 @@ function MobileBar() {
   const menuRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
-  const startNewCheck = useStartNewCheck();
+  const startNewCheck = useStartNewSession();
 
   useEffect(() => {
     if (open) {

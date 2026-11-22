@@ -165,14 +165,20 @@ export async function createCheck(
   body: CheckRequest,
   signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  if (!body.url && !body.text) {
+  if (!body.parent_check_id && !body.url && !body.text) {
     throw new ApiError("validation", {
       detail: "Podaj link lub tekst do sprawdzenia.",
     });
   }
   const payload: Record<string, unknown> = { session_id: body.session_id };
-  if (body.url) payload.url = body.url;
-  if (body.text) payload.text = body.text;
+  // An answer to a clarifying question is always text, even when it looks like a link.
+  if (body.parent_check_id) {
+    payload.parent_check_id = body.parent_check_id;
+    payload.text = body.text ?? body.url;
+  } else {
+    if (body.url) payload.url = body.url;
+    if (body.text) payload.text = body.text;
+  }
   return getJson<CheckResponse>("/checks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

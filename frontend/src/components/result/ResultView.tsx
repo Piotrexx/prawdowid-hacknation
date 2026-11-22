@@ -1,7 +1,9 @@
 "use client";
 
-import { Archive, ArrowRight, Copy, FileText } from "lucide-react";
+import { Archive, ArrowLeft, Copy, FileText, Plus } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useConversationOf } from "@/components/chat/conversationStore";
+import { useStartNewSession } from "@/components/chat/useStartNewSession";
 import { SideButton, SideLink } from "@/components/layout/SideLinks";
 import { archiveCheck } from "@/lib/api";
 import { cx } from "@/lib/cx";
@@ -199,6 +201,13 @@ function CopyLinkButton() {
   );
 }
 
+/** Links back to the conversation that asked for this check, when this browser has it saved. */
+function useBackToChatHref(checkId: string): string {
+  const conversation = useConversationOf(checkId);
+  if (!conversation) return "/";
+  return `/?${new URLSearchParams({ rozmowa: conversation, wynik: checkId }).toString()}`;
+}
+
 function ArchiveButton({ checkId }: { checkId: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -234,6 +243,8 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const active = useActiveClaim(result.claims.length);
   const checkedAt = formatDateTime(result.created_at);
+  const startNewSession = useStartNewSession();
+  const backToChat = useBackToChatHref(result.id);
   const duration = formatDuration(result.meta.duration_ms);
 
   useEffect(() => {
@@ -241,8 +252,8 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
   }, [focusHeading]);
 
   return (
-    <div className="grid gap-8 px-5 py-8 sm:p-10 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)] xl:gap-10 2xl:grid-cols-[minmax(0,0.9fr)_minmax(0,2.4fr)_minmax(0,1fr)]">
-      <div className="flex min-w-0 flex-col gap-7 xl:order-1 2xl:order-2">
+    <div className="grid gap-8 px-5 py-8 sm:p-10 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)] xl:gap-10">
+      <div className="flex min-w-0 flex-col gap-7">
         <section aria-labelledby="wynik-tytul" className="bg-subtle px-5 py-8 sm:p-10">
           {checkedAt ? (
             <p className="text-sm text-muted">
@@ -318,14 +329,17 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
           <h2 id="dzialania-tytul" className="eyebrow mb-1.5">
             Działania
           </h2>
-          <SideLink href="/" icon={ArrowRight} highlight>
-            Powrót do strony głównej
+          <SideLink href={backToChat} icon={ArrowLeft}>
+            Wróć do czatu
           </SideLink>
           <CopyLinkButton />
           <ArchiveButton checkId={result.id} />
           <SideLink href={`#${ANCHORS.input}`} icon={FileText}>
             Pokaż sprawdzaną treść
           </SideLink>
+          <SideButton icon={Plus} highlight onClick={startNewSession}>
+            Zacznij nową sesję
+          </SideButton>
         </nav>
         <WarningCards
           warnings={result.warnings}

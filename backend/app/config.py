@@ -72,6 +72,8 @@ class Settings(BaseSettings):
 
     # --- weryfikacja ---
     max_claims: int = 4
+    # Ile razy najwyżej dopytujemy użytkownika, zanim sprawdzimy treść w obecnej postaci.
+    clarification_max_rounds: int = 2
     max_input_chars: int = 20000
     result_cache_hours: int = 24
     archival_days: int = 365
