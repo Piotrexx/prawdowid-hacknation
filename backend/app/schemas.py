@@ -164,7 +164,8 @@ class KeywordExtraction(BaseModel):
 
     keywords: list[str]
     main_topic: str
-    summary: str
+    # Nieużywane; model lokalny już go nie generuje (każdy token na CPU kosztuje), zostaje dla zgodności.
+    summary: str = ""
 
 
 class InputInfo(BaseModel):

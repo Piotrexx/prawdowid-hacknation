@@ -156,14 +156,12 @@ Treść:
 
 Zadanie:
 1. Zidentyfikuj główny temat artykułu (jedno zdanie).
-2. Wyekstrahuj do 10 najważniejszych słów kluczowych/fraz, które najlepiej nadają się do wyszukiwania sprawdzeń faktów (fact-checking). Skup się na: nazwiskach, nazwach instytucji, konkretnych twierdzeniach, datach, lokalizacjach, liczbach.
-3. Napisz krótkie podsumowanie (2-3 zdania) na czym polega główne twierdzenie artykułu.
+2. Wyekstrahuj od 3 do 6 najważniejszych słów kluczowych/fraz, które najlepiej nadają się do wyszukiwania sprawdzeń faktów (fact-checking). Skup się na: nazwiskach, nazwach instytucji, konkretnych twierdzeniach, datach, lokalizacjach, liczbach.
 
 Odpowiedz WYŁĄCZNIE obiektem JSON o strukturze:
 {{
     "keywords": ["słowo1", "fraza 2", "nazwisko 3", ...],
-    "main_topic": "Główny temat artykułu w jednym zdaniu.",
-    "summary": "Krótkie podsumowanie głównego twierdzenia."
+    "main_topic": "Główny temat artykułu w jednym zdaniu."
 }}
 
 Ważne:

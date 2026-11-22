@@ -79,6 +79,9 @@ _FACTCHECK_URL = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
 _FACTCHECK_KEYWORDS = 5
 _FACTCHECK_RESULTS = 5
 _MAX_KEYWORDS = 10
+# Wejście dla Bielika: dłuższy tekst to dłuższe wczytywanie promptu na CPU, a tytuł i lead wystarczają na słowa kluczowe.
+_BIELIK_INPUT_CHARS = 4000
+_KEYWORD_SYSTEM = "Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON."
 _NOT_A_VERDICT = "To problem techniczny, a nie wynik sprawdzenia."
 _LLM_MESSAGES = {
     "llm_not_configured": f"Usługa nie ma teraz dostępu do modelu językowego, więc nie mogę ocenić tej treści. {_NOT_A_VERDICT}",
@@ -171,6 +174,8 @@ class _Run:
     image_limitations: list[str] = field(default_factory=list)
     # Nadpisanie werdyktu całego materiału, gdy samo zdjęcie jest dowodem fałszu.
     image_override: tuple[str, Verdict, float, str] | None = None
+    # Słowa kluczowe z Bielika, liczone w tle; None, gdy nie zdążył, zawiódł albo nic nie znalazł.
+    bielik_keywords: KeywordExtraction | None = None
 
     def warn(self, code: str, message: str) -> None:
         self.warnings.setdefault(code, Warning(code=code, message=message))
@@ -231,6 +236,7 @@ class VerificationService:
                 api_key=settings.bielik_api_key.get_secret_value() if settings.bielik_api_key else None,
                 timeout_s=settings.bielik_timeout_s,
                 json_mode="json_object",
+                max_tokens=settings.bielik_max_tokens,
             )
         except Exception:
             log.warning("nie udało się zainicjować lokalnego modelu słów kluczowych", exc_info=True)
@@ -545,41 +551,45 @@ class VerificationService:
         run.usage.add(usage)
         return output
 
-    async def _bielik_precheck(self, run: _Run) -> bool | None:
-        """Szybkie sprawdzenie Bielikiem czy materiał zawiera twierdzenia do weryfikacji.
+    async def _bielik_keywords(self, run: _Run) -> None:
+        """Słowa kluczowe z lokalnego Bielika, liczone w tle od początku sprawdzenia.
 
-        Zwraca:
-            True  – znaleziono słowa kluczowe, kontynuuj analizę
-            False – Bielik działał, ale nie znalazł twierdzeń – odrzuć bez zapisu
-            None  – Bielik niedostępny/błąd – odrzuć bez zapisu, bez wywoływania DeepSeek
+        Awaria, przekroczony czas albo pusta lista nie zatrzymują sprawdzenia – wtedy słowa kluczowe
+        pochodzą z zapytań wygenerowanych przy wydzielaniu twierdzeń.
         """
-        if self._bielik_provider is None:
-            return None
-        prompt = BIELIK_KEYWORD_PROMPT.format(title="Brak tytułu", text=run.material[:4000])
-        system = "Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON."
+        assert self._bielik_provider is not None
+        started = time.perf_counter()
+        prompt = BIELIK_KEYWORD_PROMPT.format(title=run.title or "Brak tytułu", text=run.material[:_BIELIK_INPUT_CHARS])
         try:
-            extraction, usage = await self._bielik_provider.structured(
-                system=system, user=prompt, schema=KeywordExtraction, effort="low"
+            extraction, usage = await asyncio.wait_for(
+                self._bielik_provider.structured(
+                    system=_KEYWORD_SYSTEM, user=prompt, schema=KeywordExtraction, effort="low"
+                ),
+                timeout=self._settings.bielik_keywords_timeout_s,
             )
-        except LLMError as exc:
-            log.warning("bielik precheck niedostępny: %s", exc.code)
-            return None
+        except (LLMError, TimeoutError) as exc:
+            log.warning("słowa kluczowe z Bielika niedostępne: %s", getattr(exc, "code", "timeout"))
+            return
+        finally:
+            run.mark("bielik", started)
         run.bielik_usage.add(usage)
-        keywords = [k.strip() for k in extraction.keywords if k.strip()]
-        return bool(keywords)
+        if any(k.strip() for k in extraction.keywords):
+            run.bielik_keywords = extraction
 
     async def _assess_material(self, run: _Run) -> tuple[list[ClaimResult], list[str]]:
-        # Wstępny filtr: lokalny Bielik sprawdza, czy materiał zawiera twierdzenia.
-        # Jeśli Bielik nie znajdzie żadnych słów kluczowych, albo w ogóle nie odpowie –
-        # odrzucamy od razu, bez zapisu do bazy i bez przełączania się na DeepSeek.
-        bielik_result = await self._bielik_precheck(run)
-        if bielik_result is not True:
-            raise _Stop(
-                CheckStatus.OUT_OF_SCOPE,
-                "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
-                save=False,
-            )
+        # Bielik na CPU to najwolniejszy etap, a jego słowa kluczowe są potrzebne dopiero Google Fact Check
+        # i podsumowaniu, więc liczy się w tle. O tym, czy jest co sprawdzać, decyduje wydzielanie twierdzeń.
+        bielik = asyncio.create_task(self._bielik_keywords(run)) if self._bielik_provider else None
+        try:
+            return await self._assess_claims(run, bielik)
+        finally:
+            # Sprawdzenie zakończone wcześniej (np. treść poza zakresem): nie zajmujemy CPU następnym zgłoszeniom.
+            if bielik is not None and not bielik.done():
+                bielik.cancel()
 
+    async def _assess_claims(
+        self, run: _Run, bielik: "asyncio.Task[None] | None"
+    ) -> tuple[list[ClaimResult], list[str]]:
         today = date.today()
         started = time.perf_counter()
         system, user = extract_prompts(run.material, today, self._settings.max_claims)
@@ -608,7 +618,7 @@ class VerificationService:
             *(self._assess_claim(run, f"c{n}", claim, today) for n, claim in enumerate(extracted, 1)),
             return_exceptions=True,
         )
-        outcomes, _ = await asyncio.gather(claims_task, self._gather_support(run, extracted))
+        outcomes, _ = await asyncio.gather(claims_task, self._gather_support(run, extracted, bielik))
         run.mark("verify", started)
         for outcome in outcomes:
             if isinstance(outcome, BaseException):
@@ -685,8 +695,12 @@ class VerificationService:
 
     # --- warstwa wspierająca: słowa kluczowe + Google Fact Check Tools ---
 
-    async def _gather_support(self, run: _Run, extracted: list[ExtractedClaim]) -> None:
+    async def _gather_support(
+        self, run: _Run, extracted: list[ExtractedClaim], bielik: "asyncio.Task[None] | None"
+    ) -> None:
         started = time.perf_counter()
+        if bielik is not None:
+            await bielik  # ograniczone własnym limitem czasu, liczonym od początku sprawdzenia
         await self._extract_keywords(run, extracted)
         run.mark("keywords", started)
         started = time.perf_counter()
@@ -694,38 +708,38 @@ class VerificationService:
         run.mark("factcheck", started)
 
     async def _extract_keywords(self, run: _Run, extracted: list[ExtractedClaim]) -> None:
-        """Słowa kluczowe z lokalnego modelu; przy awarii zapytania ze wydzielonych twierdzeń."""
-        prompt = BIELIK_KEYWORD_PROMPT.format(title=run.title or "Brak tytułu", text=run.material[:8000])
-        system = "Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON."
-        for provider, usage_sink in ((self._bielik_provider, run.bielik_usage), (self._provider, run.usage)):
-            if provider is None:
-                continue
+        """Słowa kluczowe z Bielika; bez lokalnego modelu z modelu zdalnego; w ostateczności zapytania z twierdzeń."""
+        if run.bielik_keywords is not None:
+            run.keywords = [k.strip() for k in run.bielik_keywords.keywords[:_MAX_KEYWORDS] if k.strip()]
+            run.main_topic = run.bielik_keywords.main_topic
+            return
+        if self._bielik_provider is None and self._provider is not None:
+            prompt = BIELIK_KEYWORD_PROMPT.format(title=run.title or "Brak tytułu", text=run.material[:_BIELIK_INPUT_CHARS])
             try:
-                extraction, usage = await provider.structured(
-                    system=system, user=prompt, schema=KeywordExtraction, effort="low"
+                extraction, usage = await self._provider.structured(
+                    system=_KEYWORD_SYSTEM, user=prompt, schema=KeywordExtraction, effort="low"
                 )
             except LLMError as exc:
-                log.warning("ekstrakcja słów kluczowych (%s): %s", provider.model, exc.code)
-                continue
-            usage_sink.add(usage)
-            run.keywords = [k.strip() for k in extraction.keywords[:_MAX_KEYWORDS] if k.strip()]
-            run.main_topic = extraction.main_topic
-            if provider is not self._bielik_provider:
-                run.warn(
-                    "keywords_degraded",
-                    "Lokalny model słów kluczowych był niedostępny – słowa kluczowe wyekstraktował model zdalny.",
-                )
-            if run.keywords:
-                return
-        if not run.keywords:
-            # Zapytania z etapu wydzielania twierdzeń wystarczą, by odpytać Google Fact Check.
-            run.keywords = list(dict.fromkeys(q.strip() for c in extracted for q in c.queries if q.strip()))[:_MAX_KEYWORDS]
-            run.main_topic = run.main_topic or (extracted[0].text if extracted else "")
-            if run.keywords:
-                run.warn(
-                    "keywords_degraded",
-                    "Model słów kluczowych był niedostępny – użyliśmy zapytań z etapu wydzielania twierdzeń.",
-                )
+                log.warning("ekstrakcja słów kluczowych (%s): %s", self._provider.model, exc.code)
+            else:
+                run.usage.add(usage)
+                run.keywords = [k.strip() for k in extraction.keywords[:_MAX_KEYWORDS] if k.strip()]
+                run.main_topic = extraction.main_topic
+                if run.keywords:
+                    run.warn(
+                        "keywords_degraded",
+                        "Lokalny model słów kluczowych był niedostępny – słowa kluczowe wyekstraktował model zdalny.",
+                    )
+                    return
+        # Bielik nie zdążył lub zawiódł: kolejne wywołanie modelu tylko by opóźniło wynik, a zapytania
+        # z etapu wydzielania twierdzeń wystarczą, by odpytać Google Fact Check.
+        run.keywords = list(dict.fromkeys(q.strip() for c in extracted for q in c.queries if q.strip()))[:_MAX_KEYWORDS]
+        run.main_topic = run.main_topic or (extracted[0].text if extracted else "")
+        if run.keywords:
+            run.warn(
+                "keywords_degraded",
+                "Lokalny model słów kluczowych nie odpowiedział na czas – użyliśmy zapytań z etapu wydzielania twierdzeń.",
+            )
 
     async def _query_factcheck(self, run: _Run) -> None:
         """Dopasowania z Google Fact Check Tools. To kontekst wspierający, nie dowód z katalogu źródeł."""
