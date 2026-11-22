@@ -61,6 +61,15 @@ services:
     depends_on:
       - backend
 
+  discord-bot:
+    build: ./discord-bot
+    env_file: ./discord-bot/.env
+    environment:
+      API_URL: http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   backend-var:
   ollama-data:

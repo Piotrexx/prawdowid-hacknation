@@ -30,10 +30,13 @@ class OpenAICompatProvider:
         timeout_s: float,
         json_mode: str,
         name: str = "openai_compatible",
+        max_tokens: int | None = None,
     ):
         self.name = name
         self.model = model
         self._json_mode = json_mode
+        # Małe modele lokalne potrafią w trybie JSON generować bez końca (np. listę bez zamknięcia).
+        self._max_tokens = max_tokens
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = httpx.AsyncClient(base_url=base_url.rstrip("/"), headers=headers, timeout=timeout_s)
 
@@ -74,6 +77,8 @@ class OpenAICompatProvider:
             "response_format": response_format,
             "temperature": 0,
         }
+        if self._max_tokens:
+            payload["max_tokens"] = self._max_tokens
 
         usage = Usage()
         last_error: Exception | None = None

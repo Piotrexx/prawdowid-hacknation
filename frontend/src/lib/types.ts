@@ -295,6 +295,7 @@ export interface CheckResponse {
   parent_check_id: string | null;
   clarification: Clarification | null;
   meta: CheckMeta;
+  request_count: number;
 }
 
 export interface CheckRequest {

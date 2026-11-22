@@ -565,7 +565,7 @@ def update_llm_settings(
             price_output=catalog_prices[1],
             json_mode=config.json_mode,
         )
-    runtime.save_config(_store(request), config, principal.email)
+    runtime.save_config(_store(request), config, principal.email, _settings(request))
     provider = runtime.apply_config(request.app.state.service, _settings(request), config)
     request.app.state.llm_config = config
     request.app.state.llm_ready = provider is not None

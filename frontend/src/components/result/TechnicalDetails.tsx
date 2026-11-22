@@ -19,6 +19,7 @@ export function TechnicalDetails({ result, id }: { result: CheckResponse; id?: s
   if (meta.cost_usd !== null) rows.push(["Szacowany koszt", formatUsd(meta.cost_usd)]);
   rows.push(
     ["Miejsce przetwarzania", meta.processing_location || "brak danych"],
+    ["Liczba zapytań o tę treść", formatInteger(result.request_count ?? 1)],
     ["Odpowiedź z pamięci podręcznej", meta.cached ? "tak" : "nie"],
     ["Kanał", channelLabel(result.channel)],
     ["Data sprawdzenia", formatDateTime(result.created_at) ?? "brak danych"],

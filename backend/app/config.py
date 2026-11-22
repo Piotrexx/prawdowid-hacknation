@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     bielik_model: str = "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0"
     bielik_api_key: SecretStr | None = None
     bielik_timeout_s: float = 120.0
+    # Bielik na CPU to najwolniejszy etap: odpowiedź ze słowami kluczowymi ma zwykle 75–150 tokenów.
+    bielik_max_tokens: int = 256
+    # Ile najdłużej czekamy na słowa kluczowe od początku sprawdzenia; potem korzystamy z zapytań z twierdzeń.
+    bielik_keywords_timeout_s: float = 20.0
 
     # --- Google Fact Check Tools API (kontekst wspierający) ---
     google_factcheck_api_key: SecretStr | None = None

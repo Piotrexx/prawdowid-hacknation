@@ -1,4 +1,4 @@
-import { Download, HelpCircle } from "lucide-react";
+import { Download, HelpCircle, LogOut } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { downloadExport } from "@/lib/api";
@@ -20,10 +20,10 @@ function saveBlob(blob: Blob, filename: string) {
 
 interface ExportButtonsProps {
   access: AdminAccess;
-  onStixHelpToggle?: (open: boolean) => void;
+  onLogout: () => void;
 }
 
-export function ExportButtons({ access, onStixHelpToggle }: ExportButtonsProps) {
+export function ExportButtons({ access, onLogout }: ExportButtonsProps) {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -52,14 +52,15 @@ export function ExportButtons({ access, onStixHelpToggle }: ExportButtonsProps) 
             {busy === format ? "Pobieram…" : `Eksport ${format === "stix" ? "STIX" : format.toUpperCase()}`}
           </Button>
         ))}
+        <Button variant="danger" onClick={onLogout} disabled={busy !== null}>
+          <LogOut aria-hidden="true" className="size-5" />
+          Wyloguj
+        </Button>
       </div>
       <p role="status" className="mt-1 min-h-6 text-muted">
         {message}
       </p>
-      <details
-        className="mt-1 rounded-lg border border-line bg-subtle px-3 py-2"
-        onToggle={(event) => onStixHelpToggle?.(event.currentTarget.open)}
-      >
+      <details className="mt-1 rounded-lg border border-line bg-subtle px-3 py-2">
         <summary className="flex cursor-pointer items-center gap-2 font-medium">
           <HelpCircle aria-hidden="true" className="size-4" />
           Do czego służy eksport STIX?

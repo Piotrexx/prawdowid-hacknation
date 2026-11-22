@@ -164,7 +164,8 @@ class KeywordExtraction(BaseModel):
 
     keywords: list[str]
     main_topic: str
-    summary: str
+    # Nieużywane; model lokalny już go nie generuje (każdy token na CPU kosztuje), zostaje dla zgodności.
+    summary: str = ""
 
 
 class ClarifyingQuestion(BaseModel):
@@ -318,6 +319,7 @@ class CheckResponse(BaseModel):
     parent_check_id: str | None = None
     clarification: Clarification | None = None
     meta: CheckMeta = CheckMeta()
+    request_count: int = 1
 
 
 class CheckRequest(BaseModel):

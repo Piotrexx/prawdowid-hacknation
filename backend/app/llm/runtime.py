@@ -5,8 +5,10 @@ Klucz API nigdy nie jest zwracany w odpowiedzi – panel dostaje tylko informacj
 czy klucz jest ustawiony i skąd pochodzi.
 """
 
+import base64
+import hashlib
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from app.config import Settings
@@ -25,6 +27,29 @@ if TYPE_CHECKING:
 
 SETTING_KEY = "llm"
 _ENV_KEEP = object()
+_ENC_PREFIX = "enc:"
+
+
+def _fernet_key(settings: Settings) -> bytes:
+    salt = settings.id_hash_salt.get_secret_value().encode()
+    raw = hashlib.sha256(b"llm_api_key:" + salt).digest()
+    return base64.urlsafe_b64encode(raw)
+
+
+def _encrypt(value: str | None, settings: Settings) -> str | None:
+    if not value:
+        return value
+    from cryptography.fernet import Fernet
+    return _ENC_PREFIX + Fernet(_fernet_key(settings)).encrypt(value.encode()).decode()
+
+
+def _decrypt(value: str | None, settings: Settings) -> str | None:
+    if not value:
+        return value
+    if not value.startswith(_ENC_PREFIX):
+        return value  # backward compatible: wartość jeszcze niezaszyfrowana
+    from cryptography.fernet import Fernet
+    return Fernet(_fernet_key(settings)).decrypt(value[len(_ENC_PREFIX):].encode()).decode()
 
 
 @dataclass(frozen=True)
@@ -32,7 +57,7 @@ class LlmConfig:
     provider: str
     model: str
     base_url: str
-    api_key: str | None = None
+    api_key: str | None = field(default=None, repr=False)
     price_input: float | None = None
     price_output: float | None = None
     json_mode: str = "json_object"
@@ -108,12 +133,13 @@ def config_from_dict(raw: dict, settings: Settings) -> LlmConfig:
     price_out = _as_optional_float(raw.get("price_output"))
     if price_in is None and price_out is None:
         price_in, price_out = _catalog_prices(provider_key, model)
-    api_key = raw.get("api_key")
+    raw_key = raw.get("api_key")
+    api_key = _decrypt(str(raw_key) if raw_key else None, settings)
     return LlmConfig(
         provider=provider_key,
         model=model,
         base_url=base_url,
-        api_key=str(api_key) if api_key else None,
+        api_key=api_key,
         price_input=price_in,
         price_output=price_out,
         json_mode=str(raw.get("json_mode") or "json_object"),
@@ -131,14 +157,16 @@ def save_config(
     store: "Store",
     config: LlmConfig,
     updated_by: str,
+    settings: "Settings | None" = None,
 ) -> LlmConfig:
+    stored_key = _encrypt(config.api_key, settings) if settings and config.api_key else config.api_key
     store.set_setting(
         SETTING_KEY,
         {
             "provider": config.provider,
             "model": config.model,
             "base_url": config.base_url,
-            "api_key": config.api_key,
+            "api_key": stored_key,
             "price_input": config.price_input,
             "price_output": config.price_output,
             "json_mode": config.json_mode,
