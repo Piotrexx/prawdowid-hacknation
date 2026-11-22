@@ -73,8 +73,6 @@ function CurrentNavList({ onNavigate }: { onNavigate?: () => void }) {
   return <NavList pathname={usePathname()} onNavigate={onNavigate} />;
 }
 
-// The wordmark is a mask filled with the text colour, so it follows the theme and high contrast.
-// Bump ?v= whenever the SVG changes, so browsers drop their cached copy.
 const WORDMARK_MASK = "url(/logo-wordmark.svg?v=2) left center / contain no-repeat";
 
 function Brand({ onNavigate }: { onNavigate?: () => void }) {
@@ -83,7 +81,7 @@ function Brand({ onNavigate }: { onNavigate?: () => void }) {
     <Link href="/" onClick={onNavigate} className="inline-flex min-h-11 items-center text-muted">
       <span
         aria-hidden="true"
-        className="block h-5 aspect-[6514/776] bg-current forced-color-adjust-none"
+        className="block h-5 aspect-6514/776 bg-current forced-color-adjust-none"
         style={{ mask: WORDMARK_MASK, WebkitMask: WORDMARK_MASK }}
       />
       <span className="sr-only">Prawdowid{t("nav.homeLink")}</span>
