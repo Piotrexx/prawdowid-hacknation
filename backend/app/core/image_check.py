@@ -15,6 +15,7 @@ import time
 import uuid
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -25,19 +26,20 @@ from app.core.image_compare import Relation
 from app.core.image_provenance import Provenance, inspect_file
 from app.core.image_search import SUPPORTED_ENGINES, EngineResult, FoundImage, search_all
 from app.schemas import (
+    VERDICT_LABELS,
     AiAssessment,
     AiSignal,
     CheckMeta,
     CheckResponse,
     CheckStatus,
-    CheckWarning,
     EngineStatus,
     ImageAnalysis,
     ImageMatch,
     ImageRegion,
     InputInfo,
     SourceRef,
-    VerdictLabel,
+    Verdict,
+    Warning,
 )
 from app.security.urlfetch import fetch_image
 from app.store.db import Store
@@ -80,6 +82,31 @@ class ImageInputError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+@dataclass
+class ImageInspection:
+    """Wynik analizy samego obrazu, bez zapisu sprawdzenia.
+
+    Pipeline tekstowy dokłada te dane do wspólnej odpowiedzi; `ImageCheckService.check`
+    zamienia je w samodzielne `CheckResponse` i dopiero wtedy zapisuje je w bazie.
+    """
+
+    analysis: ImageAnalysis | None = None
+    warnings: list[Warning] = field(default_factory=list)
+    sources: list[SourceRef] = field(default_factory=list)
+    verdict: Verdict | None = None
+    confidence: float | None = None
+    justification: str | None = None
+    limitations: list[str] = field(default_factory=list)
+    stages: dict[str, int] = field(default_factory=dict)
+    duration_ms: int = 0
+    error_code: str | None = None
+    error_message: str | None = None
+
+    @property
+    def failed(self) -> bool:
+        return self.error_code is not None
 
 
 def open_image(data: bytes) -> Image.Image:
@@ -174,6 +201,7 @@ class ImageCheckService:
         )
 
     async def check(self, data: bytes, session_id: str | None) -> CheckResponse:
+        """Samodzielne sprawdzenie zdjęcia: pełna odpowiedź, zapisana w bazie."""
         started = time.perf_counter()
         check_id = uuid.uuid4().hex
         digest = hashlib.sha256(data).hexdigest()
@@ -186,22 +214,89 @@ class ImageCheckService:
             # Te same bajty sprawdzone niedawno: nie odpytujemy wyszukiwarek ponownie (limity, captcha).
             return cached.model_copy(update={"meta": cached.meta.model_copy(update={"cached": True})})
 
-        try:
-            response = await self._verify(data, digest, check_id, started)
-        except ImageInputError as exc:
-            response = self._error(check_id, started, exc.code, exc.message)
-        except Exception:
-            log.exception("nieoczekiwany błąd sprawdzenia zdjęcia %s", check_id)
+        inspection = await self._inspect(data, digest, started)
+        if inspection.failed:
             response = self._error(
-                check_id, started, "internal_error", f"Wystąpił nieoczekiwany błąd. {_NOT_A_VERDICT} Spróbuj ponownie."
+                check_id,
+                started,
+                inspection.error_code or "internal_error",
+                inspection.error_message or f"Nie udało się sprawdzić zdjęcia. {_NOT_A_VERDICT}",
             )
+        else:
+            response = self._completed(check_id, inspection)
 
         self._store.save_check(response, session_id, cache_key if response.status == CheckStatus.COMPLETED else None)
-        analysis = response.image_analysis
+        self._log(check_id, response, inspection)
+        return response
+
+    async def inspect(self, data: bytes) -> ImageInspection:
+        """Analiza obrazu bez zapisu sprawdzenia – dla pipeline'u, który zapisuje jedną odpowiedź."""
+        started = time.perf_counter()
+        return await self._inspect(data, hashlib.sha256(data).hexdigest(), started)
+
+    async def _inspect(self, data: bytes, digest: str, started: float) -> ImageInspection:
+        stages: dict[str, int] = {}
+
+        def mark(stage: str, since: float) -> float:
+            now = time.perf_counter()
+            stages[stage] = int((now - since) * 1000)
+            return now
+
+        try:
+            query_img, exif, provenance, upload = await asyncio.to_thread(_prepare_query, data)
+            engines = [e for e in self._settings.image_engine_list if e in SUPPORTED_ENGINES]
+            t = time.perf_counter()
+            results = await self._search(upload, engines, self._settings.image_search_timeout_s)
+            t = mark("search", t)
+
+            if results and not any(r.ok for r in results):
+                details = "; ".join(f"{_ENGINE_NAMES.get(r.engine, r.engine)}: {r.error}" for r in results)
+                raise ImageInputError(
+                    "image_search_unavailable",
+                    f"Żadna wyszukiwarka obrazów nie odpowiedziała ({details}). {_NOT_A_VERDICT} Spróbuj ponownie za chwilę.",
+                )
+
+            candidates = _pick_candidates(results, self._settings.image_compare_max_candidates)
+            downloaded = await self._download_all(candidates)
+            t = mark("download", t)
+            comparisons = await asyncio.to_thread(self._compare_all, query_img, downloaded)
+            mark("compare", t)
+
+            analysis = self._analyse(digest, query_img, exif, provenance, results, candidates, comparisons)
+        except ImageInputError as exc:
+            return ImageInspection(
+                error_code=exc.code,
+                error_message=exc.message,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+        except Exception:
+            log.exception("nieoczekiwany błąd analizy zdjęcia")
+            return ImageInspection(
+                error_code="internal_error",
+                error_message=f"Wystąpił nieoczekiwany błąd. {_NOT_A_VERDICT} Spróbuj ponownie.",
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+
+        warnings, sources, verdict, confidence, justification, limitations = self._assemble(analysis, results)
+        return ImageInspection(
+            analysis=analysis,
+            warnings=warnings,
+            sources=sources,
+            verdict=verdict,
+            confidence=confidence,
+            justification=justification,
+            limitations=limitations,
+            stages=stages,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+
+    @staticmethod
+    def _log(check_id: str, response: CheckResponse, inspection: ImageInspection) -> None:
+        analysis = inspection.analysis
         log.info(
             json.dumps(
                 {
-                    "check_id": response.id,
+                    "check_id": check_id,
                     "kind": "image",
                     "status": response.status.value,
                     "error_code": response.error_code,
@@ -216,37 +311,6 @@ class ImageCheckService:
                 }
             )
         )
-        return response
-
-    async def _verify(self, data: bytes, digest: str, check_id: str, started: float) -> CheckResponse:
-        stages: dict[str, int] = {}
-
-        def mark(stage: str, since: float) -> float:
-            now = time.perf_counter()
-            stages[stage] = int((now - since) * 1000)
-            return now
-
-        query_img, exif, provenance, upload = await asyncio.to_thread(_prepare_query, data)
-        engines = [e for e in self._settings.image_engine_list if e in SUPPORTED_ENGINES]
-        t = time.perf_counter()
-        results = await self._search(upload, engines, self._settings.image_search_timeout_s)
-        t = mark("search", t)
-
-        if results and not any(r.ok for r in results):
-            details = "; ".join(f"{_ENGINE_NAMES.get(r.engine, r.engine)}: {r.error}" for r in results)
-            raise ImageInputError(
-                "image_search_unavailable",
-                f"Żadna wyszukiwarka obrazów nie odpowiedziała ({details}). {_NOT_A_VERDICT} Spróbuj ponownie za chwilę.",
-            )
-
-        candidates = _pick_candidates(results, self._settings.image_compare_max_candidates)
-        downloaded = await self._download_all(candidates)
-        t = mark("download", t)
-        comparisons = await asyncio.to_thread(self._compare_all, query_img, downloaded)
-        mark("compare", t)
-
-        analysis = self._analyse(digest, query_img, exif, provenance, results, candidates, comparisons)
-        return self._completed(check_id, started, stages, analysis, results)
 
     async def _download_all(self, candidates: list[FoundImage]) -> dict[int, bytes]:
         semaphore = asyncio.Semaphore(_DOWNLOAD_CONCURRENCY)
@@ -369,25 +433,20 @@ class ImageCheckService:
             difference=round(difference, 3) if difference is not None else None,
         )
 
-    def _completed(
-        self,
-        check_id: str,
-        started: float,
-        stages: dict[str, int],
-        analysis: ImageAnalysis,
-        results: list[EngineResult],
-    ) -> CheckResponse:
-        warnings: list[CheckWarning] = []
+    def _assemble(
+        self, analysis: ImageAnalysis, results: list[EngineResult]
+    ) -> tuple[list[Warning], list[SourceRef], Verdict, float, str, list[str]]:
+        warnings: list[Warning] = []
         failed = [r for r in results if not r.ok]
         if failed:
             names = ", ".join(_ENGINE_NAMES.get(r.engine, r.engine) for r in failed)
             warnings.append(
-                CheckWarning(code="retrieval_degraded", message=f"Nie odpowiedziała część wyszukiwarek ({names}). Wynik opiera się na pozostałych.")
+                Warning(code="retrieval_degraded", message=f"Nie odpowiedziała część wyszukiwarek ({names}). Wynik opiera się na pozostałych.")
             )
         old = analysis.earliest_seen and analysis.earliest_seen < date.today() - timedelta(days=_ARCHIVAL_AFTER_DAYS)
         if old:
             warnings.append(
-                CheckWarning(
+                Warning(
                     code="archival_material",
                     message=f"To zdjęcie krąży w sieci co najmniej od {analysis.earliest_seen:%d.%m.%Y}. "
                     "Jeśli jest przedstawiane jako aktualne, może być użyte poza kontekstem.",
@@ -396,7 +455,7 @@ class ImageCheckService:
         software = analysis.exif.get("software", "")
         if any(name in software.lower() for name in _EDITING_SOFTWARE):
             warnings.append(
-                CheckWarning(
+                Warning(
                     code="image_edit_software",
                     message=f"Metadane pliku wskazują na program do edycji ({software}). Sama obróbka nie oznacza manipulacji.",
                 )
@@ -408,7 +467,7 @@ class ImageCheckService:
         if ai and ai.result == "ai_generated":
             warnings.insert(
                 0,
-                CheckWarning(
+                Warning(
                     code="ai_generated",
                     message="Metadane pliku wskazują, że obraz został wygenerowany przez AI"
                     + (f" ({generators})." if generators else "."),
@@ -417,7 +476,7 @@ class ImageCheckService:
         elif ai and ai.result == "ai_edited":
             warnings.insert(
                 0,
-                CheckWarning(
+                Warning(
                     code="ai_edited",
                     message="Metadane pliku wskazują, że obraz był edytowany z użyciem AI"
                     + (f" ({generators})." if generators else ".")
@@ -426,18 +485,32 @@ class ImageCheckService:
             )
         elif ai and ai.content_credentials:
             warnings.append(
-                CheckWarning(code="content_credentials", message=f"Plik ma Content Credentials (C2PA): {ai.content_credentials}.")
+                Warning(code="content_credentials", message=f"Plik ma Content Credentials (C2PA): {ai.content_credentials}.")
             )
         if analysis.assessment == "manipulation_suspected":
             warnings.insert(
                 0,
-                CheckWarning(
+                Warning(
                     code="image_manipulation",
                     message="Fragment tego zdjęcia wygląda inaczej niż na większości kopii znalezionych w sieci.",
                 ),
             )
 
         engine_names = ", ".join(_ENGINE_NAMES.get(r.engine, r.engine) for r in results)
+        limitations = [
+            f"Zdjęcie (bez metadanych EXIF) zostało wysłane do zewnętrznych wyszukiwarek obrazów: {engine_names}.",
+            "Porównanie wykrywa doklejone, usunięte lub zmienione fragmenty względem kopii w sieci; "
+            "nie oceni zdjęć, których nie ma w indeksach wyszukiwarek.",
+            "Obrazy z AI rozpoznajemy po metadanych (C2PA, IPTC, parametry generatorów) i dacie najstarszej kopii. "
+            "Media społecznościowe i zrzuty ekranu usuwają metadane, więc brak śladów nie wyklucza obrazu z AI.",
+            "Różnica w jednym miejscu może też oznaczać, że to kopie w sieci mają dodany podpis lub znak wodny.",
+            "Nawet niezmienione zdjęcie może zostać użyte w fałszywym kontekście – sprawdź, skąd pochodzi i kiedy powstało.",
+        ]
+        return warnings, self._sources(analysis), verdict, confidence, justification, limitations
+
+    def _completed(self, check_id: str, inspection: ImageInspection) -> CheckResponse:
+        analysis = inspection.analysis
+        assert analysis is not None  # wywoływane tylko dla udanej analizy
         return CheckResponse(
             id=check_id,
             created_at=datetime.now(UTC),
@@ -449,32 +522,24 @@ class ImageCheckService:
                 url="",
                 title="Przesłane zdjęcie",
             ),
-            verdict=verdict,
-            verdict_label=verdict.value,
-            confidence=confidence,
-            justification=justification,
+            verdict=inspection.verdict,
+            verdict_label=VERDICT_LABELS[inspection.verdict] if inspection.verdict else None,
+            confidence=inspection.confidence,
+            justification=inspection.justification,
             main_topic="Weryfikacja zdjęcia",
-            source_articles=self._sources(analysis),
-            limitations=[
-                f"Zdjęcie (bez metadanych EXIF) zostało wysłane do zewnętrznych wyszukiwarek obrazów: {engine_names}.",
-                "Porównanie wykrywa doklejone, usunięte lub zmienione fragmenty względem kopii w sieci; "
-                "nie oceni zdjęć, których nie ma w indeksach wyszukiwarek.",
-                "Obrazy z AI rozpoznajemy po metadanych (C2PA, IPTC, parametry generatorów) i dacie najstarszej kopii. "
-                "Media społecznościowe i zrzuty ekranu usuwają metadane, więc brak śladów nie wyklucza obrazu z AI.",
-                "Różnica w jednym miejscu może też oznaczać, że to kopie w sieci mają dodany podpis lub znak wodny.",
-                "Nawet niezmienione zdjęcie może zostać użyte w fałszywym kontekście – sprawdź, skąd pochodzi i kiedy powstało.",
-            ],
-            warnings=warnings,
+            source_articles=inspection.sources,
+            limitations=inspection.limitations,
+            warnings=inspection.warnings,
             image_analysis=analysis,
             meta=CheckMeta(
-                duration_ms=int((time.perf_counter() - started) * 1000),
-                stages_ms=stages,
+                duration_ms=inspection.duration_ms,
+                stages_ms=inspection.stages,
                 processing_location=self._settings.processing_location,
             ),
         )
 
     @classmethod
-    def _verdict(cls, a: ImageAnalysis) -> tuple[VerdictLabel, float, str]:
+    def _verdict(cls, a: ImageAnalysis) -> tuple[Verdict, float, str]:
         """Ślady AI w metadanych są mocniejsze niż porównanie z kopiami, więc nadpisują jego werdykt."""
         verdict, confidence, text = cls._copy_verdict(a)
         ai = a.ai
@@ -484,14 +549,14 @@ class ImageCheckService:
         if ai.result == "ai_generated":
             signed = any(s.signed for s in ai.signals if s.kind == "ai_generated")
             return (
-                VerdictLabel.FAKE,
+                Verdict.FALSE,
                 0.95 if signed else 0.85,
                 f"{lead}. To obraz z generatora AI, a nie zdjęcie rzeczywistej sceny. "
                 f"Porównanie z kopiami w sieci: {_lower_first(text)}",
             )
         if ai.result == "ai_edited":
-            if verdict == VerdictLabel.REAL:
-                verdict, confidence = VerdictLabel.UNCERTAIN, 0.5
+            if verdict == Verdict.CONFIRMED:
+                verdict, confidence = Verdict.INSUFFICIENT, 0.5
             return (
                 verdict,
                 confidence,
@@ -506,12 +571,12 @@ class ImageCheckService:
         return verdict, confidence, text
 
     @staticmethod
-    def _copy_verdict(a: ImageAnalysis) -> tuple[VerdictLabel, float, str]:
+    def _copy_verdict(a: ImageAnalysis) -> tuple[Verdict, float, str]:
         seen = f" Najstarsza znaleziona kopia pochodzi z {a.earliest_seen:%d.%m.%Y}." if a.earliest_seen else ""
         if a.assessment == "manipulation_suspected":
             confidence = min(0.8, 0.45 + 0.07 * a.locally_modified)
             return (
-                VerdictLabel.FAKE,
+                Verdict.FALSE,
                 round(confidence, 2),
                 f"Przesłana wersja różni się w tym samym miejscu od {a.locally_modified} z {a.compared} "
                 f"porównanych kopii tego zdjęcia w sieci ({len(a.changed_regions)} z {image_compare.GRID ** 2} fragmentów). "
@@ -522,7 +587,7 @@ class ImageCheckService:
             other = a.compared - a.identical
             others = f" Pozostałe {other} różnią się w różnych miejscach, co wskazuje na zmiany w samych kopiach (np. podpisy, znaki wodne)." if other else ""
             return (
-                VerdictLabel.REAL,
+                Verdict.CONFIRMED,
                 round(confidence, 2),
                 f"Porównano {_copies(a.compared)} tego zdjęcia z sieci; {a.identical} zgadza się z przesłaną wersją w całości.{others} "
                 f"Nie widać fragmentu, który różniłby się od większości kopii, więc brak śladów doklejenia lub usunięcia elementów.{seen} "
@@ -530,13 +595,13 @@ class ImageCheckService:
             )
         if a.assessment == "insufficient_copies":
             return (
-                VerdictLabel.UNCERTAIN,
+                Verdict.INSUFFICIENT,
                 0.3,
                 "Wyszukiwarki znalazły podobne obrazy, ale za mało kopii tego samego zdjęcia, "
                 f"by rzetelnie porównać szczegóły (porównano: {a.compared}, inna obróbka lub kadr: {a.different_versions}).{seen}",
             )
         return (
-            VerdictLabel.UNCERTAIN,
+            Verdict.INSUFFICIENT,
             0.2,
             "Nie znaleziono tego zdjęcia w sieci. Może być nowe, prywatne, mocno przerobione albo wygenerowane – "
             "brak kopii nie pozwala ocenić, czy zostało zmienione.",

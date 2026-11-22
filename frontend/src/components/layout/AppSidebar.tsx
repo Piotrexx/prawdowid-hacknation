@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  BookOpen,
   Menu,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Shield,
   SquarePen,
+  Trash2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -17,13 +18,14 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HistoryList } from "@/components/chat/HistoryList";
 import { cx } from "@/lib/cx";
+import { clearHistory, useHistory } from "@/lib/history";
 import { requestNewCheck } from "@/lib/newCheck";
 import { setSidebarCollapsed, useSidebarCollapsed } from "@/lib/sidebar";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
 const NAV_ITEMS: Array<{ href: string; labelKey: string; icon: LucideIcon }> = [
   { href: "/", labelKey: "nav.check", icon: MessageSquareText },
-  { href: "/zrodla", labelKey: "nav.sources", icon: BookOpen },
+  { href: "/prywatnosc", labelKey: "nav.privacy", icon: Shield },
 ];
 
 function isCurrent(pathname: string | null, href: string): boolean {
@@ -122,6 +124,7 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
   const { t } = useTranslation();
   const startNewCheck = useStartNewCheck(onNavigate);
   const historyId = `${idPrefix}-historia`;
+  const history = useHistory();
 
   return (
     <>
@@ -144,9 +147,22 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
         aria-labelledby={historyId}
         className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
       >
-        <h2 id={historyId} className="eyebrow mb-2 px-5 collapsed:sr-only">
-          {t("sidebar.sessions")}
-        </h2>
+        <div className="mb-2 flex items-center justify-between px-5 collapsed:hidden">
+          <h2 id={historyId} className="eyebrow">
+            {t("sidebar.sessions")}
+          </h2>
+          {history?.length ? (
+            <button
+              type="button"
+              onClick={clearHistory}
+              title={t("sidebar.clearHistory")}
+              className="grid size-7 place-items-center text-muted hover:text-accent"
+            >
+              <Trash2 aria-hidden="true" className="size-4" />
+              <span className="sr-only">{t("sidebar.clearHistory")}</span>
+            </button>
+          ) : null}
+        </div>
         {/* The list shrinks and scrolls, so the button under it stays in view. */}
         <div className="min-h-0 shrink overflow-y-auto px-2 collapsed:hidden">
           <HistoryList onNavigate={onNavigate} />

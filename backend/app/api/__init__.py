@@ -1,3 +1,3 @@
-from app.api import checks, admin
+from app.api import admin, checks
 
 __all__ = ["checks", "admin"]

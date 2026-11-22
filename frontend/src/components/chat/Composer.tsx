@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowUp, ImagePlus, X } from "lucide-react";
-import { useLayoutEffect, useRef, type RefObject } from "react";
+import { ArrowUp, ImagePlus, Mic, MicOff, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "@/lib/cx";
 import { formatInteger, plural } from "@/lib/format";
@@ -22,11 +22,78 @@ interface ComposerProps {
   imageError: string | null;
   onPickImage: (file: File) => void;
   onClearImage: () => void;
+  onVoice: (file: File) => void;
   onSubmit: () => void;
   busy: boolean;
   error: string | null;
   waitSeconds: number;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
+}
+
+function useRecorder(onRecording: (file: File) => void) {
+  const [recording, setRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const supported =
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== "undefined";
+
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  function stopTracks() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
+
+  async function toggle() {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    setVoiceError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        chunksRef.current = [];
+        setRecording(false);
+        stopTracks();
+        if (blob.size > 0) {
+          onRecording(new File([blob], "nagranie.webm", { type: blob.type }));
+        }
+      };
+      recorder.onerror = () => {
+        setVoiceError("Nie udało się nagrać głosu. Sprawdź uprawnienia mikrofonu.");
+        setRecording(false);
+        stopTracks();
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setVoiceError("Nie udało się uruchomić mikrofonu. Sprawdź uprawnienia przeglądarki.");
+      setRecording(false);
+      stopTracks();
+    }
+  }
+
+  return { supported, recording, voiceError, toggle };
 }
 
 export function Composer({
@@ -36,6 +103,7 @@ export function Composer({
   imageError,
   onPickImage,
   onClearImage,
+  onVoice,
   onSubmit,
   busy,
   error,
@@ -46,6 +114,7 @@ export function Composer({
   const fileRef = useRef<HTMLInputElement>(null);
   const overLimit = text.length > TEXT_LIMIT;
   const blocked = busy || waitSeconds > 0;
+  const speech = useRecorder(onVoice);
 
   // Grows with the text up to MAX_HEIGHT, then scrolls.
   useLayoutEffect(() => {
@@ -157,6 +226,24 @@ export function Composer({
             <ImagePlus aria-hidden="true" className="size-5" />
             {attachment ? t("composer.otherImage") : t("composer.screenshot")}
           </button>
+          {speech.supported ? (
+            <button
+              type="button"
+              onClick={speech.toggle}
+              aria-pressed={speech.recording}
+              className={cx(
+                "inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold hover:bg-subtle",
+                speech.recording ? "text-bad-fg" : "text-link",
+              )}
+            >
+              {speech.recording ? (
+                <MicOff aria-hidden="true" className="size-5" />
+              ) : (
+                <Mic aria-hidden="true" className="size-5" />
+              )}
+              {speech.recording ? t("composer.voiceStop") : t("composer.voice")}
+            </button>
+          ) : null}
           <span className="flex-1" />
           {text.length >= COUNTER_FROM ? (
             <span
@@ -177,9 +264,9 @@ export function Composer({
         </div>
       </div>
 
-      {error || imageError ? (
+      {error || imageError || speech.voiceError ? (
         <p id="czat-blad" role="alert" className="mt-2 text-sm font-semibold text-bad-fg">
-          {error || imageError}
+          {error || imageError || speech.voiceError}
         </p>
       ) : null}
       {waitSeconds > 0 ? (

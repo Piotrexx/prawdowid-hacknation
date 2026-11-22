@@ -1,10 +1,13 @@
 "use client";
 
-import { ArrowRight, Copy, FileText } from "lucide-react";
+import { Archive, ArrowRight, Copy, FileText } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SideButton, SideLink } from "@/components/layout/SideLinks";
+import { archiveCheck } from "@/lib/api";
 import { cx } from "@/lib/cx";
-import { formatDateTime } from "@/lib/format";
+import { describeError } from "@/lib/errors";
+import { formatDateTime, formatDuration } from "@/lib/format";
+import { ensureSessionId } from "@/lib/session";
 import type { CheckResponse } from "@/lib/types";
 import { ClaimCard, claimAnchors } from "./ClaimCard";
 import { IncidentMatches } from "./IncidentMatches";
@@ -190,6 +193,31 @@ function CopyLinkButton() {
   );
 }
 
+function ArchiveButton({ checkId }: { checkId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  async function save() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const archived = await archiveCheck(checkId, ensureSessionId());
+      setMessage(`Zapisano kontrolowaną kopię do ${new Date(archived.retention_until).toLocaleDateString("pl-PL")}.`);
+    } catch (error) {
+      setMessage(`Nie udało się zarchiwizować. ${describeError(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <SideButton icon={Archive} onClick={() => void save()} disabled={busy}>
+        {busy ? "Archiwizuję…" : "Zarchiwizuj materiał"}
+      </SideButton>
+      <p role="status" className="text-sm text-muted empty:hidden">{message}</p>
+    </div>
+  );
+}
+
 interface ResultViewProps {
   result: CheckResponse;
   /** Move focus to the heading, e.g. right after a check finished on the home page. */
@@ -200,6 +228,7 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const active = useActiveClaim(result.claims.length);
   const checkedAt = formatDateTime(result.created_at);
+  const duration = formatDuration(result.meta.duration_ms);
 
   useEffect(() => {
     if (focusHeading) headingRef.current?.focus();
@@ -214,6 +243,7 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
               Sprawdzono: {checkedAt}. Od tego czasu informacje mogły się zmienić.
             </p>
           ) : null}
+          {duration ? <p className="text-sm text-muted">{duration}</p> : null}
           <h1
             id="wynik-tytul"
             ref={headingRef}
@@ -283,6 +313,7 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
             Działania
           </h2>
           <CopyLinkButton />
+          <ArchiveButton checkId={result.id} />
           <SideLink href={`#${ANCHORS.input}`} icon={FileText}>
             Pokaż sprawdzaną treść
           </SideLink>

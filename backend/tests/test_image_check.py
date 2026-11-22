@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageFilter, PngImagePlugin
 
 from app.config import Settings
@@ -16,9 +15,8 @@ from app.core.image_check import ImageCheckService, _copies
 from app.core.image_compare import Relation
 from app.core.image_provenance import Provenance, _c2pa_integrity, inspect_file
 from app.core.image_search import EngineResult, FoundImage
-from app.main import create_app
-from app.schemas import AiAssessment, AiSignal, CheckStatus, ImageAnalysis, VerdictLabel
-from app.security.ratelimit import RateLimiter
+from app.core.prompts import ImageReading
+from app.schemas import AiAssessment, AiSignal, CheckStatus, ImageAnalysis, Verdict
 from app.store.db import Store
 
 
@@ -71,7 +69,7 @@ def _prepared(data: bytes) -> np.ndarray:
 
 
 def _service(
-    tmp_path,
+    settings: Settings,
     copies: list[bytes] | None = None,
     *,
     results: list[EngineResult] | None = None,
@@ -105,7 +103,6 @@ def _service(
     async def download(url):
         return store[url]
 
-    settings = Settings(_env_file=None, database_url=f"sqlite:///{tmp_path / 'img.db'}")
     service = ImageCheckService(settings, Store(settings.database_url), search=search, download=download)
     return service, calls
 
@@ -133,70 +130,70 @@ def test_compare_unrelated_image_is_not_comparable():
 # --- usługa ---
 
 
-def test_edited_image_is_flagged_with_changed_region(tmp_path):
-    service, _ = _service(tmp_path)
+def test_edited_image_is_flagged_with_changed_region(settings):
+    service, _ = _service(settings)
     response = asyncio.run(service.check(_jpeg(_edited(ORIGINAL)), None))
     analysis = response.image_analysis
     assert response.status == CheckStatus.COMPLETED
-    assert response.verdict == VerdictLabel.FAKE
+    assert response.verdict == Verdict.FALSE
     assert analysis.assessment == "manipulation_suspected"
     assert analysis.changed_regions and all(r.x < 0.4 and r.y < 0.4 for r in analysis.changed_regions)
     assert response.warnings[0].code == "image_manipulation"
 
 
-def test_original_image_is_consistent_with_copies(tmp_path):
-    service, _ = _service(tmp_path)
+def test_original_image_is_consistent_with_copies(settings):
+    service, _ = _service(settings)
     response = asyncio.run(service.check(_jpeg(ORIGINAL), None))
-    assert response.verdict == VerdictLabel.REAL
+    assert response.verdict == Verdict.CONFIRMED
     assert response.image_analysis.assessment == "consistent_with_copies"
     assert response.image_analysis.identical == len(COPIES)
     assert {s.source_type for s in response.source_articles} == {"reverse_image"}
 
 
-def test_no_matches_is_uncertain(tmp_path):
-    service, _ = _service(tmp_path, results=[EngineResult("yandex", True, [], 0), EngineResult("tineye", True, [], 0)])
+def test_no_matches_is_uncertain(settings):
+    service, _ = _service(settings, results=[EngineResult("yandex", True, [], 0), EngineResult("tineye", True, [], 0)])
     response = asyncio.run(service.check(_jpeg(ORIGINAL), None))
-    assert response.verdict == VerdictLabel.UNCERTAIN
+    assert response.verdict == Verdict.INSUFFICIENT
     assert response.image_analysis.assessment == "no_matches"
 
 
-def test_all_engines_down_is_an_error_not_a_verdict(tmp_path):
+def test_all_engines_down_is_an_error_not_a_verdict(settings):
     down = [EngineResult("yandex", False, [], error="captcha"), EngineResult("tineye", False, [], error="timeout")]
-    service, _ = _service(tmp_path, results=down)
+    service, _ = _service(settings, results=down)
     response = asyncio.run(service.check(_jpeg(ORIGINAL), None))
     assert response.status == CheckStatus.ERROR
     assert response.error_code == "image_search_unavailable"
     assert response.verdict is None
 
 
-def test_one_engine_down_adds_warning(tmp_path):
-    service, _ = _service(tmp_path)
+def test_one_engine_down_adds_warning(settings):
+    service, _ = _service(settings)
     partial = asyncio.run(service._search(b"", [], 1))[:1] + [EngineResult("tineye", False, [], error="timeout")]
-    service, _ = _service(tmp_path, results=partial)
+    service, _ = _service(settings, results=partial)
     response = asyncio.run(service.check(_jpeg(ORIGINAL), None))
     assert response.status == CheckStatus.COMPLETED
     assert "retrieval_degraded" in {w.code for w in response.warnings}
 
 
-def test_invalid_file_is_rejected(tmp_path):
-    service, calls = _service(tmp_path)
+def test_invalid_file_is_rejected(settings):
+    service, calls = _service(settings)
     response = asyncio.run(service.check(b"to nie jest obraz", None))
     assert response.status == CheckStatus.ERROR
     assert response.error_code == "image_invalid"
     assert calls["search"] == 0
 
 
-def test_huge_resolution_is_rejected(tmp_path):
+def test_huge_resolution_is_rejected(settings):
     buffer = io.BytesIO()
     Image.new("1", (7000, 6000)).save(buffer, "PNG")
-    service, calls = _service(tmp_path)
+    service, calls = _service(settings)
     response = asyncio.run(service.check(buffer.getvalue(), None))
     assert response.error_code == "image_too_large"
     assert calls["search"] == 0
 
 
-def test_same_image_is_served_from_cache(tmp_path):
-    service, calls = _service(tmp_path)
+def test_same_image_is_served_from_cache(settings):
+    service, calls = _service(settings)
     data = _jpeg(ORIGINAL)
     first = asyncio.run(service.check(data, None))
     second = asyncio.run(service.check(data, None))
@@ -309,20 +306,20 @@ def test_ordinary_files_have_no_ai_signals(data):
     assert _provenance(data).kind is None
 
 
-def test_ai_metadata_overrides_copy_comparison(tmp_path):
-    service, _ = _service(tmp_path, results=NO_RESULTS)
+def test_ai_metadata_overrides_copy_comparison(settings):
+    service, _ = _service(settings, results=NO_RESULTS)
     response = asyncio.run(service.check((FIXTURES / "c2pa_ai.jpg").read_bytes(), None))
-    assert response.verdict == VerdictLabel.FAKE
+    assert response.verdict == Verdict.FALSE
     assert response.confidence == 0.95
     assert response.image_analysis.ai.result == "ai_generated"
     assert response.warnings[0].code == "ai_generated"
     assert "Content Credentials" in response.justification
 
 
-def test_unsigned_ai_metadata_has_lower_confidence(tmp_path):
-    service, _ = _service(tmp_path, results=NO_RESULTS)
+def test_unsigned_ai_metadata_has_lower_confidence(settings):
+    service, _ = _service(settings, results=NO_RESULTS)
     response = asyncio.run(service.check(_jpeg_with_xmp(_MIDJOURNEY_XMP), None))
-    assert response.verdict == VerdictLabel.FAKE
+    assert response.verdict == Verdict.FALSE
     assert response.confidence == 0.85
 
 
@@ -340,37 +337,37 @@ def test_ai_edit_downgrades_consistent_copies_to_uncertain():
         ),
     )
     plain = analysis.model_copy(update={"ai": AiAssessment(result="no_signals")})
-    assert ImageCheckService._verdict(plain)[0] == VerdictLabel.REAL
+    assert ImageCheckService._verdict(plain)[0] == Verdict.CONFIRMED
     verdict, confidence, text = ImageCheckService._verdict(analysis)
-    assert verdict == VerdictLabel.UNCERTAIN and confidence == 0.5
+    assert verdict == Verdict.INSUFFICIENT and confidence == 0.5
     assert text.startswith("Content Credentials (C2PA): obraz edytowany")
 
 
-def test_ai_edit_warning_comes_first(tmp_path):
-    service, _ = _service(tmp_path, results=NO_RESULTS)
+def test_ai_edit_warning_comes_first(settings):
+    service, _ = _service(settings, results=NO_RESULTS)
     response = asyncio.run(service.check((FIXTURES / "c2pa_ai_edit.jpg").read_bytes(), None))
     assert response.image_analysis.ai.result == "ai_edited"
     assert response.warnings[0].code == "ai_edited"
 
 
-def test_camera_credentials_are_reported_as_information(tmp_path):
-    service, _ = _service(tmp_path, results=NO_RESULTS)
+def test_camera_credentials_are_reported_as_information(settings):
+    service, _ = _service(settings, results=NO_RESULTS)
     response = asyncio.run(service.check((FIXTURES / "c2pa_camera.jpg").read_bytes(), None))
     assert response.image_analysis.ai.result == "no_signals"
     assert "content_credentials" in {w.code for w in response.warnings}
 
 
-def test_copies_online_before_2022_make_ai_unlikely(tmp_path):
-    service, _ = _service(tmp_path, first_seen=date(2019, 5, 1))
+def test_copies_online_before_2022_make_ai_unlikely(settings):
+    service, _ = _service(settings, first_seen=date(2019, 5, 1))
     response = asyncio.run(service.check(_jpeg(ORIGINAL), None))
     assert response.image_analysis.ai.result == "predates_generative_ai"
-    assert response.verdict == VerdictLabel.REAL
+    assert response.verdict == Verdict.CONFIRMED
     assert "przed upowszechnieniem generatorów" in response.justification
 
 
-def test_dates_of_lookalike_images_are_ignored(tmp_path):
+def test_dates_of_lookalike_images_are_ignored(settings):
     """Inna twarz z generatora sprzed 2022 nie może dać sygnału "zdjęcie starsze niż generatory AI"."""
-    service, _ = _service(tmp_path)
+    service, _ = _service(settings)
     lookalike = FoundImage("tineye", "https://faces.example/1", "https://faces.example/1.jpg", None, None, "faces.example", date(2019, 1, 1))
     same = FoundImage("tineye", "https://news.example/1", "https://news.example/1.jpg", None, None, "news.example", date(2024, 3, 1))
     comparisons = {
@@ -383,8 +380,8 @@ def test_dates_of_lookalike_images_are_ignored(tmp_path):
     assert analysis.ai.result == "no_signals"
 
 
-def test_recent_copies_give_no_ai_signal(tmp_path):
-    service, _ = _service(tmp_path, first_seen=date(2024, 5, 1))
+def test_recent_copies_give_no_ai_signal(settings):
+    service, _ = _service(settings, first_seen=date(2024, 5, 1))
     response = asyncio.run(service.check(_jpeg(ORIGINAL), None))
     assert response.image_analysis.ai.result == "no_signals"
 
@@ -393,33 +390,77 @@ def test_recent_copies_give_no_ai_signal(tmp_path):
 
 
 @pytest.fixture
-def image_client(tmp_path):
-    service, _ = _service(tmp_path)
-    app = create_app(with_lifespan=False)
-    app.state.settings = Settings(_env_file=None, image_max_bytes=2_000_000)
-    app.state.store = service._store
-    app.state.image_service = service
-    app.state.limiter = RateLimiter(1000)
-    return TestClient(app)
+def image_service(settings):
+    service, calls = _service(settings)
+    return service, calls
 
 
-def test_endpoint_checks_uploaded_image(image_client):
+@pytest.fixture
+def image_client(make_client, image_service, provider):
+    service, _ = image_service
+    provider.reading = ImageReading(
+        text="Most w Testowie został zamknięty na czas remontu.",
+        visible_dates=[],
+        description="zrzut ekranu artykułu",
+        readable=True,
+        injection_detected=False,
+    )
+    return make_client(image_checks=service)
+
+
+def test_endpoint_merges_ocr_with_image_analysis(image_client):
     reply = image_client.post(
         "/api/v1/checks/image",
         files={"file": ("zdjecie.jpg", _jpeg(_edited(ORIGINAL)), "image/jpeg")},
-        data={"session_id": "sesja-testowa-1"},
     )
     assert reply.status_code == 200
     body = reply.json()
+    # Ten sam obraz przechodzi OCR (twierdzenia) i analizę manipulacji w jednej odpowiedzi.
     assert body["input"]["kind"] == "image"
-    assert body["verdict"] == "fake_news"
+    assert body["claims"]
+    assert body["verdict"] == "falszywe"
+    assert body["image_analysis"]["assessment"] == "manipulation_suspected"
     assert body["image_analysis"]["changed_regions"]
+    assert "image_manipulation" in {w["code"] for w in body["warnings"]}
     assert image_client.get(f"/api/v1/checks/{body['id']}").status_code == 200
 
 
-def test_endpoint_rejects_too_large_file(image_client):
-    reply = image_client.post("/api/v1/checks/image", files={"file": ("duze.jpg", b"0" * 2_000_001, "image/jpeg")})
-    assert reply.status_code == 413
+def test_endpoint_survives_image_search_failure(make_client, settings, provider):
+    down = [
+        EngineResult("yandex", False, [], error="captcha"),
+        EngineResult("tineye", False, [], error="timeout"),
+    ]
+    service, _ = _service(settings, results=down)
+    provider.reading = ImageReading(
+        text="Most w Testowie został zamknięty na czas remontu.",
+        visible_dates=[],
+        description="zrzut ekranu artykułu",
+        readable=True,
+        injection_detected=False,
+    )
+    client = make_client(image_checks=service)
+    reply = client.post(
+        "/api/v1/checks/image",
+        files={"file": ("zdjecie.jpg", _jpeg(ORIGINAL), "image/jpeg")},
+    )
+    body = reply.json()
+    # Awaria wyszukiwarek obrazów nie jest werdyktem o treści ani błędem sprawdzenia.
+    assert reply.status_code == 200
+    assert body["status"] == "completed"
+    assert body["claims"]
+    assert body["image_analysis"] is None
+    assert "image_analysis_unavailable" in {w["code"] for w in body["warnings"]}
+
+
+def test_endpoint_rejects_too_large_file(make_client, image_service):
+    service, _ = image_service
+    client = make_client(image_checks=service, image_max_bytes=1_000_000)
+    reply = client.post("/api/v1/checks/image", files={"file": ("duze.jpg", b"0" * 1_000_001, "image/jpeg")})
+    body = reply.json()
+    # Za duży plik to techniczne ograniczenie wejścia, nie werdykt.
+    assert reply.status_code == 200
+    assert body["status"] == "error"
+    assert body["error_code"] == "image_too_large"
 
 
 def test_endpoint_rejects_bad_session_id(image_client):

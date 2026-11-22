@@ -1,83 +1,82 @@
 # Źródła
 
-Jedynym miejscem, przez które dokument może trafić do korpusu, jest katalog
-[`backend/data/sources.yaml`](../backend/data/sources.yaml). Ten sam katalog jest dostępny do audytu
-w interfejsie (`/zrodla`) i przez API (`GET /api/v1/sources`).
+Korpus Prawdowida jest budowany na bieżąco przez `backend/app/ingest/` i zapisywany
+w PostgreSQL (tabela `articles`). Katalog źródeł jest **w kodzie**
+(`backend/app/ingest/registry.py`) — nie ma pliku `sources.yaml` ani statycznego
+korpusu JSONL. Stan korpusu i historia pobrań są widoczne w
+`GET /api/v1/admin/corpus/stats` (nagłówek `X-Admin-Token`).
 
-## Korpus demonstracyjny
+## Typy źródeł i poziomy
 
-Stan na 2026-11-21 (wersja `10d51f43c4ec`, szczegóły w `backend/data/corpus/manifest.json`):
-**575 dokumentów, 11 domen, 4 typy źródeł** (urzędowe 109, akty prawne 80, fact-checking 271, media 115).
-Korpus jest wyłącznie polskojęzyczny. Wszystkie rekordy zostały pobrane automatycznie z prawdziwych
-serwisów – nie ma w nim treści napisanych przez zespół ani wygenerowanych przez model.
-Domeny liczymy na poziomie serwisu (np. `cyfrowa.rp.pl` i `rp.pl` to jedna domena).
+- **Poziom 1 — źródła pierwotne/urzędowe:** RCB, RSO gov.pl, IMGW, CERT Polska,
+  GDDKiA, KG PSP, Policja, GIS, PAA, MSZ, Sejm ELI, OSW. Mają największą wagę w
+  ocenie siły dowodów.
+- **Poziom 2 — fact-checking:** Konkret24 (RSS), Pravda (RSS i rekordy ClaimReview),
+  FakeNews.pl (RSS). Records ClaimReview zapisują twierdzenie, ocenę redakcji,
+  link i adresy wcześniejszych wystąpień.
+- **Poziom 3 — media:** Rzeczpospolita. Mogą dawać wyłącznie kontekst; nigdy same
+  nie rozstrzygają werdyktu.
 
-| Źródło | Typ | Poziom | Dok. | Co przechowujemy | Licencja / podstawa |
-|---|---|---|---|---|---|
-| MSZ – aktualności (gov.pl) | urzędowe | 1 | 59 | pełny tekst | CC BY-SA 4.0 (stopka gov.pl) |
-| Dziennik Ustaw – API ELI Sejmu | akt prawny | 1 | 80 | tytuł, typ, status, daty | materiał urzędowy (art. 4 pr. aut.) |
-| CERT Polska | urzędowe | 1 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Konkret24 | fact-checking | 2 | 30 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Pravda – artykuły | fact-checking | 2 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Pravda – ClaimReview | fact-checking | 2 | 211 | twierdzenie, ocena, link | dane strukturalne opublikowane przez wydawcę |
-| FakeNews.pl | fact-checking | 2 | 10 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Ośrodek Studiów Wschodnich – analizy | urzędowe | 1 | 10 | tytuł, zajawka, link | do potwierdzenia – tylko fragment |
-| Rzeczpospolita | media | 3 | 20 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| CyberDefence24 | media | 3 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Defence24 | media | 3 | 40 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
-| Niebezpiecznik | media | 3 | 15 | tytuł, zajawka, link | prawa zastrzeżone – tylko fragment |
+Każdy wpis `SourceSpec` zawiera nazwę, wydawcę, typ, poziom, licencję, politykę
+przechowywania (`full_text`, `excerpt`, `structured`), uzasadnienie kwalifikacji i
+sposób aktualizacji. Dzięki temu lista źródeł jest audytowalna w repozytorium.
 
-Rekordy ClaimReview pochodzą z publicznego kanału danych Google Fact Check Tools
-(`datacommons-feeds/factcheck`), do którego wydawcy sami zgłaszają oceny w formacie schema.org/ClaimReview.
-Część z nich zawiera adresy, pod którymi pojawiło się sprawdzane twierdzenie (211 rekordów) – to one tworzą
-**katalog incydentów** używany do dopasowań URL/domeny. Plik organizatora z bazą incydentów można dołączyć
-tym samym mechanizmem (rekord z `claim_reviewed`, `rating` i `appearance_urls`).
+## Co jest w korpusie
 
-## Zasady kwalifikowania, aktualizowania i wykluczania
+- Tytuł, treść lub fragment zależnie od licencji, wydawca, data publikacji, data
+  pobrania i link do oryginału.
+- Dla źródeł na otwartych licencjach i materiałów urzędowych — pełny tekst.
+- Dla treści chronionych prawem autorskim — tylko tytuł, krótki fragment i link.
+- Dla ClaimReview — dane strukturalne: twierdzenie, ocena, link, `appearance_urls`.
 
-Pełna treść zasad jest w polu `rules` katalogu. W skrócie:
+Nie przechowujemy pełnych treści ani obrazów bez podstawy prawnej, licencji,
+retencji i procedury usunięcia.
 
-- **Poziom 1** – źródła pierwotne i urzędowe; **poziom 2** – organizacje fact-checkingowe deklarujące
-  standardy IFCN/EFCSN; **poziom 3** – media, tylko jako kontekst. Reguły werdyktu to wymuszają:
-  cytat z mediów jest zawsze pokazywany jako „kontekst” i sam nie może potwierdzić ani obalić twierdzenia.
-- Każdy wpis ma uzasadnienie kwalifikacji, licencję, politykę przechowywania i politykę aktualizacji.
-- Treści otwarte i urzędowe przechowujemy w całości; treści chronione – tylko tytuł, krótki fragment i link
-  albo dane strukturalne. Odpowiedź zawsze prowadzi do oryginału.
-- Szanujemy `robots.txt` i blokady serwisów. Nie obchodzimy zabezpieczeń ani paywalli.
-- Status źródła (np. sankcje UE – `backend/data/source_status.yaml`) i obecność domeny w katalogu incydentów
-  wywołują najwyżej neutralne ostrzeżenie. Dopasowanie domeny pokazujemy dopiero od 3 opisanych przypadków
-  i nigdy dla platform (Facebook, X, YouTube itd.).
-- Źródło usuwamy z katalogu, gdy traci status będący podstawą kwalifikacji lub zmienia warunki korzystania.
-  Jego dokumenty znikają z korpusu przy następnej aktualizacji.
+## Zasady pobierania
 
-## Źródła rozważone, ale nieujęte w katalogu
+- `robots.txt` jest sprawdzany i respektowany; przy 401/403 źródło jest pomijane.
+- Maks. `INGEST_MAX_PER_SOURCE` dokumentów na źródło na przebieg (`--max`).
+- Throttling `INGEST_REQUEST_DELAY_S` na domenę, User-Agent `fact-check-research-bot/0.1`.
+- Ochrona przed SSRF: wyłącznie publiczne adresy IP, bez przekierowań na sieci prywatne.
+- Upsert po `external_id` (źródło + URL + twierdzenie); `content_hash` decyduje,
+  czy przeliczać embedding.
+- Migawki dzienne (RCB, hydro) mają URL z datą, więc historia nie znika.
 
-Te serwisy spełniają kryteria merytoryczne, ale nie pozwalają na automatyczne pobieranie, więc nie ma ich
-ani w katalogu, ani w korpusie. Po uzgodnieniu dostępu wystarczy dodać wpis do `sources.yaml`.
+## Embeddingi i wyszukiwanie
 
-| Źródło | Powód |
-|---|---|
-| Demagog | serwis blokuje automatyczne pobieranie (HTTP 403) |
-| AFP Sprawdzam | jw. |
-| Rada UE – komunikaty | kontrola przeglądarki także dla `robots.txt` |
+- Model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 wymiary),
+  lokalnie przez `fastembed`/ONNX. Treść nie jest wysyłana do zewnętrznego API.
+- Embedding liczony z: wydawca + tytuł + treść/fragment.
+- Kandydaci: pgvector (HNSW, cosine), `RETRIEVAL_CANDIDATES`; bez filtra wieku, żeby
+  materiał archiwalny mógł wywołać ostrzeżenie zamiast zniknąć.
+- Rerank: `0.8 * cosine + 0.2 * pokrycie słów kluczowych`; maks. `RETRIEVAL_TOP_K`
+  fragmentów, maks. `RETRIEVAL_MAX_PER_SOURCE` na źródło.
+- Gdy embeddingi są wyłączone lub model się nie wczyta, działa fallback leksykalny;
+  odpowiedź zawiera ostrzeżenie `retrieval_degraded`.
+
+## Status źródła i incydenty
+
+- `app/security/source_status.py` zawiera jawną listę statusów (np. sankcje UE) i
+  podstawę prawną. Status wywołuje neutralne ostrzeżenie i nigdy nie przesądza o
+  prawdziwości konkretnej treści.
+- Dopasowania do znanych incydentów (URL, domena po ≥3 przypadkach, podobieństwo
+  treści) są pokazywane jako kontekst, nie jako werdykt.
 
 ## Aktualizacja
 
 ```bash
 cd backend
-uv run python -m app.ingest.run                 # wszystkie źródła z katalogu (kanał ClaimReview to ok. 200 MB)
-uv run python -m app.ingest.run --only konkret24,msz-gov-pl
+uv run python -m app.ingest.run                    # wszystkie źródła
+uv run python -m app.ingest.run --only gis,cert-polska --max 10
+uv run python -m app.ingest.run --list             # lista kluczy
 ```
 
-Przebieg dopisuje nowe dokumenty, zapisuje datę pobrania każdego rekordu i raport w `manifest.json`.
-Zmiana korpusu zmienia jego wersję, co unieważnia pamięć wyników i wymusza przeliczenie indeksu.
-W prototypie aktualizację uruchamia się ręcznie lub z crona; częstotliwości z katalogu są docelowe.
+W Dockerze ingest można uruchomić z panelu moderatora:
+`POST /api/v1/admin/corpus/ingest` (nagłówek `X-Admin-Token`).
 
 ## Do zrobienia przed pilotażem
 
-- Przegląd prawny licencji (zwłaszcza zakres użycia danych ClaimReview i fragmentów treści chronionych).
-- Potwierdzenie statusu IFCN/EFCSN każdej redakcji w oficjalnych rejestrach (w katalogu oznaczone jako deklaracja).
-- Uzgodnienie dostępu do źródeł nieujętych w katalogu oraz dołączenie pakietu źródeł i bazy incydentów organizatora.
-- Rozszerzenie polskich źródeł pierwotnych: dane.gov.pl, GUS, BIP, kolejne urzędy i redakcje fact-checkingowe.
-- OSW zakwalifikowano jako instytucję państwową (poziom 1), choć publikuje analizy, a nie dokumenty urzędowe – do decyzji, czy nie powinien to być poziom 2.
-- Kanał BIP Rzecznika Praw Obywatelskich odrzucono: zawiera głównie wpisy rejestrowe z nazwiskami osób.
+- Potwierdzić licencje fragmentów dla serwisów innych niż gov.pl.
+- Dodać monitoring radiacyjny PAA przez przeglądarkę headless albo oficjalne API.
+- Zbudować ręczny zbiór par „to samo wydarzenie / podobny temat” i dostroić progi.
+- Rozważyć mocniejszy model embeddingów (np. e5-large) po pomiarze jakości.

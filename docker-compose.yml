@@ -1,20 +1,43 @@
 # Uruchomienie obu projektów naraz: `docker compose up --build`
 # Wymaga pliku backend/.env (wzór: backend/.env.example).
 services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: prawdowid
+      POSTGRES_USER: prawdowid
+      POSTGRES_PASSWORD: prawdowid
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/10-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prawdowid -d prawdowid"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   backend:
     build: ./backend
     env_file: ./backend/.env
     environment:
       CORS_ORIGINS: http://localhost:3000
-      # Bielik via Ollama (running in separate container)
+      DATABASE_URL: postgresql+psycopg://prawdowid:prawdowid@postgres:5432/prawdowid
       BIELIK_BASE_URL: http://ollama:11434/v1
-      BIELIK_MODEL: llama3.2:3b
+      BIELIK_MODEL: SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0
+      FASTEMBED_CACHE_PATH: /app/.cache/fastembed
+      WHISPER_CACHE_DIR: /app/.cache/whisper
+      INGEST_CACHE_DIR: /app/var/ingest
     ports:
       - "8000:8000"
     volumes:
-      - backend-data:/app/data
+      - backend-var:/app/var
     depends_on:
-      - ollama
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
 
   ollama:
     image: ollama/ollama:latest
@@ -22,17 +45,10 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
-    # Pre-pull Bielik model on startup.
-    # Waits for Ollama to be ready before pulling (fixes the race condition
-    # the original `sleep 5` had — on slow machines the pull started too early).
-    # Model is cached in the ollama-data volume, so once pulled it survives
-    # container recreation/rebuilds (only `docker compose down -v` clears it);
-    # skipping `ollama pull` entirely when it's already present avoids an
-    # extra registry round-trip on every restart.
     entrypoint: >
       sh -c "ollama serve &
         until curl -sf http://localhost:11434/ > /dev/null 2>&1; do sleep 2; done &&
-        (ollama list | grep -q 'llama3.2:3b' || ollama pull llama3.2:3b) &&
+        (ollama list | grep -q 'bielik-4.5b-v3.0-instruct' || ollama pull SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0) &&
         wait"
 
   frontend:
@@ -46,5 +62,6 @@ services:
       - backend
 
 volumes:
-  backend-data:
+  backend-var:
   ollama-data:
+  pgdata:

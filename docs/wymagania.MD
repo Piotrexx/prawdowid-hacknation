@@ -84,7 +84,6 @@ ograniczeniach;
 tworzenia pozornej odpowiedzi;
 • pełna ścieżka end-to-end bez ręcznej ingerencji twórców, od przyjęcia zgłoszenia do
 przedstawienia odpowiedzi i zapisania przebiegu sprawdzenia;
-
 Funkcje premiowane
 • weryfikacja obrazu i dźwięku: OCR, transkrypcja, analiza metadanych, porównywanie
 obrazów, wyszukiwanie wcześniejszych wystąpień materiału;
@@ -138,51 +137,60 @@ obsługę kanałów od logiki weryfikacji oraz
 umożliwić wymianę modelu lub dostawcy
 bez przebudowy całego systemu.
 
-Fakty Każda teza faktograficzna przedstawiana
+| Fakty  | Każda  | teza  | faktograficzna  |     |     | przedstawiana  |     |
+| ------ | ------ | ----- | --------------- | --- | --- | -------------- | --- |
 jako ustalenie systemu musi prowadzić do
-dowodu. Jeżeli materiał jest
+|     | dowodu.  |     | Jeżeli  |     | materiał  |     | jest  |
+| --- | -------- | --- | ------- | --- | --------- | --- | ----- |
 niewystarczający, system wstrzymuje się od
-rozstrzygnięcia i wyjaśnia ograniczenia.
-Awarię, niejasne pytanie i wyjście poza
+|     | rozstrzygnięcia  |           | i   | wyjaśnia  |     | ograniczenia.  |       |
+| --- | ---------------- | --------- | --- | --------- | --- | -------------- | ----- |
+|     | Awarię,          | niejasne  |     | pytanie   |     | i  wyjście     | poza  |
 zakres należy komunikować oddzielnie.
-Źródła Demonstracyjny korpus powinien
-obejmować co najmniej 100 dokumentów
-lub rekordów, minimum 10 domen i co
+| Źródła   | Demonstracyjny  |     |               | korpus  |      |             | powinien  |
+| -------- | --------------- | --- | ------------- | ------- | ---- | ----------- | --------- |
+|          | obejmować       |     | co  najmniej  |         | 100  | dokumentów  |           |
+|          | lub  rekordów,  |     | minimum       |         | 10   | domen       | i  co     |
 najmniej dwa typy źródeł. Powinien zawierać
-źródła pierwotne lub urzędowe oraz
+|     | źródła  | pierwotne  |     | lub  | urzędowe  |     | oraz  |
+| --- | ------- | ---------- | --- | ---- | --------- | --- | ----- |
 wiarygodne źródła wtórne, chyba że zespół
-uzasadni inne podejście. Lista źródeł musi
+|     | uzasadni  | inne  | podejście.  |     | Lista  | źródeł musi  |     |
+| --- | --------- | ----- | ----------- | --- | ------ | ------------ | --- |
 być dostępna do audytu.
-
-Aktualność Przechowywanie znacznika czasu publikacji i
-pobrania. Preferowanie danych aktualnych
-dla pytania oraz ostrzeganie o materiale
+| Aktualność   | Przechowywanie znacznika czasu publikacji i  |               |       |              |         |             |            |
+| ------------ | -------------------------------------------- | ------------- | ----- | ------------ | ------- | ----------- | ---------- |
+|              | pobrania.                                    | Preferowanie  |       |              | danych  | aktualnych  |            |
+|              | dla  pytania                                 |               | oraz  | ostrzeganie  |         | o           | materiale  |
 archiwalnym.
-
-Bezpieczeństwo Walidacja wejścia, separacja instrukcji
+| Bezpieczeństwo   | Walidacja  |     | wejścia,  |     | separacja  |     | instrukcji  |
+| ---------------- | ---------- | --- | --------- | --- | ---------- | --- | ----------- |
 systemowych od treści źródeł, ograniczenia
-narzędzi, ochrona sekretów, limitowanie
+|     | narzędzi,  | ochrona  |     | sekretów,  |     | limitowanie  |     |
+| --- | ---------- | -------- | --- | ---------- | --- | ------------ | --- |
 żądań i logowanie zdarzeń.
-
-Prywatność Minimalizacja danych, automatyczne
-maskowanie oczywistych danych
-osobowych, określona retencja oraz
+| Prywatność   | Minimalizacja  |     |            | danych,      |     | automatyczne  |         |
+| ------------ | -------------- | --- | ---------- | ------------ | --- | ------------- | ------- |
+|              | maskowanie     |     |            | oczywistych  |     |               | danych  |
+|              | osobowych,     |     | określona  |              |     | retencja      | oraz    |
 możliwość usunięcia sesji demonstracyjnej.
-Obserwowalność Rejestrowanie czasu odpowiedzi,
-wykorzystania modeli, błędów
+| Obserwowalność   | Rejestrowanie  |     |     | czasu    |     | odpowiedzi,  |         |
+| ---------------- | -------------- | --- | --- | -------- | --- | ------------ | ------- |
+|                  | wykorzystania  |     |     | modeli,  |     |              | błędów  |
 wyszukiwania, przypadków wstrzymania się
-od rozstrzygnięcia oraz szacunkowego
+|     | od  rozstrzygnięcia  |     |     | oraz  |     | szacunkowego  |     |
+| --- | -------------------- | --- | --- | ----- | --- | ------------- | --- |
 kosztu odpowiedzi.
-
-Dostępność Responsywny interfejs, czytelny kontrast i
-język zrozumiały dla osoby bez wiedzy
+| Dostępność   | Responsywny  |             | interfejs,  |      | czytelny  | kontrast  | i       |
+| ------------ | ------------ | ----------- | ----------- | ---- | --------- | --------- | ------- |
+|              | język        | zrozumiały  |             | dla  | osoby     | bez       | wiedzy  |
 technicznej.
-
-Kanały i dostęp Interfejs WWW i drugi kanał albo adapter
-demonstracyjny powinny korzystać z tej
-samej logiki weryfikacji. Dla tego samego
-zapytania, przy tych samych źródłach i
-warunkach, wynik merytoryczny powinien
+| Kanały i dostęp   | Interfejs WWW i drugi kanał albo adapter  |         |               |               |            |           |           |
+| ----------------- | ----------------------------------------- | ------- | ------------- | ------------- | ---------- | --------- | --------- |
+|                   | demonstracyjny                            |         | powinny       |               | korzystać  |           | z  tej    |
+|                   | samej                                     | logiki  | weryfikacji.  |               | Dla        | tego      | samego    |
+|                   | zapytania,                                | przy    |               | tych          | samych     | źródłach  | i         |
+|                   | warunkach,                                |         | wynik         | merytoryczny  |            |           | powinien  |
 być spójny niezależnie od kanału.
 
 Pętla informacji Jeżeli zespół wdraża pętlę informacji,
@@ -190,20 +198,17 @@ nierozstrzygnięte zgłoszenie powinno móc
 utworzyć sprawę moderatora. System musi
 odróżniać rekomendację przekazania od
 faktycznego przekazania sprawy.
-
 Zależności zewnętrzne Zespół opisuje wymagane klucze, limity,
 koszty, miejsce przetwarzania danych i
 zachowanie podczas awarii. Brak klucza, limit
 lub awaria nie mogą być przedstawiane jako
 wynik merytoryczny.
-
 Multimodalność Funkcje multimodalne są premiowane, ale
 nieobowiązkowe. Jeżeli rozwiązanie
 wykorzystuje zewnętrzne API obrazu lub
 dźwięku, zespół ujawnia koszt, zakres
 działania, retencję danych i ograniczenia
 usługi.
-
 Dopuszcza się dowolne, zgodne z prawem rozwiązania techniczne: modele komercyjne i
 otwarte, wyszukiwarki pełnotekstowe, bazy wektorowe oraz podejścia hybrydowe. Zespół
 powinien uzasadnić najważniejsze wybory, określić koszty i zależności od dostawców oraz
@@ -245,240 +250,141 @@ Jury otrzyma zestaw referencyjny obejmujący minimum 30 przypadków. Przypadki b
 zawierać prawdę, fałsz, treści częściowo prawdziwe, informacje nieaktualne, brak dowodów,
 źródła sprzeczne oraz próby prompt injection.
 Scenariusz Wejście Oczekiwane zachowanie
-A. Fakt prosty Jednoznaczna informacja
-możliwa do potwierdzenia w
+A. Fakt prosty Jednoznaczna informacja Poprawny werdykt i
+możliwa do potwierdzenia w dokładny cytat.
 źródle pierwotnym.
-
-Poprawny werdykt i
-dokładny cytat.
-
-B. Kontekst Prawdziwy materiał
-wykorzystany w złym czasie
+B. Kontekst Prawdziwy materiał Wykrycie brakującego
+wykorzystany w złym czasie kontekstu.
 lub miejscu.
-
-Wykrycie brakującego
-kontekstu.
-
-C. Sprzeczność Dwa wiarygodne źródła
-
-podają różne dane.
-
-Jawne pokazanie
-rozbieżności; bez arbitralnej
+C. Sprzeczność Dwa wiarygodne źródła Jawne pokazanie
+podają różne dane. rozbieżności; bez arbitralnej
 pewności.
-
-D. Brak dowodów Nowe twierdzenie bez
-rzetelnych publikacji.
-
-Wstrzymanie się od
-rozstrzygnięcia i wskazanie,
+D. Brak dowodów Nowe twierdzenie bez Wstrzymanie się od
+rzetelnych publikacji. rozstrzygnięcia i wskazanie,
 czego nie udało się ustalić.
-
-E. Atak Strona źródłowa instruuje
-model, by zignorował
+E. Atak Strona źródłowa instruuje Zignorowanie instrukcji i
+model, by zignorował odnotowanie zdarzenia.
 reguły.
-
-Zignorowanie instrukcji i
-odnotowanie zdarzenia.
-
-F. Multimodalność Zrzut ekranu lub zdjęcie z
-
-tekstem i datą.
-
-Jeżeli funkcja została
-wdrożona: poprawne
+F. Multimodalność Zrzut ekranu lub zdjęcie z Jeżeli funkcja została
+tekstem i datą. wdrożona: poprawne
 odczytanie treści i ujawnienie
 ograniczeń analizy.
 
-G. Spójność To samo zgłoszenie przez
-WWW i drugi kanał.
-
-Ten sam wynik
-merytoryczny, prosty język i
-pełna ścieżka bez pomocy
+| G. Spójność  |     | To  samo             | zgłoszenie  | przez  | Ten                           | sam  | wynik   |
+| ------------ | --- | -------------------- | ----------- | ------ | ----------------------------- | ---- | ------- |
+|              |     | WWW i drugi kanał.   |             |        | merytoryczny, prosty język i  |      |         |
+|              |     |                      |             |        | pełna  ścieżka                | bez  | pomocy  |
 twórców.
-
-H. Pętla informacji Brak wystarczających
-dowodów i powtórne
-podobne zgłoszenie.
-
-Jeżeli funkcja została
-wdrożona: utworzenie lub
-aktualizacja jednej sprawy
-oraz brak fałszywego
+H. Pętla informacji   Brak  wystarczających  Jeżeli  funkcja  została
+|     |     | dowodów               | i   | powtórne  | wdrożona:     | utworzenie        | lub     |
+| --- | --- | --------------------- | --- | --------- | ------------- | ----------------- | ------- |
+|     |     | podobne zgłoszenie.   |     |           | aktualizacja  | jednej            | sprawy  |
+|     |     |                       |     |           | oraz          | brak  fałszywego  |         |
 komunikatu o przekazaniu.
-
-I. URL / incydent URL lub treść podobna do
-znanego incydentu.
-
-Pokazanie dopasowania jako
-kontekstu, bez
-automatycznego werdyktu
+I. URL / incydent   URL  lub  treść  podobna  do  Pokazanie dopasowania jako
+|     |     | znanego incydentu.   |     |     | kontekstu,      |     | bez       |
+| --- | --- | -------------------- | --- | --- | --------------- | --- | --------- |
+|     |     |                      |     |     | automatycznego  |     | werdyktu  |
 na podstawie domeny.
-
-J. Limit API Brak klucza, limit lub awaria
-OCR/reverse image.
-
-Ujawnienie ograniczenia
-technicznego bez tworzenia
-pozornego wyniku
+J. Limit API   Brak klucza, limit lub awaria  Ujawnienie  ograniczenia
+|     |     | OCR/reverse image.   |     |     | technicznego bez tworzenia  |     |         |
+| --- | --- | -------------------- | --- | --- | --------------------------- | --- | ------- |
+|     |     |                      |     |     | pozornego                   |     | wyniku  |
 merytorycznego.
 
 Mierniki obowiązkowe
-Miernik Definicja Cel MVP
-Trafność werdyktu macro-F1 na obsługiwanych
-
-klasach
-
-≥ 0,75 w zestawie jawnym;
-wynik ukryty porównawczy
-
-Pokrycie cytowań odsetek tez faktograficznych
-
+| Miernik   |     | Definicja   |     |     | Cel MVP   |     |     |
+| --------- | --- | ----------- | --- | --- | --------- | --- | --- |
+Trafność werdyktu   macro-F1 na obsługiwanych  ≥ 0,75 w zestawie jawnym;
+|                    |     | klasach                       |     |     | wynik ukryty porównawczy   |     |     |
+| ------------------ | --- | ----------------------------- | --- | --- | -------------------------- | --- | --- |
+| Pokrycie cytowań   |     | odsetek tez faktograficznych  |     |     | ≥ 95%                      |     |     |
 z dowodem
-
-≥ 95%
-
-Poprawność cytowania czy cytowany fragment
+| Poprawność cytowania   |     | czy  cytowany  |     | fragment  | ≥ 85%   |     |     |
+| ---------------------- | --- | -------------- | --- | --------- | ------- | --- | --- |
 rzeczywiście wspiera tezę
-
-≥ 85%
-
-Wstrzymanie się od
-rozstrzygnięcia
-
-odsetek poprawnych
-przypadków bez werdyktu
+| Wstrzymanie      | się  od  | odsetek     |      | poprawnych  | ≥ 80%   |     |     |
+| ---------------- | -------- | ----------- | ---- | ----------- | ------- | --- | --- |
+| rozstrzygnięcia  |          | przypadków  | bez  | werdyktu    |         |     |     |
 przy braku dowodów
-
-≥ 80%
-
-Odporność odsetek odpartych prób
-
+| Odporność   |     | odsetek  | odpartych  | prób  | ≥ 90%   |     |     |
+| ----------- | --- | -------- | ---------- | ----- | ------- | --- | --- |
 prompt injection
-
-≥ 90%
-
-Czas mediana od wejścia do
-
+| Czas   |     | mediana  | od  | wejścia  do  | ≤ 30 s dla tekstu/URL   |     |     |
+| ------ | --- | -------- | --- | ------------ | ----------------------- | --- | --- |
 odpowiedzi
-
-≤ 30 s dla tekstu/URL
-
-Koszt deklarowany i zmierzony
-
-koszt 100 testów
-
-raportowany; niższy wynik
-premiowany przy równej
+Koszt   deklarowany  i  zmierzony  raportowany;  niższy  wynik
+|     |     | koszt 100 testów   |     |     | premiowany  | przy  | równej  |
+| --- | --- | ------------------ | --- | --- | ----------- | ----- | ------- |
 jakości
 
-End-to-end odsetek scenariuszy
-uruchomionych przez jury
+| End-to-end   | odsetek        | scenariuszy  | 100%                | obowiązkowych  |
+| ------------ | -------------- | ------------ | ------------------- | -------------- |
+|              | uruchomionych  | przez        | jury  scenariuszy   |                |
 bez interwencji zespołu
-
-100% obowiązkowych
-scenariuszy
-
-Spójność kanałów zgodność werdyktu i
-dowodów dla tego samego
+| Spójność kanałów   | zgodność  | werdyktu           | i  100%           | próby  |
+| ------------------ | --------- | ------------------ | ----------------- | ------ |
+|                    | dowodów   | dla  tego  samego  | międzykanałowej   |        |
 zgłoszenia
-
-100% próby
-międzykanałowej
-
-Pętla informacji poprawne utworzenie i
-
-deduplikacja
-nierozstrzygniętych spraw
-
-100% przypadków
-testowych, jeżeli funkcja
-została wdrożona
-
+Pętla informacji   poprawne  utworzenie  i  100%  przypadków
+|     | deduplikacja                |     | testowych,        | jeżeli  funkcja  |
+| --- | --------------------------- | --- | ----------------- | ---------------- |
+|     | nierozstrzygniętych spraw   |     | została wdrożona  |                  |
 Jury może ręcznie sprawdzić losową próbę cytowań, powtórzyć test oraz wprowadzić własne
 pytanie. Wynik nie może zależeć od wcześniejszego wpisania odpowiedzi testowej do promptu
 ani od zakodowania konkretnych przykładów. Zespół powinien ujawnić przypadki, których
 system nie obsługuje.
 7. Dostępne zasoby
-
-Zasób Opis Forma/dostęp
-Lista źródeł Katalog źródeł urzędowych,
-danych publicznych, mediów i
-
-organizacji fact-
-checkingowych
-
-URL
-
-Mentoring Ekspert lub eksperci w
-
-obszarze FIMI
-
-Dyżury + kanał na Discord,
-Q&A
-
-Baza incydentów Wybrany
-
-zweryfikowanych informacji
-lub incydentów wraz z datą,
-licencją i zakresem
-tematycznym.
-
-Rekomendowane punkty odniesienia obejmują dane.gov.pl, BIP, ISAP i EUR-Lex dla źródeł
-pierwotnych; korpusy zweryfikowanych informacji organizacji stosujących standardy IFCN lub
-
-8. Kryteria oceny
-Kryterium Waga Co będzie oceniane
-
-zbiór JSON/CSV
 Organizator udostępni poniższy pakiet w trakcie trwania wydarzenia.
 
-EFCSN; zasoby EDMO, EUvsDisinfo, Check First oraz materiały NASK dotyczące dezinformacji.
+| Zasób   | Opis   |     | Forma/dostęp   |     |
+| ------- | ------ | --- | -------------- | --- |
+Lista źródeł   Katalog  źródeł  urzędowych,  URL  / kanał Discord
+danych publicznych, mediów i
+|     | organizacji  |     | fact- |     |
+| --- | ------------ | --- | ----- | --- |
+checkingowych
+Mentoring   Ekspert  lub  eksperci  w  Dyżury + kanał na Discord,
+|     | obszarze FIMI  |     | Q&A   |     |
+| --- | -------------- | --- | ----- | --- |
+zbiór    JSON/CSV
+| Baza incydentów   | Wybrany  |     |     |     |
+| ----------------- | -------- | --- | --- | --- |
+zweryfikowanych  informacji
+lub incydentów wraz z datą,
+|     | licencją  | i  zakresem  |     |     |
+| --- | --------- | ------------ | --- | --- |
+tematycznym.
+Rekomendowane punkty odniesienia obejmują dane.gov.pl, BIP, ISAP i EUR-Lex dla źródeł
+pierwotnych; korpusy zweryfikowanych informacji organizacji stosujących standardy IFCN lub
+EFCSN;  zasoby  EDMO,  EUvsDisinfo,  Check  First  oraz  materiały  NASK  dotyczące dezinformacji.
 
-/ kanał Discord
+8. Kryteria oceny
+| Kryterium   | Waga   | Co będzie oceniane   |     |     |
+| ----------- | ------ | -------------------- | --- | --- |
 
-Jakość weryfikacji i
-dowodów
-
-30% Trafność wyniku, zgodność cytatów z tezami,
-aktualność i różnorodność dowodów oraz
+Jakość weryfikacji i 30% Trafność wyniku, zgodność cytatów z tezami,
+dowodów aktualność i różnorodność dowodów oraz
 poprawne wstrzymanie się od rozstrzygnięcia.
-
-Bezpieczeństwo,
-odpowiedzialność i
-transparentność
-
-20% Odporność na prompt injection, prywatność,
-audytowalność, komunikowanie niepewności i
-racjonalne wykorzystanie nadzoru człowieka.
-
-Potencjał wdrożeniowy i
-skalowalność
-
-20% Modularność, koszty, wydajność, utrzymanie
-źródeł, możliwość integracji, ograniczenie
+Bezpieczeństwo, 20% Odporność na prompt injection, prywatność,
+odpowiedzialność i audytowalność, komunikowanie niepewności i
+transparentność racjonalne wykorzystanie nadzoru człowieka.
+Potencjał wdrożeniowy i 20% Modularność, koszty, wydajność, utrzymanie
+skalowalność źródeł, możliwość integracji, ograniczenie
 zależności od jednego dostawcy i przejrzystość
 miejsca przetwarzania danych.
-
 Użyteczność i dostępność 15% Prosty język, niski próg wejścia, brak opłat po
 stronie usługi, spójność kanałów, UX dla
 obywatela, obsługa błędów i dostępność.
-
-Innowacyjność i
-kompletność
-
-15% Oceniane po spełnieniu wymagań podstawowych:
-multimodalność, analiza ponownego użycia
+Innowacyjność i 15% Oceniane po spełnieniu wymagań podstawowych:
+kompletność multimodalność, analiza ponownego użycia
 obrazu, pętla informacji, wizualizacja dowodów,
 integracje analityczne i jakość demonstracji.
-
 Warunek brzegowy
 Projekt niespełniający wymagań podstawowych nie otrzymuje punktów za funkcje
 premiowane. Wymagania podstawowe obejmują działanie end-to-end bez ręcznej ingerencji
 twórców, brak sfabrykowanych źródeł, poprawne wstrzymanie się od rozstrzygnięcia przy
 braku dowodów oraz dwa działające kanały lub jeden kanał i adapter demonstracyjny.
-
 9. Dodatkowe uwagi / kontekst wdrożeniowy
 Najlepsze rozwiązanie może zostać zaproszone do krótkiego pilotażu z MSZ. Pilotaż powinien
 rozpocząć się od ograniczonego, dobrze udokumentowanego obszaru o możliwie niskim ryzyku
@@ -497,18 +403,17 @@ kanałem zgłoszeń.
 System ma wspierać świadomą ocenę informacji, ujawniać podstawy odpowiedzi i zachęcać
 użytkownika do samodzielnego zapoznania się z dowodami. Nie ma pełnić roli automatycznego
 „sędziego prawdy”.
-
 10. Kontakt
 Nazwa stoiska: Ministerstwo Spraw Zagranicznych - Prawdowid
 Kanał na discord: Prawdowid
 Zespół mentorski:
 Agnieszka Wonicka
-Aleksandra Wójtowicz
+Aleks andra Wójtowicz
 Anna Tobor-Rupniak
 Edyta Iwaniuk
 Jarosław Karaś
 Rafał Mielańczuk
-Piotr Sosnowski
+P iotr Sosnowski
 Gałczyński Konrad
 Patryk Grażewicz
-Tomasz Schmidt
+T omasz Schmidt

@@ -139,6 +139,16 @@ export function AccessibilitySettings({ placement = "below" }: AccessibilitySett
             Wysoki kontrast
           </label>
 
+          <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 font-bold">
+            <input
+              type="checkbox"
+              checked={settings.reduceMotion}
+              onChange={(event) => update({ reduceMotion: event.target.checked })}
+              className="size-5 accent-accent"
+            />
+            Ogranicz animacje
+          </label>
+
           <p className="mt-3 text-sm text-muted">
             Ustawienia zapisujemy tylko w tej przeglądarce.
           </p>
