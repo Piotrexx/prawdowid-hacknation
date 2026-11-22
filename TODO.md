@@ -111,9 +111,9 @@
 - [ ] **M4** Przywrócić tests/test_llm_providers.py
 - [ ] **M5** factory.py jest zepsute dla LLM_PROVIDER=anthropic
 
-## N. Funkcja drzewa binarnego
+## N. Mapa wydarzeń
 
-- [ ] **N1** Funkcja drzewa binarnego zdarzeń
+- [x] **N1** Mapa wydarzeń: graf klastrów zgłoszeń, relacje, kotwice i publiczna mapa zagregowana
 
 ## O. Wymagania formalne zgłoszenia
 

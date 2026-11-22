@@ -3,7 +3,18 @@
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -71,6 +82,125 @@ class CaseLinkRow(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     case_id: Mapped[int] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
     check_id: Mapped[str] = mapped_column(String(32), index=True)
+
+
+class EventRow(Base):
+    """Wydarzenie: klaster zgłoszeń i twierdzeń dotyczących tej samej sytuacji.
+
+    To warstwa kontekstu analitycznego. Przynależność do wydarzenia nigdy nie
+    przesądza o prawdziwości twierdzenia – werdykt powstaje wyłącznie z cytatów
+    w `claims`.
+    """
+
+    __tablename__ = "events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    topic: Mapped[str] = mapped_column(Text, default="")
+    # Etykieta bezpieczna dla mapy publicznej: temat lub słowa kluczowe,
+    # nigdy pełna treść zgłoszenia użytkownika.
+    public_label: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    merged_into: Mapped[str | None] = mapped_column(String(32), index=True)
+    risk: Mapped[str] = mapped_column(String(16), default="standard")
+    member_count: Mapped[int] = mapped_column(Integer, default=0)
+    proposed_count: Mapped[int] = mapped_column(Integer, default=0)
+    keywords: Mapped[list] = mapped_column(_json(), default=list)
+    verdicts: Mapped[dict] = mapped_column(_json(), default=dict)
+    # Kotwice: publiczne metadane znanych incydentów (fact-checki z korpusu).
+    anchors: Mapped[list] = mapped_column(_json(), default=list)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(160))
+
+    members: Mapped[list["EventMemberRow"]] = relationship(
+        cascade="all, delete-orphan", order_by="EventMemberRow.created_at"
+    )
+
+    __table_args__ = (
+        Index(
+            "events_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+
+class EventMemberRow(Base):
+    """Jedno twierdzenie z jednego zgłoszenia przypisane do wydarzenia.
+
+    `status="proposed"` oznacza kandydata do akceptacji przez moderatora;
+    tylko `accepted` liczy się do mapy i statystyk wydarzenia.
+    """
+
+    __tablename__ = "event_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    check_id: Mapped[str] = mapped_column(
+        ForeignKey("checks.id", ondelete="CASCADE"), index=True
+    )
+    claim_id: Mapped[str] = mapped_column(String(64), index=True)
+    claim_text: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[str | None] = mapped_column(String(32))
+    risk: Mapped[str] = mapped_column(String(16), default="standard")
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="accepted", index=True)
+    source: Mapped[str] = mapped_column(String(16), default="auto")
+    # Słowa kluczowe, temat i kotwice tego konkretnego zgłoszenia. Wydarzenie
+    # przelicza je po usunięciu zgłoszenia, więc treść użytkownika nie zostaje
+    # w agregacie po wygaśnięciu retencji.
+    keywords: Mapped[list] = mapped_column(_json(), default=list)
+    anchors: Mapped[list] = mapped_column(_json(), default=list)
+    topic: Mapped[str] = mapped_column(Text, default="")
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(254))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "check_id", "claim_id", name="event_members_unique"),
+    )
+
+
+class EventLinkRow(Base):
+    """Relacja między dwoma wydarzeniami, z jawnym uzasadnieniem i statusem akceptacji."""
+
+    __tablename__ = "event_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    src_event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    dst_event_id: Mapped[str] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
+    )
+    # Relacja powstała z konkretnego zgłoszenia; jego usunięcie usuwa też link,
+    # bo uzasadnienie i cytaty mogą zawierać treść użytkownika.
+    origin_check_id: Mapped[str | None] = mapped_column(
+        ForeignKey("checks.id", ondelete="CASCADE"), index=True
+    )
+    relation: Mapped[str] = mapped_column(String(32), default="related_topic")
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[dict] = mapped_column(_json(), default=dict)
+    model: Mapped[str | None] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(16), default="proposed", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(254))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("src_event_id", "dst_event_id", "relation", name="event_links_unique"),
+    )
 
 
 class ConsentRow(Base):

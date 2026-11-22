@@ -364,6 +364,139 @@ export interface CaseUpdate {
   risk?: Risk;
 }
 
+// --- Mapa wydarzeń ---
+
+export type EventRelation =
+  | "same_event"
+  | "follow_up"
+  | "contradiction"
+  | "related_topic"
+  | "shared_actor"
+  | "anchor";
+
+export type EventMemberStatus = "accepted" | "proposed" | "rejected";
+export type EventLinkStatus = "accepted" | "proposed" | "rejected";
+
+export interface EventAnchor {
+  incident_id: string;
+  title: string;
+  publisher: string;
+  url: string;
+  date: string | null;
+  note: string;
+}
+
+export interface EventMember {
+  id: number;
+  event_id: string;
+  check_id: string;
+  claim_id: string;
+  claim_text: string;
+  verdict: Verdict | null;
+  risk: Risk;
+  score: number;
+  reason: string;
+  status: EventMemberStatus;
+  source: "auto" | "review" | "llm" | "manual";
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+}
+
+export interface EventLink {
+  id: number;
+  src_event_id: string;
+  dst_event_id: string;
+  relation: EventRelation;
+  score: number;
+  reason: string;
+  evidence: Record<string, string>;
+  model: string | null;
+  status: EventLinkStatus;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+}
+
+export interface EventOut {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  topic: string;
+  public_label: string;
+  summary: string;
+  status: "active" | "merged";
+  merged_into: string | null;
+  risk: Risk;
+  member_count: number;
+  proposed_count: number;
+  keywords: string[];
+  verdicts: Record<string, number>;
+  anchors: EventAnchor[];
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface EventDetail {
+  event: EventOut;
+  members: EventMember[];
+  links: EventLink[];
+}
+
+export interface GraphNode {
+  id: string;
+  kind: "event" | "anchor";
+  label: string;
+  subtitle: string | null;
+  url: string | null;
+  event_id: string | null;
+  risk: Risk;
+  member_count: number;
+  proposed_count: number;
+  keywords: string[];
+  verdicts: Record<string, number>;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: EventRelation;
+  score: number | null;
+  status: "accepted" | "proposed";
+  reason: string;
+  model: string | null;
+}
+
+export interface EventGraphResponse {
+  generated_at: string;
+  window_days: number;
+  public: boolean;
+  min_members: number;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface EventMemberReview {
+  status: "accepted" | "rejected";
+  note?: string | null;
+}
+
+export interface EventLinkReview {
+  status: "accepted" | "rejected";
+  relation?: EventRelation | null;
+  note?: string | null;
+}
+
+export interface EventRebuildResult {
+  processed_checks: number;
+  events: number;
+  skipped: number;
+}
+
 export interface SecurityEventOut {
   id: number;
   created_at: string;

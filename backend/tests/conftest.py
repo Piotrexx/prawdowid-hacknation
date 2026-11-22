@@ -210,6 +210,8 @@ def settings() -> Settings:
         bielik_base_url="",
         google_factcheck_api_key=None,
         archive_enabled=True,
+        # Linkowanie w tle utrudniałoby deterministyczne testy.
+        event_graph_async=False,
     )
 
 

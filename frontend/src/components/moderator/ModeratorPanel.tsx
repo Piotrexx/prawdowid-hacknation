@@ -11,6 +11,7 @@ import type { Profile } from "@/lib/types";
 import { AccountTab } from "./AccountTab";
 import { CasesTab } from "./CasesTab";
 import { ChecksTab } from "./ChecksTab";
+import { EventMapTab } from "./EventMapTab";
 import { EventsTab } from "./EventsTab";
 import { ExportButtons } from "./ExportButtons";
 import { LlmTab } from "./LlmTab";
@@ -59,6 +60,7 @@ function Dashboard({
   const isSuperuser = profile.moderator.role === "superuser";
   const tabs: TabDefinition[] = [
     { key: "cases", label: "Twierdzenia", Panel: CasesTab },
+    { key: "map", label: "Mapa wydarzeń", Panel: EventMapTab },
     { key: "account", label: "Konto", Panel: AccountTab },
     { key: "metrics", label: "Statystyki", Panel: MetricsTab },
     { key: "events", label: "Zdarzenia bezpieczeństwa", Panel: EventsTab },

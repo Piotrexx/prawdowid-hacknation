@@ -83,6 +83,14 @@ Panel moderatora (konto e-mail/hasło albo zgodnościowo `X-Admin-Token`):
   `POST /api/v1/admin/moderators/{id}/reset-password` (superużytkownik)
 - `GET /api/v1/admin/metrics`
 - `GET /api/v1/admin/checks`, `GET /api/v1/admin/events`
+- `GET /api/v1/admin/graph` - mapa wydarzeń (węzły, relacje, kotwice; `window_days`, `include_proposed`)
+- `GET /api/v1/admin/graph/events/{id}` - wydarzenie z obserwacjami i relacjami
+- `PATCH /api/v1/admin/graph/events/{id}/members/{member_id}` - akceptacja/odrzucenie kandydata
+- `PATCH /api/v1/admin/graph/links/{id}` - akceptacja/odrzucenie relacji
+- `POST /api/v1/admin/graph/events/{id}/merge` - scalenie wydarzeń
+- `POST /api/v1/admin/graph/events/{id}/members/{member_id}/split` - wydzielenie obserwacji
+- `POST /api/v1/admin/graph/rebuild` - przebudowa mapy z zapisanych zgłoszeń (superużytkownik)
+- `GET /api/v1/public/event-map` - publiczna, zagregowana mapa (próg k-anonimowości)
 - `GET/PATCH /api/v1/admin/cases` — każdy moderator może poprawić treść, wagę i status
 - `GET/POST /api/v1/admin/cases/{id}/comments`, `GET/POST /api/v1/admin/articles/{id}/comments`,
   `DELETE /api/v1/admin/comments/{id}`

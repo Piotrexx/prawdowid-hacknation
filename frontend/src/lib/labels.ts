@@ -1,6 +1,7 @@
 import type {
   CaseStatus,
   CheckStatus,
+  EventRelation,
   RetrievalMode,
   Stance,
   StrengthLevel,
@@ -63,6 +64,24 @@ export const CASE_STATUS_LABELS: Record<CaseStatus, string> = {
 };
 
 export const CASE_STATUSES = Object.keys(CASE_STATUS_LABELS) as CaseStatus[];
+
+export const EVENT_RELATION_LABELS: Record<EventRelation, string> = {
+  same_event: "To samo wydarzenie",
+  follow_up: "Kolejny etap",
+  contradiction: "Sprzeczne relacje",
+  related_topic: "Powiązany temat",
+  shared_actor: "Wspólny podmiot",
+  anchor: "Znany incydent",
+};
+
+export const EVENT_RELATION_ORDER: EventRelation[] = [
+  "same_event",
+  "follow_up",
+  "contradiction",
+  "related_topic",
+  "shared_actor",
+  "anchor",
+];
 
 export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
   completed: "Zakończone",
