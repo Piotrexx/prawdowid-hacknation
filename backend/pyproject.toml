@@ -24,6 +24,7 @@ dependencies = [
     "imagehash>=4.3.2",
     "opencv-python-headless>=4.10",
     "c2pa-python>=0.39.0",
+    "cryptography>=43.0",
 ]
 
 [dependency-groups]

@@ -1,10 +1,12 @@
 "use client";
 
-import { EyeOff, Mic, Quote, Scale, ShieldCheck } from "lucide-react";
+import { EyeOff, FileAudio, Quote, Scale, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageAttachment } from "@/components/check/useImageAttachment";
 import { ApiError, createAudioCheck, createCheck, createImageCheck, isAbort } from "@/lib/api";
+import { useAdminToken } from "@/lib/adminToken";
 import { cx } from "@/lib/cx";
 import { describeError } from "@/lib/errors";
 import { rememberCheck } from "@/lib/history";
@@ -53,14 +55,14 @@ function UserMessage({ turn }: { turn: Turn }) {
           // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
           <img
             src={turn.imageUrl}
-            alt="Dołączony zrzut ekranu"
+            alt="Dołączone zdjęcie"
             className="mb-2 max-h-48 border border-line object-contain"
           />
         ) : null}
         {turn.kind === "audio" ? (
           <p className="flex items-center gap-2 text-sm font-semibold">
-            <Mic aria-hidden="true" className="size-4" />
-            {t("composer.voiceMessage", { defaultValue: "Nagranie głosowe" })}
+            <FileAudio aria-hidden="true" className="size-4" />
+            {t("composer.voiceMessage", { defaultValue: "Plik audio" })}
           </p>
         ) : turn.file ? null : (
           <>
@@ -117,7 +119,7 @@ function Welcome({ title }: { title: ReactNode }) {
       <span aria-hidden="true" className="title-rule my-5" />
       <p className="text-lg leading-relaxed text-ink-soft">
         Wklej <Highlight>{t("nav.check").toLowerCase() === "sprawdź" ? "wiadomość" : "wiadomość"}</Highlight>, <Highlight>link</Highlight> albo{" "}
-        <Highlight>zrzut ekranu</Highlight>. Zobaczysz, co mówią o tym źródła i czego nie udało się
+        <Highlight>zdjęcie</Highlight>. Zobaczysz, co mówią o tym źródła i czego nie udało się
         ustalić.
       </p>
       <ul className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -128,6 +130,23 @@ function Welcome({ title }: { title: ReactNode }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Skrót do panelu moderatora, widoczny tylko dla zalogowanych moderatorów. */
+function ModeratorShortcut() {
+  const token = useAdminToken();
+  if (!token) return null;
+  return (
+    <div className="flex justify-end pt-4">
+      <Link
+        href="/moderator"
+        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-accent bg-surface px-4 font-semibold text-accent transition-colors hover:bg-info-bg"
+      >
+        <ShieldCheck aria-hidden="true" className="size-5" />
+        Panel moderatora
+      </Link>
     </div>
   );
 }
@@ -340,6 +359,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       }}
     >
       <div className="mx-auto flex w-full max-w-[50rem] flex-1 flex-col px-5 sm:px-8">
+        <ModeratorShortcut />
         {turns.length === 0 ? (
           <Welcome title={title} />
         ) : (
@@ -383,7 +403,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
           imageError={image.error}
           onPickImage={image.attach}
           onClearImage={image.clear}
-          onVoice={sendAudio}
+          onAudio={sendAudio}
           onSubmit={send}
           busy={busy}
           error={formError}

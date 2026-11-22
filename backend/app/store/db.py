@@ -61,6 +61,7 @@ def _case_out(row: CaseRow) -> CaseOut:
         notified_at=_aware(row.notified_at),
         note=row.note,
         check_ids=[link.check_id for link in row.links],
+        comments_count=len(row.comments or []),
     )
 
 
@@ -317,11 +318,22 @@ class Store:
             row.channels = sorted({*(row.channels or []), channel})
             if risk == "high":
                 row.risk = "high"
-            row.links.append(CaseLinkRow(check_id=check_id))
+            # Nie dodawaj duplikatów – po deduplikacji cache_key ten sam check_id może trafić tu dwa razy.
+            existing_ids = {link.check_id for link in row.links}
+            if check_id not in existing_ids:
+                row.links.append(CaseLinkRow(check_id=check_id))
             db.commit()
             return _case_out(row)
 
-    def update_case(self, case_id: int, status: str | None = None, note: str | None = None, notified: bool = False) -> CaseOut | None:
+    def update_case(
+        self,
+        case_id: int,
+        status: str | None = None,
+        note: str | None = None,
+        notified: bool = False,
+        claim_text: str | None = None,
+        risk: str | None = None,
+    ) -> CaseOut | None:
         with self._session() as db:
             row = db.get(CaseRow, case_id)
             if row is None:
@@ -330,11 +342,20 @@ class Store:
                 row.status = status
             if note is not None:
                 row.note = note
+            if claim_text is not None:
+                row.claim_text = claim_text.strip()
+            if risk is not None:
+                row.risk = risk
             if notified:
                 row.notified_at = _now()
             row.updated_at = _now()
             db.commit()
             return _case_out(row)
+
+    def get_case(self, case_id: int) -> CaseOut | None:
+        with self._session() as db:
+            row = db.get(CaseRow, case_id)
+            return _case_out(row) if row else None
 
     # --- kontrolowana archiwizacja ---
 
@@ -392,6 +413,29 @@ class Store:
         return True
 
     # --- obserwowalność ---
+
+    def get_setting(self, key: str) -> dict | None:
+        """Ustawienie zapisane w panelu; brak wpisu = wartość z `.env`."""
+        from app.store.models import AppSettingRow
+
+        with self._session() as db:
+            row = db.get(AppSettingRow, key)
+            return dict(row.value or {}) if row else None
+
+    def set_setting(self, key: str, value: dict, updated_by: str | None) -> None:
+        from app.store.models import AppSettingRow
+
+        with self._session() as db:
+            row = db.get(AppSettingRow, key)
+            if row is None:
+                db.add(
+                    AppSettingRow(key=key, value=value, updated_at=_now(), updated_by=updated_by)
+                )
+            else:
+                row.value = value
+                row.updated_at = _now()
+                row.updated_by = updated_by
+            db.commit()
 
     def metrics(self) -> MetricsResponse:
         results = self.all_results()

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 interface LayoutProps {
   children: ReactNode;
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: "%s – Prawdowid",
   },
   description:
-    "Wklej wiadomość, link albo zrzut ekranu. Prawdowid pokaże, co mówią o tym opisane źródła. Prototyp hackathonowy, nie jest oficjalną usługą.",
+    "Wklej wiadomość, link albo zdjęcie. Prawdowid pokaże, co mówią o tym opisane źródła. Prototyp hackathonowy, nie jest oficjalną usługą.",
   icons: {
     icon: [{ url: "/logo-avatar.svg", type: "image/svg+xml" }],
     apple: "/logo-avatar.png",
@@ -55,7 +55,9 @@ export default function RootLayout({ children }: LayoutProps) {
               {children}
             </main>
           </div>
-          <PrivacyConsentDialog />
+          <Suspense fallback={null}>
+            <PrivacyConsentDialog />
+          </Suspense>
         </I18nProvider>
       </body>
     </html>

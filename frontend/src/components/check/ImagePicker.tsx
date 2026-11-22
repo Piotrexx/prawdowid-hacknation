@@ -61,7 +61,7 @@ export function ImagePicker({ attachment, error, hasText, onPick, onClear }: Ima
 
       <Button ref={pickButtonRef} onClick={() => inputRef.current?.click()}>
         <ImagePlus aria-hidden="true" className="size-5" />
-        {attachment ? "Wybierz inny obraz" : "Dodaj zrzut ekranu lub zdjęcie"}
+        {attachment ? "Wybierz inne zdjęcie" : "Dodaj zdjęcie"}
       </Button>
 
       {attachment ? (

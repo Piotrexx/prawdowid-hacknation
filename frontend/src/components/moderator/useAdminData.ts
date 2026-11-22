@@ -5,10 +5,14 @@ export interface AdminAccess {
   token: string;
   /** Called when the server rejects the token, so the panel can return to the prompt. */
   onUnauthorized: () => void;
+  /** Numer konta zalogowanego moderatora (puste dla tokenu technicznego). */
+  moderatorId?: number;
+  isSuperuser?: boolean;
 }
 
 export function isUnauthorized(error: unknown): boolean {
-  return error instanceof ApiError && error.kind === "unauthorized";
+  // 403 oznacza brak uprawnień do konkretnej operacji, nie wygaśnięcie sesji.
+  return error instanceof ApiError && error.kind === "unauthorized" && error.status === 401;
 }
 
 /** Runs an admin request and reports a rejected token before passing the error on. */

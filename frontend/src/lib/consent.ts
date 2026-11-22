@@ -11,6 +11,19 @@ export const CONSENT_COOKIE = "prawdowid_privacy_consent";
  *  które zgodę już wyraziły. */
 const LEGACY_STORAGE_KEY = "prawdowid_privacy_consent";
 
+const listeners = new Set<() => void>();
+
+/** Pozwala oknom i stronom odświeżyć się po zmianie zgody w innym miejscu
+ *  (np. po akceptacji na stronie polityki prywatności). */
+export function subscribeConsent(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function notifyConsentChange(): void {
+  listeners.forEach((listener) => listener());
+}
+
 function legacyConsent(): string | null {
   try {
     return window.localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -47,9 +60,11 @@ export function hasConsentCookie(version = PRIVACY_POLICY_VERSION): boolean {
 
 export function rememberConsent(version = PRIVACY_POLICY_VERSION): void {
   writeCookie(CONSENT_COOKIE, version);
+  notifyConsentChange();
 }
 
 export function forgetConsent(): void {
   deleteCookie(CONSENT_COOKIE);
   dropLegacyConsent();
+  notifyConsentChange();
 }

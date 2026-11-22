@@ -1,8 +1,12 @@
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.config import Settings
 from app.llm.base import LLMProvider
+
+if TYPE_CHECKING:
+    from app.llm.runtime import LlmConfig
 
 
 def llm_configured(settings: Settings) -> bool:
@@ -34,4 +38,29 @@ def build_provider(settings: Settings) -> LLMProvider | None:
     key = settings.llm_api_key.get_secret_value() if settings.llm_api_key else None
     return OpenAICompatProvider(
         settings.llm_model, settings.llm_base_url, key, settings.llm_timeout_s, settings.llm_json_mode
+    )
+
+
+def build_runtime_provider(
+    settings: Settings,
+    config: "LlmConfig",
+    api_key: str | None,
+) -> LLMProvider | None:
+    """Buduje dostawcę dla wyboru z panelu. Brak wymaganego klucza = None (usługa jawnie zgłasza brak modelu)."""
+    if config.spec.requires_key and not api_key:
+        return None
+    if config.provider == "anthropic":
+        from app.llm.anthropic_provider import AnthropicProvider
+
+        base_url = config.base_url if config.base_url != config.spec.base_url else None
+        return AnthropicProvider(config.model, api_key, settings.llm_timeout_s, base_url)
+    from app.llm.openai_compat import OpenAICompatProvider
+
+    return OpenAICompatProvider(
+        config.model,
+        config.base_url or config.spec.base_url,
+        api_key,
+        settings.llm_timeout_s,
+        config.json_mode,
+        name=config.provider,
     )

@@ -8,33 +8,62 @@ import { describeError } from "@/lib/errors";
 import { formatShortDateTime } from "@/lib/format";
 import { CASE_STATUSES, CASE_STATUS_LABELS, channelLabel } from "@/lib/labels";
 import { checkPath } from "@/lib/links";
-import type { CaseOut, CaseStatus } from "@/lib/types";
+import type { CaseOut, CaseStatus, Risk } from "@/lib/types";
+import { CaseComments } from "./CaseComments";
 import { guarded, type AdminAccess } from "./useAdminData";
 
 const NOTE_LIMIT = 2000;
+const CLAIM_LIMIT = 20000;
 const FIELD_CLASS =
   "mt-1 block min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3";
+
+const STATUS_TAG_TONES: Record<CaseStatus, "ok" | "warn" | "info"> = {
+  open: "ok",
+  in_review: "warn",
+  resolved: "info",
+};
+
+const STATUS_DOT_HEX: Record<CaseStatus, string> = {
+  open: "#22c55e",
+  in_review: "#f97316",
+  resolved: "#0052a5",
+};
 
 interface CaseCardProps {
   item: CaseOut;
   access: AdminAccess;
   onUpdated: (updated: CaseOut) => void;
+  onCommented?: (delta: number) => void;
 }
 
-export function CaseCard({ item, access, onUpdated }: CaseCardProps) {
+export function CaseCard({ item, access, onUpdated, onCommented }: CaseCardProps) {
   const id = useId();
   const [status, setStatus] = useState<CaseStatus>(item.status);
   const [note, setNote] = useState(item.note);
+  const [claimText, setClaimText] = useState(item.claim_text);
+  const [risk, setRisk] = useState<Risk>(item.risk);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const changed = status !== item.status || note !== item.note;
+  const changed =
+    status !== item.status ||
+    note !== item.note ||
+    claimText !== item.claim_text ||
+    risk !== item.risk;
 
   async function save() {
     setSaving(true);
     setFeedback(null);
     try {
-      const updated = await guarded(access, updateCase(access.token, item.id, { status, note }));
+      const updated = await guarded(
+        access,
+        updateCase(access.token, item.id, {
+          status,
+          note,
+          claim_text: claimText,
+          risk,
+        }),
+      );
       onUpdated(updated);
       setFeedback({ ok: true, text: "Zapisano zmiany." });
     } catch (error) {
@@ -48,7 +77,9 @@ export function CaseCard({ item, access, onUpdated }: CaseCardProps) {
     <li className="rounded-xl border border-line bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-semibold">Sprawa nr {item.id}</h3>
-        <Tag>{CASE_STATUS_LABELS[item.status] ?? item.status}</Tag>
+        <Tag tone={STATUS_TAG_TONES[item.status] ?? "neutral"}>
+          {CASE_STATUS_LABELS[item.status] ?? item.status}
+        </Tag>
         {item.risk === "high" ? (
           <Tag tone="warn" icon={ShieldAlert}>
             Wysokie ryzyko
@@ -90,27 +121,64 @@ export function CaseCard({ item, access, onUpdated }: CaseCardProps) {
       ) : null}
 
       <form
-        className="mt-3 grid gap-3 border-t border-line pt-3 sm:grid-cols-[12rem_1fr]"
+        className="mt-3 space-y-3 border-t border-line pt-3"
         onSubmit={(event) => {
           event.preventDefault();
           void save();
         }}
       >
-        <label htmlFor={`${id}-status`} className="block font-medium">
-          Stan sprawy
-          <select
-            id={`${id}-status`}
-            value={status}
-            onChange={(event) => setStatus(event.target.value as CaseStatus)}
-            className={FIELD_CLASS}
-          >
-            {CASE_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {CASE_STATUS_LABELS[value]}
-              </option>
-            ))}
-          </select>
+        <label htmlFor={`${id}-claim`} className="block font-medium">
+          Treść sprawy
+          <span className="ml-2 text-sm font-normal text-muted">
+            każde pole możesz poprawić
+          </span>
+          <textarea
+            id={`${id}-claim`}
+            value={claimText}
+            rows={3}
+            maxLength={CLAIM_LIMIT}
+            onChange={(event) => setClaimText(event.target.value)}
+            className={`${FIELD_CLASS} py-2`}
+          />
         </label>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label htmlFor={`${id}-status`} className="block font-medium">
+            Stan sprawy
+            <div className="relative mt-1">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-3 size-2.5 -translate-y-1/2 rounded-full"
+                style={{ backgroundColor: STATUS_DOT_HEX[status] }}
+              />
+              <select
+                id={`${id}-status`}
+                value={status}
+                onChange={(event) => setStatus(event.target.value as CaseStatus)}
+                className="block min-h-11 w-full rounded-lg border border-line-strong bg-surface py-0 pl-8 pr-3"
+              >
+                {CASE_STATUSES.map((value) => (
+                  <option key={value} value={value}>
+                    {CASE_STATUS_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label htmlFor={`${id}-risk`} className="block font-medium">
+            Waga sprawy
+            <select
+              id={`${id}-risk`}
+              value={risk}
+              onChange={(event) => setRisk(event.target.value as Risk)}
+              className="mt-1 block min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3"
+            >
+              <option value="standard">Standardowa</option>
+              <option value="high">Wysokie ryzyko</option>
+            </select>
+          </label>
+        </div>
+
         <label htmlFor={`${id}-note`} className="block font-medium">
           Notatka moderatora
           <textarea
@@ -122,7 +190,7 @@ export function CaseCard({ item, access, onUpdated }: CaseCardProps) {
             className={`${FIELD_CLASS} py-2`}
           />
         </label>
-        <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="primary" disabled={saving || !changed}>
             {saving ? "Zapisuję…" : "Zapisz zmiany"}
           </Button>
@@ -131,6 +199,8 @@ export function CaseCard({ item, access, onUpdated }: CaseCardProps) {
           </p>
         </div>
       </form>
+
+      <CaseComments caseId={item.id} access={access} onChanged={onCommented} />
     </li>
   );
 }

@@ -353,11 +353,14 @@ export interface CaseOut {
   notified_at: string | null;
   note: string;
   check_ids: string[];
+  comments_count: number;
 }
 
 export interface CaseUpdate {
   status?: CaseStatus;
   note?: string;
+  claim_text?: string;
+  risk?: Risk;
 }
 
 export interface SecurityEventOut {
@@ -400,4 +403,141 @@ export interface MetricsResponse {
   open_cases: number;
   avg_factchecks: number;
   consents: number;
+}
+
+// --- Moderator accounts, comments and AI settings ---
+
+export type ModeratorRole = "moderator" | "superuser";
+
+export interface Moderator {
+  id: number;
+  email: string;
+  display_name: string;
+  role: ModeratorRole;
+  is_active: boolean;
+  created_at: string;
+  created_by: string | null;
+  last_login_at: string | null;
+  must_change_password: boolean;
+  notify_discord: boolean;
+  notify_email: boolean;
+  notify_push: boolean;
+  discord_webhook_url: string | null;
+  comment_notify_threshold: number;
+}
+
+export interface ModeratorLoginResponse {
+  token: string;
+  expires_at: string;
+  moderator: Moderator;
+}
+
+export interface ModeratorCreated {
+  moderator: Moderator;
+  generated_password: string | null;
+}
+
+export interface ModeratorPasswordReset {
+  moderator: Moderator;
+  generated_password: string;
+}
+
+export interface ProfileUpdate {
+  display_name?: string;
+  notify_discord?: boolean;
+  notify_email?: boolean;
+  notify_push?: boolean;
+  discord_webhook_url?: string;
+  comment_notify_threshold?: number;
+}
+
+export interface Comment {
+  id: number;
+  case_id: number | null;
+  article_id: number | null;
+  moderator_id: number | null;
+  author_email: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  case_claim_preview: string | null;
+  article_title: string | null;
+}
+
+export interface ModeratorAction {
+  id: number;
+  action: string;
+  field: string | null;
+  value_before: string | null;
+  value_after: string | null;
+  detail: string | null;
+  case_id: number | null;
+  article_id: number | null;
+  case_claim_preview: string | null;
+  created_at: string;
+}
+
+export interface Profile {
+  moderator: Moderator;
+  stats: {
+    comments: number;
+    status_changes: number;
+    edits: number;
+    cases_touched: number;
+  };
+  comments: Comment[];
+  actions: ModeratorAction[];
+  email_available: boolean;
+  push_available: boolean;
+  discord_available: boolean;
+}
+
+export interface LlmModelOption {
+  id: string;
+  label: string;
+  price_input: number | null;
+  price_output: number | null;
+}
+
+export interface LlmProvider {
+  key: string;
+  name: string;
+  icon: string | null;
+  base_url: string;
+  requires_key: boolean;
+  is_local: boolean;
+  note: string;
+  models: LlmModelOption[];
+}
+
+export interface LlmSettings {
+  provider: string;
+  model: string;
+  base_url: string;
+  json_mode: "json_object" | "json_schema";
+  price_input: number | null;
+  price_output: number | null;
+  api_key_set: boolean;
+  api_key_source: "panel" | "env" | "none";
+  api_key_hint: string | null;
+  requires_key: boolean;
+  is_local: boolean;
+  configured: boolean;
+}
+
+export interface LlmSettingsUpdate {
+  provider: string;
+  model: string;
+  base_url?: string;
+  api_key?: string;
+  price_input?: number | null;
+  price_output?: number | null;
+  json_mode?: "json_object" | "json_schema";
+  clear_api_key?: boolean;
+}
+
+export interface PushPublicKey {
+  public_key: string;
+  configured: boolean;
 }

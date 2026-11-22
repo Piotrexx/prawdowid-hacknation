@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageShell } from "@/components/layout/PageShell";
+import { PrivacyConsentCard } from "@/components/privacy/PrivacyConsentCard";
 
 export const metadata: Metadata = {
   title: "Prywatność i ochrona danych – Prawdowid",
@@ -61,6 +62,8 @@ export default function PrivacyPage() {
       lead="Prawdowid automatycznie maskuje dane osobowe przed wysłaniem treści do weryfikacji. Poniżej znajdziesz opis całego procesu."
     >
       <div className="space-y-12 text-base leading-relaxed">
+        <PrivacyConsentCard />
+
         <Section id="maskowanie" title="Automatyczne maskowanie danych osobowych">
           <p className="text-muted">
             Zanim Twoja wiadomość trafi do systemu weryfikacji, Prawdowid wykrywa i zastępuje

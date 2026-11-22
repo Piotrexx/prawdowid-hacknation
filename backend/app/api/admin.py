@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from app.api.deps import require_admin
+from app.api.deps import ModeratorPrincipal, require_admin, require_moderator
 from app.ingest.registry import get_sources
 from app.ingest.run import run_ingest
 from app.integrations.stix import stix_bundle
@@ -47,10 +47,45 @@ def list_cases(request: Request, status: Literal["open", "in_review", "resolved"
 
 
 @router.patch("/cases/{case_id}", response_model=CaseOut)
-def update_case(request: Request, case_id: int, payload: CaseUpdate) -> CaseOut:
-    updated = _store(request).update_case(case_id, status=payload.status, note=payload.note)
+def update_case(
+    request: Request,
+    case_id: int,
+    payload: CaseUpdate,
+    principal: Annotated[ModeratorPrincipal, Depends(require_moderator)],
+) -> CaseOut:
+    store = _store(request)
+    before = store.get_case(case_id)
+    if before is None:
+        raise HTTPException(404, "Nie ma takiej sprawy.")
+    updated = store.update_case(
+        case_id,
+        status=payload.status,
+        note=payload.note,
+        claim_text=payload.claim_text,
+        risk=payload.risk,
+    )
     if updated is None:
         raise HTTPException(404, "Nie ma takiej sprawy.")
+    moderators = request.app.state.moderator_store
+    changes = [
+        ("status", before.status, updated.status),
+        ("claim_text", before.claim_text, updated.claim_text),
+        ("risk", before.risk, updated.risk),
+        ("note", before.note, updated.note),
+    ]
+    for field, old, new in changes:
+        if old != new:
+            moderators.log_action(
+                moderator_id=principal.id,
+                author_email=principal.email,
+                author_name=principal.display_name,
+                action="status_change" if field == "status" else "edit",
+                case_id=case_id,
+                field=field,
+                value_before=str(old),
+                value_after=str(new),
+                detail="zmiana sprawy w panelu",
+            )
     return updated
 
 

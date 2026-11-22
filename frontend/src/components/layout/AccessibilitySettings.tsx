@@ -77,7 +77,7 @@ export function AccessibilitySettings({ placement = "below" }: AccessibilitySett
           role="group"
           aria-label="Ustawienia dostępności"
           className={cx(
-            "absolute z-40 w-[min(22rem,calc(100vw-2.5rem))] border border-line-mid bg-surface p-5 shadow-card",
+            "absolute z-40 w-[min(26rem,calc(100vw-2rem))] border border-line-mid bg-surface p-5 shadow-card",
             placement === "above" ? "bottom-full left-0 mb-2" : "right-0 mt-2",
           )}
         >

@@ -375,11 +375,15 @@ class CaseOut(BaseModel):
     notified_at: datetime | None
     note: str
     check_ids: list[str]
+    comments_count: int = 0
 
 
 class CaseUpdate(BaseModel):
     status: Literal["open", "in_review", "resolved"] | None = None
     note: str | None = Field(default=None, max_length=2000)
+    # Każdy moderator może poprawić treść sprawy i jej wagę.
+    claim_text: str | None = Field(default=None, min_length=1, max_length=20000)
+    risk: Literal["standard", "high"] | None = None
 
 
 class SecurityEventOut(BaseModel):
@@ -443,3 +447,185 @@ class ArchiveOut(BaseModel):
     excerpt: str
     content_hash: str
     legal_basis: str
+
+
+# --- Konta moderatorów, komentarze, audyt i ustawienia modelu ---
+
+ModeratorRole = Literal["moderator", "superuser"]
+
+
+class ModeratorOut(BaseModel):
+    id: int
+    email: str
+    display_name: str
+    role: ModeratorRole
+    is_active: bool
+    created_at: datetime
+    created_by: str | None = None
+    last_login_at: datetime | None = None
+    must_change_password: bool = False
+    notify_discord: bool = False
+    notify_email: bool = False
+    notify_push: bool = False
+    discord_webhook_url: str | None = None
+    comment_notify_threshold: int = 2
+
+
+class ModeratorLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class ModeratorLoginOut(BaseModel):
+    token: str
+    expires_at: datetime
+    moderator: ModeratorOut
+
+
+class ModeratorCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    display_name: str = Field(default="", max_length=120)
+    role: ModeratorRole = "moderator"
+    # Puste pole = hasło startowe wygenerowane przez serwer.
+    password: str | None = Field(default=None, max_length=1024)
+    must_change_password: bool = True
+
+
+class ModeratorCreatedOut(BaseModel):
+    moderator: ModeratorOut
+    generated_password: str | None = None
+
+
+class ModeratorUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=120)
+    role: ModeratorRole | None = None
+    is_active: bool | None = None
+    must_change_password: bool | None = None
+
+
+class ModeratorPasswordResetOut(BaseModel):
+    moderator: ModeratorOut
+    generated_password: str
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=120)
+    notify_discord: bool | None = None
+    notify_email: bool | None = None
+    notify_push: bool | None = None
+    discord_webhook_url: str | None = Field(default=None, max_length=500)
+    comment_notify_threshold: int | None = Field(default=None, ge=1, le=20)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=10, max_length=1024)
+
+
+class CommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class CommentOut(BaseModel):
+    id: int
+    case_id: int | None = None
+    article_id: int | None = None
+    moderator_id: int | None = None
+    author_email: str
+    author_name: str
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+    case_claim_preview: str | None = None
+    article_title: str | None = None
+
+
+class ActionOut(BaseModel):
+    id: int
+    action: str
+    field: str | None = None
+    value_before: str | None = None
+    value_after: str | None = None
+    detail: str | None = None
+    case_id: int | None = None
+    article_id: int | None = None
+    case_claim_preview: str | None = None
+    created_at: datetime
+
+
+class ProfileStats(BaseModel):
+    comments: int = 0
+    status_changes: int = 0
+    edits: int = 0
+    cases_touched: int = 0
+
+
+class ProfileOut(BaseModel):
+    moderator: ModeratorOut
+    stats: ProfileStats
+    comments: list[CommentOut] = []
+    actions: list[ActionOut] = []
+    email_available: bool = False
+    push_available: bool = False
+    discord_available: bool = False
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(min_length=10, max_length=200)
+    auth: str = Field(min_length=5, max_length=80)
+
+
+class PushSubscriptionIn(BaseModel):
+    endpoint: str = Field(min_length=10, max_length=2000)
+    keys: PushKeys
+    user_agent: str | None = Field(default=None, max_length=200)
+
+
+class PushPublicKeyOut(BaseModel):
+    public_key: str
+    configured: bool = False
+
+
+class LlmModelOut(BaseModel):
+    id: str
+    label: str
+    price_input: float | None = None
+    price_output: float | None = None
+
+
+class LlmProviderOut(BaseModel):
+    key: str
+    name: str
+    icon: str | None = None
+    base_url: str
+    requires_key: bool
+    is_local: bool = False
+    note: str = ""
+    models: list[LlmModelOut] = []
+
+
+class LlmSettingsOut(BaseModel):
+    provider: str
+    model: str
+    base_url: str
+    json_mode: str
+    price_input: float | None = None
+    price_output: float | None = None
+    api_key_set: bool = False
+    api_key_source: Literal["panel", "env", "none"] = "none"
+    api_key_hint: str | None = None
+    requires_key: bool = True
+    is_local: bool = False
+    configured: bool = False
+
+
+class LlmSettingsUpdate(BaseModel):
+    provider: str = Field(min_length=1, max_length=32)
+    model: str = Field(min_length=1, max_length=160)
+    base_url: str | None = Field(default=None, max_length=500)
+    api_key: str | None = Field(default=None, max_length=500)
+    price_input: float | None = Field(default=None, ge=0)
+    price_output: float | None = Field(default=None, ge=0)
+    json_mode: Literal["json_object", "json_schema"] | None = None
+    # `true` usuwa klucz zapisany w panelu i wraca do klucza z .env.
+    clear_api_key: bool = False

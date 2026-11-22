@@ -19,7 +19,7 @@
   },
   "welcome": {
     "title": "Sprawdź informację w źródłach",
-    "instruction": "Wklej <1>wiadomość</1>, <3>link</3> albo <5>zrzut ekranu</5>. Zobaczysz, co mówią o tym źródła i czego nie udało się ustalić.",
+    "instruction": "Wklej <1>wiadomość</1>, <3>link</3> albo <5>zdjęcie</5>. Zobaczysz, co mówią o tym źródła i czego nie udało się ustalić.",
     "privacy": "Przed sprawdzeniem ukrywamy dane osobowe.",
     "quotes": "Pokazujemy dosłowne cytaty i linki do źródeł.",
     "judgment": "Ocena należy do Ciebie – system tylko porządkuje dowody."
@@ -27,7 +27,7 @@
   "composer": {
     "placeholder": "Wklej wiadomość, wpis albo link do sprawdzenia…",
     "submit": "Sprawdź",
-    "screenshot": "Zrzut ekranu",
+    "screenshot": "Zdjęcie",
     "otherImage": "Inny obraz",
     "removeImage": "Usuń obraz",
     "contentLabel": "Treść do sprawdzenia",
@@ -37,10 +37,15 @@
     "imageWillCheck": "Sprawdzę tekst widoczny na obrazie.",
     "waitSeconds": "Możesz wysłać kolejne sprawdzenie za {{seconds}} {{unit}}.",
     "errorTooLong": "Tekst jest za długi. Skróć go i spróbuj ponownie.",
-    "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zrzut ekranu.",
-    "voice": "Głos",
-    "voiceStop": "Zatrzymaj",
-    "voiceError": "Nie udało się nagrać głosu. Sprawdź uprawnienia mikrofonu."
+    "errorEmpty": "Wpisz lub wklej treść, którą chcesz sprawdzić. Możesz też dodać zdjęcie.",
+    "audio": "Plik audio",
+    "voiceMessage": "Nagranie głosowe",
+    "audioOther": "Inny plik audio",
+    "audioLoadingModel": "Ładowanie modelu: {{progress}}%",
+    "audioTranscribing": "Transkrypcja: {{progress}}%",
+    "audioWaiting": "Poczekaj na zakończenie transkrypcji przed wysłaniem.",
+    "audioSuccess": "Transkrypcja zakończona pomyślnie",
+    "audioError": "Błąd transkrypcji"
   },
   "chat": {
     "searching": "Szukam w źródłach…",

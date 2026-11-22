@@ -15,7 +15,7 @@ import { InputRecap } from "./InputRecap";
 import { RelatedMaterials } from "./RelatedMaterials";
 import { StatusPanel } from "./StatusPanel";
 import { TechnicalDetails } from "./TechnicalDetails";
-import { VerdictChip } from "./VerdictBadge";
+import { VerdictChip, verdictStripe } from "./VerdictBadge";
 import { WarningCards } from "./Warnings";
 
 const ANCHORS = {
@@ -62,11 +62,13 @@ function TocLink({
   current = false,
   nested = false,
   children,
+  activeBorderClass = "border-accent",
 }: {
   href: string;
   current?: boolean;
   nested?: boolean;
   children: ReactNode;
+  activeBorderClass?: string;
 }) {
   return (
     <a
@@ -75,7 +77,7 @@ function TocLink({
       className={cx(
         "flex min-h-11 items-center gap-2 border-l-[3px] py-1.5 pr-2 text-[0.9375rem] hover:text-accent hover:underline",
         nested ? "pl-7 text-sm" : "pl-4",
-        current ? "border-accent font-bold text-accent" : "border-transparent text-ink",
+        current ? cx(activeBorderClass, "font-bold text-ink") : "border-transparent text-ink",
       )}
     >
       {children}
@@ -105,7 +107,11 @@ function TableOfContents({ result, active }: { result: CheckResponse; active: st
           const isActive = active === anchor;
           return (
             <li key={anchor}>
-              <TocLink href={`#${ids.claim}`} current={isActive}>
+              <TocLink
+                href={`#${ids.claim}`}
+                current={isActive}
+                activeBorderClass={verdictStripe(claim.verdict)}
+              >
                 <span className="min-w-0 flex-1">
                   {claims.length > 1 ? `Twierdzenie ${index + 1}` : "Twierdzenie"}
                 </span>
@@ -307,18 +313,18 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-col gap-8 xl:order-2 2xl:order-3">
-        <nav aria-labelledby="dzialania-tytul" className="flex flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-8 xl:order-2 2xl:order-3 xl:sticky xl:top-6 xl:self-start">
+        <nav aria-labelledby="dzialania-tytul" className="flex flex-col gap-4">
           <h2 id="dzialania-tytul" className="eyebrow mb-1.5">
             Działania
           </h2>
+          <SideLink href="/" icon={ArrowRight} highlight>
+            Powrót do strony głównej
+          </SideLink>
           <CopyLinkButton />
           <ArchiveButton checkId={result.id} />
           <SideLink href={`#${ANCHORS.input}`} icon={FileText}>
             Pokaż sprawdzaną treść
-          </SideLink>
-          <SideLink href="/" icon={ArrowRight} highlight>
-            Sprawdź coś innego
           </SideLink>
         </nav>
         <WarningCards

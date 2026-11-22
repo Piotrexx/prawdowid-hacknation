@@ -22,7 +22,16 @@ _ATTEMPTS = 2
 class OpenAICompatProvider:
     name = "openai_compatible"
 
-    def __init__(self, model: str, base_url: str, api_key: str | None, timeout_s: float, json_mode: str):
+    def __init__(
+        self,
+        model: str,
+        base_url: str,
+        api_key: str | None,
+        timeout_s: float,
+        json_mode: str,
+        name: str = "openai_compatible",
+    ):
+        self.name = name
         self.model = model
         self._json_mode = json_mode
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}

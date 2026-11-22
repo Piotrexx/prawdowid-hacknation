@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { Download, HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { downloadExport } from "@/lib/api";
@@ -51,6 +51,18 @@ export function ExportButtons({ access }: { access: AdminAccess }) {
       <p role="status" className="mt-1 min-h-6 text-muted">
         {message}
       </p>
+      <details className="mt-1 rounded-lg border border-line bg-subtle px-3 py-2">
+        <summary className="flex cursor-pointer items-center gap-2 font-medium">
+          <HelpCircle aria-hidden="true" className="size-4" />
+          Do czego służy eksport STIX?
+        </summary>
+        <p className="mt-2 text-sm text-muted">
+          STIX 2.1 to ustandaryzowany format wymiany informacji o zagrożeniach i dezinformacji.
+          Plik zawiera sprawdzenia, werdykty, cytaty źródłowe oraz mapowanie na taktyki DISARM,
+          więc można go wczytać do narzędzi analitycznych (np. MISP, OpenCTI) albo przekazać
+          innemu zespołowi. Eksport STIX jest jedną z punktowanych funkcji projektu.
+        </p>
+      </details>
     </div>
   );
 }

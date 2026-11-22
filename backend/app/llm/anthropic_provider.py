@@ -19,10 +19,18 @@ _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 class AnthropicProvider:
     name = "anthropic"
 
-    def __init__(self, model: str, api_key: str | None, timeout_s: float):
+    def __init__(
+        self,
+        model: str,
+        api_key: str | None,
+        timeout_s: float,
+        base_url: str | None = None,
+    ):
         self.model = model
         # Bez jawnego klucza SDK samo szuka poświadczeń (zmienne środowiskowe lub profil `ant`).
         kwargs = {"api_key": api_key} if api_key else {}
+        if base_url:
+            kwargs["base_url"] = base_url
         self._client = anthropic.AsyncAnthropic(timeout=timeout_s, max_retries=1, **kwargs)
 
     async def structured(

@@ -6,14 +6,16 @@ from datetime import UTC, datetime, timedelta
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, checks
+from app.api import admin, checks, moderator
 from app.config import Settings, get_settings
 from app.core.cases import CaseLoop
 from app.core.image_check import ImageCheckService
 from app.core.pipeline import VerificationService
 from app.ingest.registry import source_names
+from app.llm import runtime
 from app.llm.base import LLMProvider
 from app.llm.factory import build_provider
+from app.notifications import NotificationService
 from app.retrieval.claims import ClaimRetriever
 from app.retrieval.context import ContextIndex
 from app.retrieval.corpus import CorpusStore
@@ -21,6 +23,7 @@ from app.retrieval.embeddings import Embedder, build_embedder
 from app.security.ratelimit import RateLimiter
 from app.store.db import Store
 from app.store.models import EMBEDDING_DIM
+from app.store.moderators import ModeratorStore
 
 log = logging.getLogger("prawdowid")
 _PURGE_INTERVAL_S = 3600
@@ -81,6 +84,54 @@ def build_state(
     app.state.ingest_running = False
     app.state.last_ingest = None
 
+    # --- konta moderatorów i powiadomienia ---
+    moderators = ModeratorStore(store.engine)
+    moderators.purge_expired_sessions()
+    app.state.moderator_store = moderators
+    app.state.notifications = NotificationService(settings, store, moderators)
+    app.state.llm_config = runtime.load_config(store, settings)
+    stored = runtime.apply_stored_config(app, store, service, settings)
+    if stored is not None:
+        log.info(
+            "model z panelu: %s/%s", stored.provider, stored.model
+        )
+
+    if settings.moderator_bootstrap_email:
+        bootstrap_password = (
+            settings.moderator_bootstrap_password.get_secret_value()
+            if settings.moderator_bootstrap_password
+            else None
+        )
+        try:
+            account, created, generated = moderators.bootstrap_superuser(
+                settings.moderator_bootstrap_email,
+                bootstrap_password,
+                settings.moderator_bootstrap_name,
+            )
+        except Exception:
+            log.warning("nie udało się utworzyć konta startowego moderatora", exc_info=True)
+        else:
+            if created:
+                log.warning(
+                    "utworzono konto superużytkownika %s. Hasło startowe: %s "
+                    "(zmień je po pierwszym logowaniu)",
+                    account.email,
+                    generated or "(z .env)",
+                )
+                # Lokalny wygodny start: link loguje od razu, bez wpisywania hasła.
+                if settings.public_base_url.startswith(("http://localhost", "http://127.0.0.1")):
+                    try:
+                        link = moderators.login_link(
+                            account.id,
+                            base_url=settings.public_base_url,
+                            hours=settings.moderator_session_hours,
+                            user_agent="bootstrap",
+                        )
+                    except Exception:
+                        log.warning("nie udało się utworzyć linku startowego", exc_info=True)
+                    else:
+                        log.warning("panel superużytkownika: %s", link)
+
 
 async def _purge_loop(app: FastAPI) -> None:
     while True:
@@ -132,7 +183,7 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
         # Lista origins jest jawna (nigdy "*"), więc credentials są dozwolone.
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-Admin-Token"],
+        allow_headers=["Content-Type", "X-Admin-Token", "Authorization"],
         expose_headers=["Retry-After", "Content-Disposition"],
     )
 
@@ -144,7 +195,7 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    for router in (checks.router, admin.router):
+    for router in (checks.router, admin.router, moderator.auth_router, moderator.router):
         app.include_router(router, prefix="/api/v1")
     return app
 

@@ -122,13 +122,18 @@ class Submission:
 
 
 class _Stop(Exception):
-    """Kontrolowane zakończenie bez werdyktu: awaria, prośba o doprecyzowanie lub treść poza zakresem."""
+    """Kontrolowane zakończenie bez werdyktu: awaria, prośba o doprecyzowanie lub treść poza zakresem.
 
-    def __init__(self, status: CheckStatus, message: str, error_code: str | None = None):
+    save=False oznacza, że nie zapisujemy odpowiedzi do bazy (np. przy odrzuceniu
+    zapytania przed analizą – nie zaśmiecamy bazy bezużytecznymi wpisami).
+    """
+
+    def __init__(self, status: CheckStatus, message: str, error_code: str | None = None, *, save: bool = True):
         super().__init__(message)
         self.status = status
         self.message = message
         self.error_code = error_code
+        self.save = save
 
 
 class _Summary(BaseModel):
@@ -202,6 +207,15 @@ class VerificationService:
         self._retrieval_degraded = retrieval_degraded
         self._bielik_provider = bielik_provider or self._build_bielik()
         self._image_checks = image_checks
+        # Cennik wybrany w panelu ma pierwszeństwo przed wartościami z `.env`.
+        self._price_override: tuple[float | None, float | None] | None = None
+
+    def set_provider(self, provider: LLMProvider | None) -> None:
+        """Podmiana modelu w locie – panel nie wymaga restartu usługi."""
+        self._provider = provider
+
+    def set_price_override(self, prices: tuple[float | None, float | None] | None) -> None:
+        self._price_override = prices
 
     def _build_bielik(self) -> LLMProvider | None:
         """Lokalny model do ekstrakcji słów kluczowych (Ollama/vLLM, API zgodne z OpenAI)."""
@@ -225,10 +239,12 @@ class VerificationService:
     async def check(self, submission: Submission) -> CheckResponse:
         run = _Run(channel=submission.channel)
         cache_key = None
+        _should_save = True
         try:
             response, cache_key = await self._verify(submission, run)
         except _Stop as stop:
             response = self._response(run, stop.status, status_message=stop.message, error_code=stop.error_code)
+            _should_save = stop.save
             if (stop.error_code or "").startswith("llm_") and run.material:
                 response.related_materials = await self._related_materials(run.material)
         except Exception:
@@ -239,7 +255,8 @@ class VerificationService:
                 status_message=f"Wystąpił nieoczekiwany błąd. {_NOT_A_VERDICT} Spróbuj ponownie.",
                 error_code="internal_error",
             )
-        self._store.save_check(response, submission.session_id, cache_key)
+        if _should_save:
+            self._store.save_check(response, submission.session_id, cache_key)
         for kind, origin, detail in run.events:
             self._store.add_event(kind, origin, detail, response.id)
         log.info(
@@ -526,7 +543,40 @@ class VerificationService:
         run.usage.add(usage)
         return output
 
+    async def _bielik_precheck(self, run: _Run) -> bool | None:
+        """Szybkie sprawdzenie Bielikiem czy materiał zawiera twierdzenia do weryfikacji.
+
+        Zwraca:
+            True  – znaleziono słowa kluczowe, kontynuuj analizę
+            False – Bielik działał, ale nie znalazł twierdzeń – odrzuć bez zapisu
+            None  – Bielik niedostępny, kontynuuj (DeepSeek go zastąpi)
+        """
+        if self._bielik_provider is None:
+            return None
+        prompt = BIELIK_KEYWORD_PROMPT.format(title="Brak tytułu", text=run.material[:4000])
+        system = "Jesteś ekspertem ds. analizy mediów i wykrywania dezinformacji. Odpowiadasz wyłącznie obiektem JSON."
+        try:
+            extraction, usage = await self._bielik_provider.structured(
+                system=system, user=prompt, schema=KeywordExtraction, effort="low"
+            )
+        except LLMError as exc:
+            log.warning("bielik precheck niedostępny: %s", exc.code)
+            return None
+        run.bielik_usage.add(usage)
+        keywords = [k.strip() for k in extraction.keywords if k.strip()]
+        return bool(keywords)
+
     async def _assess_material(self, run: _Run) -> tuple[list[ClaimResult], list[str]]:
+        # Wstępny filtr: lokalny Bielik sprawdza, czy materiał zawiera twierdzenia.
+        # Jeśli Bielik działa i nie znajdzie żadnych – odrzucamy bez zapisu do bazy.
+        bielik_result = await self._bielik_precheck(run)
+        if bielik_result is False:
+            raise _Stop(
+                CheckStatus.OUT_OF_SCOPE,
+                "W tej treści nie ma informacji, którą można sprawdzić w źródłach.",
+                save=False,
+            )
+
         today = date.today()
         started = time.perf_counter()
         system, user = extract_prompts(run.material, today, self._settings.max_claims)
@@ -803,7 +853,10 @@ class VerificationService:
         cached: bool = False,
     ) -> CheckResponse:
         provider = self._provider
-        override = (self._settings.llm_price_input_per_mtok, self._settings.llm_price_output_per_mtok)
+        override = self._price_override or (
+            self._settings.llm_price_input_per_mtok,
+            self._settings.llm_price_output_per_mtok,
+        )
         return CheckResponse(
             id=run.check_id,
             created_at=datetime.now(UTC),

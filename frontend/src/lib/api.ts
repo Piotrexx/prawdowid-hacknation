@@ -6,9 +6,20 @@ import type {
   CheckListItem,
   CheckRequest,
   CheckResponse,
+  Comment,
   ConsentResponse,
   HealthResponse,
+  LlmProvider,
+  LlmSettings,
+  LlmSettingsUpdate,
   MetricsResponse,
+  Moderator,
+  ModeratorCreated,
+  ModeratorLoginResponse,
+  ModeratorPasswordReset,
+  Profile,
+  ProfileUpdate,
+  PushPublicKey,
   SecurityEventOut,
 } from "./types";
 
@@ -268,7 +279,206 @@ export async function hasConsent(
 }
 
 function adminHeaders(token: string): HeadersInit {
-  return { "X-Admin-Token": token };
+  // `X-Admin-Token` zachowuje zgodność z tokenem technicznym; `Authorization`
+  // obsługuje sesję konta moderatora. Wysłanie obu pozwala używać obu trybów.
+  return { Authorization: `Bearer ${token}`, "X-Admin-Token": token };
+}
+
+// Token sesji moderatora. Wysyłamy go w nagłówku Authorization; przeglądarka
+// dostaje też ciasteczko HttpOnly, więc panel działa również po odświeżeniu.
+function authHeaders(token: string): HeadersInit {
+  return adminHeaders(token);
+}
+
+export function loginModerator(
+  email: string,
+  password: string,
+): Promise<ModeratorLoginResponse> {
+  return getJson<ModeratorLoginResponse>("/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function logoutModerator(token: string): Promise<{ logged_out: boolean }> {
+  return getJson("/admin/auth/logout", { method: "POST", headers: authHeaders(token) });
+}
+
+export function getProfile(token: string, signal?: AbortSignal): Promise<Profile> {
+  return getJson("/admin/auth/me", { headers: authHeaders(token), signal });
+}
+
+export function updateProfile(token: string, update: ProfileUpdate): Promise<Profile> {
+  return getJson("/admin/auth/me", {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+}
+
+export function changePassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ changed: boolean; logged_out: boolean }> {
+  return getJson("/admin/auth/me/password", {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
+export function getCaseComments(
+  token: string,
+  caseId: number,
+  signal?: AbortSignal,
+): Promise<Comment[]> {
+  return getJson(`/admin/cases/${caseId}/comments`, {
+    headers: authHeaders(token),
+    signal,
+  });
+}
+
+export function addCaseComment(
+  token: string,
+  caseId: number,
+  body: string,
+): Promise<Comment> {
+  return getJson(`/admin/cases/${caseId}/comments`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function getArticleComments(
+  token: string,
+  articleId: number,
+  signal?: AbortSignal,
+): Promise<Comment[]> {
+  return getJson(`/admin/articles/${articleId}/comments`, {
+    headers: authHeaders(token),
+    signal,
+  });
+}
+
+export function addArticleComment(
+  token: string,
+  articleId: number,
+  body: string,
+): Promise<Comment> {
+  return getJson(`/admin/articles/${articleId}/comments`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function deleteComment(token: string, commentId: number): Promise<{ deleted: boolean }> {
+  return getJson(`/admin/comments/${commentId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+}
+
+export function listModerators(token: string, signal?: AbortSignal): Promise<Moderator[]> {
+  return getJson("/admin/moderators", { headers: authHeaders(token), signal });
+}
+
+export function createModerator(
+  token: string,
+  payload: {
+    email: string;
+    display_name: string;
+    role: "moderator" | "superuser";
+    password?: string;
+    must_change_password?: boolean;
+  },
+): Promise<ModeratorCreated> {
+  return getJson("/admin/moderators", {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateModerator(
+  token: string,
+  id: number,
+  payload: {
+    display_name?: string;
+    role?: "moderator" | "superuser";
+    is_active?: boolean;
+    must_change_password?: boolean;
+  },
+): Promise<Moderator> {
+  return getJson(`/admin/moderators/${id}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resetModeratorPassword(
+  token: string,
+  id: number,
+): Promise<ModeratorPasswordReset> {
+  return getJson(`/admin/moderators/${id}/reset-password`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export function getLlmProviders(
+  token: string,
+  signal?: AbortSignal,
+): Promise<LlmProvider[]> {
+  return getJson("/admin/llm/providers", { headers: authHeaders(token), signal });
+}
+
+export function getLlmSettings(token: string, signal?: AbortSignal): Promise<LlmSettings> {
+  return getJson("/admin/llm/settings", { headers: authHeaders(token), signal });
+}
+
+export function saveLlmSettings(
+  token: string,
+  settings: LlmSettingsUpdate,
+): Promise<LlmSettings> {
+  return getJson("/admin/llm/settings", {
+    method: "PUT",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+}
+
+export function getPushPublicKey(token: string): Promise<PushPublicKey> {
+  return getJson("/admin/auth/me/push-public-key", { headers: authHeaders(token) });
+}
+
+export function savePushSubscription(
+  token: string,
+  subscription: PushSubscriptionJSON,
+): Promise<void> {
+  return send("/admin/auth/me/push-subscription", {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint: subscription.endpoint,
+      keys: subscription.keys,
+      user_agent: navigator.userAgent,
+    }),
+  }).then(() => undefined);
+}
+
+export function deletePushSubscription(token: string, endpoint: string): Promise<void> {
+  return send(
+    `/admin/auth/me/push-subscription?endpoint=${encodeURIComponent(endpoint)}`,
+    { method: "DELETE", headers: authHeaders(token) },
+  ).then(() => undefined);
 }
 
 export function getMetrics(token: string, signal?: AbortSignal): Promise<MetricsResponse> {

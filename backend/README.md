@@ -73,15 +73,40 @@ Publiczne:
 Wszystkie zapisy sprawdzeń i archiwum wymagają aktywnej zgody na aktualną wersję
 polityki prywatności (ciasteczko + wpis w bazie). Brak zgody to `428`, nie werdykt.
 
-Panel moderatora (`X-Admin-Token`):
+Panel moderatora (konto e-mail/hasło albo zgodnościowo `X-Admin-Token`):
 
+- `POST /api/v1/admin/auth/login`, `POST /api/v1/admin/auth/logout`
+- `GET/PATCH /api/v1/admin/auth/me` — konto, ustawienia powiadomień, historia opinii i zmian
+- `POST /api/v1/admin/auth/me/password`
+- `GET /api/v1/admin/auth/me/push-public-key`, `POST/DELETE /api/v1/admin/auth/me/push-subscription`
+- `GET/POST /api/v1/admin/moderators`, `PATCH /api/v1/admin/moderators/{id}`,
+  `POST /api/v1/admin/moderators/{id}/reset-password` (superużytkownik)
 - `GET /api/v1/admin/metrics`
 - `GET /api/v1/admin/checks`, `GET /api/v1/admin/events`
-- `GET/PATCH /api/v1/admin/cases`
+- `GET/PATCH /api/v1/admin/cases` — każdy moderator może poprawić treść, wagę i status
+- `GET/POST /api/v1/admin/cases/{id}/comments`, `GET/POST /api/v1/admin/articles/{id}/comments`,
+  `DELETE /api/v1/admin/comments/{id}`
+- `GET/PUT /api/v1/admin/llm/providers`, `GET/PUT /api/v1/admin/llm/settings`
 - `GET /api/v1/admin/export?format=csv|json`
 - `GET /api/v1/admin/export/stix`
 - `POST /api/v1/admin/corpus/ingest`, `GET /api/v1/admin/corpus/stats`
 - `GET/DELETE /api/v1/admin/archive`
+
+Pierwsze konto superużytkownika powstaje przy starcie z `MODERATOR_BOOTSTRAP_EMAIL`
+(bez hasła zostanie ono wygenerowane i wypisane w logu) albo przez:
+
+```bash
+uv run python scripts/create_superuser.py --email admin@prawdowid.pl
+```
+
+Skrypt wypisuje jednorazowy link `…/moderator#token=…`, który od razu loguje do panelu,
+i domyślnie otwiera go w przeglądarce. Przy lokalnym starcie taki link pojawia się też
+w logu, gdy konto zostało właśnie utworzone z `.env`. Flaga `--no-open` zostawia tylko
+link, a `--no-link` pomija link.
+
+Powiadomienia o komentarzach są opcjonalne i włączane w profilu każdego konta:
+Discord (webhook wspólny lub prywatny), e-mail (SMTP) i Web Push (VAPID).
+Wysyłamy je, gdy sprawa albo artykuł osiągnie ustawiony próg opinii (domyślnie 2).
 
 Nie ma publicznego endpointu `/sources`; katalog źródeł jest w kodzie i służy do
 audytu oraz metadanych cytowań.

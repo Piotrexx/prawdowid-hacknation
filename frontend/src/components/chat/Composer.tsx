@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowUp, ImagePlus, Mic, MicOff, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { ArrowUp, FileAudio, ImagePlus, X } from "lucide-react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "@/lib/cx";
 import { formatInteger, plural } from "@/lib/format";
@@ -14,6 +14,7 @@ import {
 export const TEXT_LIMIT = 20_000;
 const COUNTER_FROM = 18_000;
 const MAX_HEIGHT = 240;
+const AUDIO_ACCEPT = "audio/*,audio/mp3,audio/mpeg,audio/wav,audio/webm,audio/ogg,audio/m4a,audio/aac";
 
 interface ComposerProps {
   text: string;
@@ -22,78 +23,13 @@ interface ComposerProps {
   imageError: string | null;
   onPickImage: (file: File) => void;
   onClearImage: () => void;
-  onVoice: (file: File) => void;
+  /** Wysyła plik audio do sprawdzenia po stronie serwera. */
+  onAudio: (file: File) => void;
   onSubmit: () => void;
   busy: boolean;
   error: string | null;
   waitSeconds: number;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
-}
-
-function useRecorder(onRecording: (file: File) => void) {
-  const [recording, setRecording] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  const supported =
-    typeof window !== "undefined" &&
-    typeof navigator !== "undefined" &&
-    !!navigator.mediaDevices?.getUserMedia &&
-    typeof MediaRecorder !== "undefined";
-
-  useEffect(() => {
-    return () => {
-      recorderRef.current?.stop();
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-    };
-  }, []);
-
-  function stopTracks() {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-  }
-
-  async function toggle() {
-    if (recording) {
-      recorderRef.current?.stop();
-      return;
-    }
-    setVoiceError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
-      chunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        chunksRef.current = [];
-        setRecording(false);
-        stopTracks();
-        if (blob.size > 0) {
-          onRecording(new File([blob], "nagranie.webm", { type: blob.type }));
-        }
-      };
-      recorder.onerror = () => {
-        setVoiceError("Nie udało się nagrać głosu. Sprawdź uprawnienia mikrofonu.");
-        setRecording(false);
-        stopTracks();
-      };
-      recorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
-    } catch {
-      setVoiceError("Nie udało się uruchomić mikrofonu. Sprawdź uprawnienia przeglądarki.");
-      setRecording(false);
-      stopTracks();
-    }
-  }
-
-  return { supported, recording, voiceError, toggle };
 }
 
 export function Composer({
@@ -103,7 +39,7 @@ export function Composer({
   imageError,
   onPickImage,
   onClearImage,
-  onVoice,
+  onAudio,
   onSubmit,
   busy,
   error,
@@ -111,12 +47,12 @@ export function Composer({
   textareaRef,
 }: ComposerProps) {
   const { t } = useTranslation();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const imageFileRef = useRef<HTMLInputElement>(null);
+  const audioFileRef = useRef<HTMLInputElement>(null);
+
   const overLimit = text.length > TEXT_LIMIT;
   const blocked = busy || waitSeconds > 0;
-  const speech = useRecorder(onVoice);
 
-  // Grows with the text up to MAX_HEIGHT, then scrolls.
   useLayoutEffect(() => {
     const field = textareaRef.current;
     if (!field) return;
@@ -130,157 +66,174 @@ export function Composer({
     error && "czat-blad",
   );
 
+  function handleSubmitAttempt() {
+    if (!blocked) onSubmit();
+  }
+
   return (
-    <form
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!blocked) onSubmit();
-      }}
-      className="sticky bottom-0 bg-gradient-to-t from-surface from-70% to-transparent pt-6 pb-4"
-    >
-      <div
-        className={cx(
-          "border bg-surface shadow-card focus-within:border-accent",
-          error || overLimit ? "border-bad-fg" : "border-line-strong",
-        )}
+    <>
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmitAttempt();
+        }}
+        className="sticky bottom-0 bg-gradient-to-t from-surface from-70% to-transparent pt-6 pb-4"
       >
-        {attachment ? (
-          <div className="flex items-center gap-3 px-4 pt-3">
-            {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-            <img
-              src={attachment.previewUrl}
-              alt=""
-              className="size-14 shrink-0 border border-line object-cover"
-            />
-            <span className="min-w-0 flex-1 truncate text-sm">
-              {attachment.file.name}
-              <span className="block text-xs text-muted">
-                {text.trim()
-                  ? t("composer.imageWillSend")
-                  : t("composer.imageWillCheck")}
+        <div
+          className={cx(
+            "border bg-surface shadow-card focus-within:border-accent",
+            error || overLimit ? "border-bad-fg" : "border-line-strong",
+          )}
+        >
+          {attachment ? (
+            <div className="flex items-center gap-3 px-4 pt-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+              <img
+                src={attachment.previewUrl}
+                alt=""
+                className="size-14 shrink-0 border border-line object-cover"
+              />
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {attachment.file.name}
+                <span className="block text-xs text-muted">
+                  {text.trim()
+                    ? t("composer.imageWillSend")
+                    : t("composer.imageWillCheck")}
+                </span>
               </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                onClearImage();
-                textareaRef.current?.focus();
-              }}
-              className="grid size-11 shrink-0 place-items-center text-muted hover:bg-subtle hover:text-ink"
-            >
-              <X aria-hidden="true" className="size-5" />
-              <span className="sr-only">{t("composer.removeImage")}</span>
-            </button>
-          </div>
-        ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  onClearImage();
+                  textareaRef.current?.focus();
+                }}
+                className="grid size-11 shrink-0 place-items-center text-muted hover:bg-subtle hover:text-ink"
+              >
+                <X aria-hidden="true" className="size-5" />
+                <span className="sr-only">{t("composer.removeImage")}</span>
+              </button>
+            </div>
+          ) : null}
 
-        <label htmlFor="pole-tresci" className="sr-only">
-          {t("composer.contentLabel")}
-        </label>
-        <textarea
-          id="pole-tresci"
-          ref={textareaRef}
-          value={text}
-          rows={1}
-          placeholder={t("composer.placeholder")}
-          aria-describedby={describedBy}
-          aria-invalid={error || overLimit ? true : undefined}
-          onChange={(event) => onTextChange(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter sends, Shift+Enter starts a new line; touch keyboards keep Enter for new lines.
-            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-            if (window.matchMedia("(pointer: coarse)").matches) return;
-            event.preventDefault();
-            if (!blocked) onSubmit();
-          }}
-          onPaste={(event) => {
-            if (event.clipboardData.getData("text/plain")) return;
-            const file = imageFromTransfer(event.clipboardData);
-            if (!file) return;
-            event.preventDefault();
-            onPickImage(file);
-          }}
-          className="block max-h-60 min-h-14 w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base leading-relaxed placeholder:text-muted focus:outline-none"
-        />
-
-        <div className="flex items-center gap-2 px-2 pb-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept={IMAGE_ACCEPT}
-            tabIndex={-1}
-            aria-hidden="true"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onPickImage(file);
-              event.target.value = "";
+          <label htmlFor="pole-tresci" className="sr-only">
+            {t("composer.contentLabel")}
+          </label>
+          <textarea
+            id="pole-tresci"
+            ref={textareaRef}
+            value={text}
+            rows={1}
+            placeholder={t("composer.placeholder")}
+            aria-describedby={describedBy}
+            aria-invalid={error || overLimit ? true : undefined}
+            onChange={(event) => onTextChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              if (window.matchMedia("(pointer: coarse)").matches) return;
+              event.preventDefault();
+              handleSubmitAttempt();
             }}
+            onPaste={(event) => {
+              if (event.clipboardData.getData("text/plain")) return;
+              const file = imageFromTransfer(event.clipboardData);
+              if (!file) return;
+              event.preventDefault();
+              onPickImage(file);
+            }}
+            className="block max-h-60 min-h-14 w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base leading-relaxed placeholder:text-muted focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold text-link hover:bg-subtle"
-          >
-            <ImagePlus aria-hidden="true" className="size-5" />
-            {attachment ? t("composer.otherImage") : t("composer.screenshot")}
-          </button>
-          {speech.supported ? (
+
+          <div className="flex items-center gap-2 px-2 pb-2">
+            {/* Hidden image file input */}
+            <input
+              ref={imageFileRef}
+              type="file"
+              accept={IMAGE_ACCEPT}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onPickImage(file);
+                event.target.value = "";
+              }}
+            />
+            {/* Hidden audio file input */}
+            <input
+              ref={audioFileRef}
+              type="file"
+              accept={AUDIO_ACCEPT}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onAudio(file);
+                event.target.value = "";
+              }}
+            />
+
             <button
               type="button"
-              onClick={speech.toggle}
-              aria-pressed={speech.recording}
+              onClick={() => imageFileRef.current?.click()}
+              className="inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold text-link hover:bg-subtle"
+            >
+              <ImagePlus aria-hidden="true" className="size-5" />
+              {attachment ? t("composer.otherImage") : t("composer.screenshot")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => audioFileRef.current?.click()}
+              disabled={busy || waitSeconds > 0}
               className={cx(
                 "inline-flex min-h-11 items-center gap-2 px-2.5 text-sm font-semibold hover:bg-subtle",
-                speech.recording ? "text-bad-fg" : "text-link",
+                busy || waitSeconds > 0 ? "cursor-not-allowed text-muted" : "text-link",
               )}
             >
-              {speech.recording ? (
-                <MicOff aria-hidden="true" className="size-5" />
-              ) : (
-                <Mic aria-hidden="true" className="size-5" />
-              )}
-              {speech.recording ? t("composer.voiceStop") : t("composer.voice")}
+              <FileAudio aria-hidden="true" className="size-5" />
+              {t("composer.audio")}
             </button>
-          ) : null}
-          <span className="flex-1" />
-          {text.length >= COUNTER_FROM ? (
-            <span
-              id="czat-licznik"
-              className={cx("text-xs", overLimit ? "font-bold text-bad-fg" : "text-muted")}
-            >
-              {formatInteger(text.length)} / {formatInteger(TEXT_LIMIT)}
-            </span>
-          ) : null}
-          <button
-            type="submit"
-            disabled={blocked}
-            className="grid size-11 place-items-center bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <ArrowUp aria-hidden="true" className="size-5.5" strokeWidth={2.5} />
-            <span className="sr-only">{t("composer.submit")}</span>
-          </button>
-        </div>
-      </div>
 
-      {error || imageError || speech.voiceError ? (
-        <p id="czat-blad" role="alert" className="mt-2 text-sm font-semibold text-bad-fg">
-          {error || imageError || speech.voiceError}
+            <span className="flex-1" />
+            {text.length >= COUNTER_FROM ? (
+              <span
+                id="czat-licznik"
+                className={cx("text-xs", overLimit ? "font-bold text-bad-fg" : "text-muted")}
+              >
+                {formatInteger(text.length)} / {formatInteger(TEXT_LIMIT)}
+              </span>
+            ) : null}
+            <button
+              type="submit"
+              disabled={blocked}
+              className="grid size-11 place-items-center bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ArrowUp aria-hidden="true" className="size-5.5" strokeWidth={2.5} />
+              <span className="sr-only">{t("composer.submit")}</span>
+            </button>
+          </div>
+        </div>
+
+        {error || imageError ? (
+          <p id="czat-blad" role="alert" className="mt-2 text-sm font-semibold text-bad-fg">
+            {error || imageError}
+          </p>
+        ) : null}
+        {waitSeconds > 0 ? (
+          <p className="mt-2 text-sm text-muted">
+            {t("composer.waitSeconds", {
+              seconds: waitSeconds,
+              unit: plural(waitSeconds, "sekundę", "sekundy", "sekund"),
+            })}
+          </p>
+        ) : null}
+        <p id="czat-pomoc" className="mt-2 text-center text-xs text-muted">
+          {t("composer.help")}
+          <span className="hidden sm:inline">{t("composer.helpDesktop")}</span>
         </p>
-      ) : null}
-      {waitSeconds > 0 ? (
-        <p className="mt-2 text-sm text-muted">
-          {t("composer.waitSeconds", {
-            seconds: waitSeconds,
-            unit: plural(waitSeconds, "sekundę", "sekundy", "sekund"),
-          })}
-        </p>
-      ) : null}
-      <p id="czat-pomoc" className="mt-2 text-center text-xs text-muted">
-        {t("composer.help")}
-        <span className="hidden sm:inline">{t("composer.helpDesktop")}</span>
-      </p>
-    </form>
+      </form>
+    </>
   );
 }

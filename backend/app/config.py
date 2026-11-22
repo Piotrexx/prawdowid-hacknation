@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     llm_extract_effort: str = "low"
     llm_assess_effort: str = "medium"
     anthropic_api_key: SecretStr | None = None
+    # Klucze pozostałych dostawców wybieranych w panelu (model można zmienić bez restartu).
+    openai_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
+    openrouter_api_key: SecretStr | None = None
 
     # --- Bielik: lokalny polski model do ekstrakcji słów kluczowych ---
     # Ollama/vLLM, API zgodne z OpenAI. Bielik 4.5B v3.0 Instruct jest w bibliotece Ollamy
@@ -76,6 +80,30 @@ class Settings(BaseSettings):
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
     whisper_cache_dir: str | None = None
+
+    # --- konta moderatorów ---
+    # Pierwsze konto superużytkownika powstaje przy starcie z tych wartości.
+    # Bez hasła hasło startowe zostanie wygenerowane i jednorazowo zapisane w logu.
+    moderator_bootstrap_email: str | None = None
+    moderator_bootstrap_password: SecretStr | None = None
+    moderator_bootstrap_name: str = "Superużytkownik"
+    moderator_session_hours: int = 12
+
+    # --- powiadomienia (Discord / e-mail / Web Push) ---
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    # Adres panelu używany w treści powiadomień i w powiadomieniach push.
+    public_base_url: str = "http://localhost:3000"
+    # Klucze VAPID do Web Push. Bez nich para kluczy powstaje przy pierwszym starcie
+    # i jest zapisywana w tabeli app_settings.
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_subject: str = "mailto:moderatorzy@prawdowid.pl"
 
     # --- bezpieczeństwo i prywatność ---
     admin_token: SecretStr | None = None

@@ -1084,6 +1084,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "c2pa-python" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "fastembed" },
     { name = "faster-whisper" },
@@ -1119,6 +1120,7 @@ ingest = [
 requires-dist = [
     { name = "anthropic", specifier = ">=1.0" },
     { name = "c2pa-python", specifier = ">=0.39.0" },
+    { name = "cryptography", specifier = ">=43.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastembed", specifier = ">=0.4" },
     { name = "faster-whisper", specifier = ">=1.0" },

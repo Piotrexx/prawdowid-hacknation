@@ -60,6 +60,9 @@ class CaseRow(Base):
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     note: Mapped[str] = mapped_column(Text, default="")
     links: Mapped[list["CaseLinkRow"]] = relationship(cascade="all, delete-orphan")
+    comments: Mapped[list["CaseCommentRow"]] = relationship(
+        cascade="all, delete-orphan", order_by="CaseCommentRow.created_at"
+    )
 
 
 class CaseLinkRow(Base):
@@ -152,3 +155,126 @@ class IngestRunRow(Base):
     errors: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(24), default="running")
     detail: Mapped[str | None] = mapped_column(Text)
+
+
+class ModeratorRow(Base):
+    """Konto moderatora: logowanie e-mailem i hasłem oraz własne ustawienia powiadomień."""
+
+    __tablename__ = "moderators"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(256))
+    display_name: Mapped[str] = mapped_column(String(120), default="")
+    # „superuser” może zakładać i wyłączać konta oraz zmieniać model językowy.
+    role: Mapped[str] = mapped_column(String(16), default="moderator")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_by: Mapped[str | None] = mapped_column(String(254))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # --- ustawienia powiadomień (każdy kanał osobno, domyślnie wyłączone) ---
+    notify_discord: Mapped[bool] = mapped_column(Boolean, default=False)
+    notify_email: Mapped[bool] = mapped_column(Boolean, default=False)
+    notify_push: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Prywatny webhook Discorda; bez niego używany jest wspólny z konfiguracji.
+    discord_webhook_url: Mapped[str | None] = mapped_column(Text)
+    # Po ilu komentarzach do jednej sprawy wysłać powiadomienie.
+    comment_notify_threshold: Mapped[int] = mapped_column(Integer, default=2)
+
+
+class ModeratorSessionRow(Base):
+    """Aktywna sesja panelu. Token jest trzymany wyłącznie jako skrót SHA-256."""
+
+    __tablename__ = "moderator_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    moderator_id: Mapped[int] = mapped_column(
+        ForeignKey("moderators.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    user_agent: Mapped[str | None] = mapped_column(String(200))
+
+
+class CaseCommentRow(Base):
+    """Opinia moderatora o sprawie albo o artykule z korpusu.
+
+    `author_email` i `author_name` są kopią na moment zapisu – komentarz zostaje
+    czytelny także po wyłączeniu albo usunięciu konta autora.
+    """
+
+    __tablename__ = "case_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    case_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), index=True
+    )
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    moderator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("moderators.id", ondelete="SET NULL"), index=True
+    )
+    author_email: Mapped[str] = mapped_column(String(254))
+    author_name: Mapped[str] = mapped_column(String(120), default="")
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("case_comments_target_idx", "case_id", "article_id"),)
+
+
+class ModeratorActionRow(Base):
+    """Ślad audytowy: kto, kiedy i co zmienił w sprawie."""
+
+    __tablename__ = "moderator_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    moderator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("moderators.id", ondelete="SET NULL"), index=True
+    )
+    author_email: Mapped[str] = mapped_column(String(254), index=True)
+    author_name: Mapped[str] = mapped_column(String(120), default="")
+    case_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    article_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    # status_change | edit | comment | comment_deleted | note | llm_change | account
+    action: Mapped[str] = mapped_column(String(32), index=True)
+    field: Mapped[str | None] = mapped_column(String(48))
+    value_before: Mapped[str | None] = mapped_column(Text)
+    value_after: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PushSubscriptionRow(Base):
+    """Subskrypcja Web Push przeglądarki moderatora (RFC 8030/8291)."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    moderator_id: Mapped[int] = mapped_column(
+        ForeignKey("moderators.id", ondelete="CASCADE"), index=True
+    )
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(80))
+    user_agent: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppSettingRow(Base):
+    """Ustawienia zmieniane w panelu (np. wybrany model językowy).
+
+    Konfiguracja z `.env` jest wartością domyślną; wpis w tej tabeli ją nadpisuje.
+    """
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(_json(), default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(String(254))

@@ -56,8 +56,8 @@ def health(request: Request) -> HealthResponse:
     documents = corpus.count()
     return HealthResponse(
         status="ok" if configured and retriever.mode != "none" else "degraded",
-        llm_provider=settings.llm_provider,
-        llm_model=settings.llm_model if settings.llm_provider != "none" else None,
+        llm_provider=service._provider.name if service._provider else settings.llm_provider,
+        llm_model=service._provider.model if service._provider else None,
         bielik_model=settings.bielik_model if bielik else None,
         llm_configured=configured,
         bielik_configured=bielik,
