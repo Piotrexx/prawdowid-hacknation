@@ -9,6 +9,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { PrivacyConsentDialog } from "@/components/privacy/PrivacyConsentDialog";
 import { APPLY_SETTINGS_SCRIPT } from "@/lib/a11ySettings";
 import { I18nProvider } from "@/i18n/provider";
+import { SIDEBAR_SCRIPT } from "@/lib/sidebarScript";
 import "./globals.css";
 
 const openSans = Open_Sans({
@@ -41,7 +42,7 @@ export default function RootLayout({ children }: LayoutProps) {
     // The pre-paint script sets data attributes for the accessibility settings.
     <html lang="pl" className={openSans.variable} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: APPLY_SETTINGS_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: APPLY_SETTINGS_SCRIPT + SIDEBAR_SCRIPT }} />
       </head>
       <body className="min-h-dvh bg-surface antialiased">
         <a href="#tresc" className="skip-link">

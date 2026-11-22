@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import admin, checks
 from app.config import Settings, get_settings
 from app.core.cases import CaseLoop
+from app.core.image_check import ImageCheckService
 from app.core.pipeline import VerificationService
 from app.ingest.registry import source_names
 from app.llm.base import LLMProvider
@@ -39,6 +40,7 @@ def build_state(
     corpus: CorpusStore | None = None,
     retriever: ClaimRetriever | None = None,
     context: ContextIndex | None = None,
+    image_checks: ImageCheckService | None = None,
 ) -> None:
     """Składa zależności aplikacji. Testy podają tu własny model, embedder i korpus."""
     store = Store(settings.database_url)
@@ -53,6 +55,7 @@ def build_state(
     retriever = retriever or ClaimRetriever(settings, corpus, embedder)
     context = context or ContextIndex(corpus, embedder)
     cases = CaseLoop(settings, store, embedder)
+    image_checks = image_checks or ImageCheckService(settings, store)
     service = VerificationService(
         settings=settings,
         retriever=retriever,
@@ -63,6 +66,7 @@ def build_state(
         source_names=source_names(),
         retrieval_degraded=settings.embedding_backend != "none" and retriever.mode == "bm25",
         bielik_provider=bielik_provider,
+        image_checks=image_checks,
     )
     app.state.settings = settings
     app.state.store = store
@@ -72,6 +76,7 @@ def build_state(
     app.state.context = context
     app.state.service = service
     app.state.llm_ready = provider is not None
+    app.state.image_service = image_checks
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute)
     app.state.ingest_running = False
     app.state.last_ingest = None

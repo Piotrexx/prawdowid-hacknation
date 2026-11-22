@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     url_fetch_max_bytes: int = 2_000_000
     privacy_policy_version: str = PRIVACY_POLICY_VERSION
 
+    # --- Odwrotne wyszukiwanie obrazu (PicImageSearch, bez kluczy API) ---
+    # Dostępne: yandex, tineye, bing (bing domyślnie wyłączony – nie działa w PicImageSearch 3.12.11).
+    image_search_engines: str = "yandex,tineye"
+    image_search_timeout_s: float = 25.0
+    image_compare_max_candidates: int = 10
+    image_candidate_max_bytes: int = 8_000_000
+    image_cache_hours: int = 24
+
     # --- kontrolowana archiwizacja materiału ---
     archive_enabled: bool = True
     archive_max_chars: int = 2000
@@ -110,6 +118,10 @@ class Settings(BaseSettings):
     ingest_timeout_s: float = 20.0
     ingest_request_delay_s: float = 1.0
     ingest_cache_dir: str | None = None
+
+    @property
+    def image_engine_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.image_search_engines.split(",") if e.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

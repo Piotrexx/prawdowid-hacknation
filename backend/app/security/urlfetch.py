@@ -147,6 +147,16 @@ async def _fetch_with_redirects(
     return url, reply
 
 
+async def fetch_image(url: str, settings: Settings, max_bytes: int) -> bytes:
+    """Pobiera pojedynczy plik obrazu (kopię znalezioną przez wyszukiwarkę) z tą samą ochroną
+    przed SSRF i limitem rozmiaru co strony. Wynik jest zawsze jednym plikiem obrazu."""
+    _, reply = await _fetch_with_redirects(url, settings, max_bytes=max_bytes)
+    content_type = reply.headers.get("content-type", "").split(";")[0].strip().lower()
+    if not content_type.startswith("image/"):
+        raise UrlFetchError("url_unsupported_type", "Pod tym adresem nie ma obrazu.")
+    return reply.body
+
+
 def _check_content_type(reply: _Reply) -> None:
     content_type = reply.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type not in _ALLOWED_TYPES:

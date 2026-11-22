@@ -17,7 +17,7 @@ export type Verdict =
 
 export type StrengthLevel = "mocna" | "umiarkowana" | "slaba" | "brak";
 export type Stance = "supports" | "refutes" | "context";
-export type SourceType = "official" | "legal" | "statistics" | "international" | "factcheck" | "media";
+export type SourceType = "official" | "legal" | "statistics" | "international" | "factcheck" | "media" | "reverse_image";
 export type RetrievalMode = "hybrid" | "bm25" | "none";
 export type Risk = "standard" | "high";
 
@@ -33,7 +33,13 @@ export type WarningCode =
   | "input_truncated"
   | "factcheck_unavailable"
   | "keywords_degraded"
-  | "transcription_unavailable";
+  | "transcription_unavailable"
+  | "image_manipulation"
+  | "image_edit_software"
+  | "ai_generated"
+  | "ai_edited"
+  | "content_credentials"
+  | "image_analysis_unavailable";
 
 export interface Warning {
   code: WarningCode;
@@ -148,6 +154,77 @@ export interface InputInfo {
   audio_metadata?: Record<string, string> | null;
 }
 
+// --- Image analysis (reverse search, copy comparison, AI provenance) ---
+
+export type ImageRelation =
+  | "identical"
+  | "locally_modified"
+  | "different_version"
+  | "not_comparable"
+  | "not_downloaded";
+
+export interface EngineStatus {
+  engine: string;
+  ok: boolean;
+  results: number;
+  error: string | null;
+}
+
+export interface ImageMatch {
+  engine: string;
+  page_url: string;
+  image_url: string | null;
+  thumbnail_url: string | null;
+  title: string | null;
+  domain: string | null;
+  first_seen: string | null;
+  relation: ImageRelation;
+  difference: number | null;
+}
+
+export interface ImageRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface AiSignal {
+  source: "c2pa" | "iptc" | "generator_metadata";
+  kind: "ai_generated" | "ai_edited";
+  detail: string;
+  generator: string | null;
+  signed: boolean;
+}
+
+export interface AiAssessment {
+  result: "ai_generated" | "ai_edited" | "predates_generative_ai" | "no_signals";
+  signals: AiSignal[];
+  content_credentials: string | null;
+}
+
+export interface ImageAnalysis {
+  assessment:
+    | "manipulation_suspected"
+    | "consistent_with_copies"
+    | "insufficient_copies"
+    | "no_matches";
+  sha256: string;
+  width: number;
+  height: number;
+  engines: EngineStatus[];
+  matches_found: number;
+  compared: number;
+  identical: number;
+  locally_modified: number;
+  different_versions: number;
+  earliest_seen: string | null;
+  changed_regions: ImageRegion[];
+  exif: Record<string, string>;
+  ai: AiAssessment | null;
+  matches: ImageMatch[];
+}
+
 export interface CheckMeta {
   duration_ms: number;
   stages_ms: Record<string, number>;
@@ -193,6 +270,7 @@ export interface CheckResponse {
   fact_check_results: FactCheckResult[];
   source_articles: SourceRef[];
   limitations: string[];
+  image_analysis: ImageAnalysis | null;
   meta: CheckMeta;
 }
 

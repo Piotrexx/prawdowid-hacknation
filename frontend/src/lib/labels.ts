@@ -32,6 +32,7 @@ export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   international: "Organizacja międzynarodowa",
   factcheck: "Organizacja fact-checkingowa",
   media: "Media",
+  reverse_image: "Wyszukiwanie obrazu",
 };
 
 export const SOURCE_TYPES = Object.keys(SOURCE_TYPE_LABELS) as SourceType[];

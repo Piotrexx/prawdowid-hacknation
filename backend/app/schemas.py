@@ -45,7 +45,7 @@ class CheckStatus(StrEnum):
     ERROR = "error"
 
 
-SourceType = Literal["official", "legal", "statistics", "international", "factcheck", "media"]
+SourceType = Literal["official", "legal", "statistics", "international", "factcheck", "media", "reverse_image"]
 Stance = Literal["supports", "refutes", "context"]
 RetrievalMode = Literal["hybrid", "bm25", "none"]
 
@@ -114,6 +114,12 @@ class Warning(BaseModel):
         "factcheck_unavailable",
         "keywords_degraded",
         "transcription_unavailable",
+        "image_manipulation",
+        "image_edit_software",
+        "ai_generated",
+        "ai_edited",
+        "content_credentials",
+        "image_analysis_unavailable",
     ]
     message: str
 
@@ -190,6 +196,67 @@ class CheckMeta(BaseModel):
     embedding_model: str | None = None
 
 
+class EngineStatus(BaseModel):
+    engine: str
+    ok: bool
+    results: int = 0
+    error: str | None = None
+
+
+class ImageMatch(BaseModel):
+    """Kopia zdjęcia znaleziona w sieci i jej relacja do przesłanej wersji."""
+    engine: str
+    page_url: str
+    image_url: str | None = None
+    thumbnail_url: str | None = None
+    title: str | None = None
+    domain: str | None = None
+    first_seen: date | None = None
+    relation: Literal["identical", "locally_modified", "different_version", "not_comparable", "not_downloaded"]
+    difference: float | None = None
+
+
+class ImageRegion(BaseModel):
+    """Obszar zdjęcia (współrzędne 0–1), który różni się od większości kopii."""
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class AiSignal(BaseModel):
+    """Ślad generowania przez AI zapisany w pliku."""
+    source: Literal["c2pa", "iptc", "generator_metadata"]
+    kind: Literal["ai_generated", "ai_edited"]
+    detail: str
+    generator: str | None = None
+    signed: bool = Field(default=False, description="Podpis C2PA nienaruszony")
+
+
+class AiAssessment(BaseModel):
+    result: Literal["ai_generated", "ai_edited", "predates_generative_ai", "no_signals"]
+    signals: list[AiSignal] = []
+    content_credentials: str | None = Field(default=None, description="Podsumowanie manifestu C2PA, jeśli plik go ma")
+
+
+class ImageAnalysis(BaseModel):
+    assessment: Literal["manipulation_suspected", "consistent_with_copies", "insufficient_copies", "no_matches"]
+    sha256: str
+    width: int
+    height: int
+    engines: list[EngineStatus] = []
+    matches_found: int = 0
+    compared: int = 0
+    identical: int = 0
+    locally_modified: int = 0
+    different_versions: int = 0
+    earliest_seen: date | None = None
+    changed_regions: list[ImageRegion] = []
+    exif: dict[str, str] = {}
+    ai: AiAssessment | None = None
+    matches: list[ImageMatch] = []
+
+
 class CheckResponse(BaseModel):
     id: str
     created_at: datetime
@@ -223,6 +290,8 @@ class CheckResponse(BaseModel):
         ),
     )
     limitations: list[str] = []
+    # Wynik osobnej analizy zdjęcia (odwrotne wyszukiwanie, porównanie kopii, ślady AI).
+    image_analysis: ImageAnalysis | None = None
     meta: CheckMeta = CheckMeta()
 
 

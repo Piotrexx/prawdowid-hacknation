@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from app.config import Settings
 from app.core.audio import AudioError, transcribe_audio
 from app.core.cases import CaseLoop
+from app.core.image_check import ImageCheckService, ImageInspection
 from app.core.media import ImageError, prepare_image
 from app.core.prompts import (
     BIELIK_KEYWORD_PROMPT,
@@ -55,6 +56,7 @@ from app.schemas import (
     CheckStatus,
     ClaimResult,
     FactCheckResult,
+    ImageAnalysis,
     IncidentMatch,
     InputInfo,
     KeywordExtraction,
@@ -89,6 +91,16 @@ _INJECTION_WARNINGS = {
     "corpus_passage": "W jednym ze źródeł wykryliśmy tekst wyglądający na polecenie dla systemu. Został zignorowany.",
 }
 _INJECTION_DEFAULT = "W przesłanej treści wykryliśmy polecenia skierowane do systemu. Zostały zignorowane i nie wpłynęły na wynik."
+# Linie ograniczeń dokładane przy analizie zdjęcia; przy trafieniu w cache podmieniamy je na świeże.
+_IMAGE_LIMITATION_STARTS = (
+    "Tekst z obrazu odczytał model",
+    "Zdjęcie (bez metadanych EXIF)",
+    "Porównanie wykrywa",
+    "Obrazy z AI rozpoznajemy",
+    "Różnica w jednym miejscu",
+    "Nawet niezmienione zdjęcie",
+    "Nie udało się sprawdzić, czy obraz",
+)
 
 
 @dataclass
@@ -148,6 +160,12 @@ class _Run:
     verdict: Verdict | None = None
     confidence: float | None = None
     justification: str | None = None
+    # Wynik analizy zdjęcia (odwrotne wyszukiwanie, porównanie kopii, ślady AI).
+    image_analysis: ImageAnalysis | None = None
+    image_sources: list[SourceRef] = field(default_factory=list)
+    image_limitations: list[str] = field(default_factory=list)
+    # Nadpisanie werdyktu całego materiału, gdy samo zdjęcie jest dowodem fałszu.
+    image_override: tuple[str, Verdict, float, str] | None = None
 
     def warn(self, code: str, message: str) -> None:
         self.warnings.setdefault(code, Warning(code=code, message=message))
@@ -172,6 +190,7 @@ class VerificationService:
         source_names: dict[str, str],
         retrieval_degraded: bool = False,
         bielik_provider: LLMProvider | None = None,
+        image_checks: ImageCheckService | None = None,
     ):
         self._settings = settings
         self._retriever = retriever
@@ -182,6 +201,7 @@ class VerificationService:
         self._source_names = source_names
         self._retrieval_degraded = retrieval_degraded
         self._bielik_provider = bielik_provider or self._build_bielik()
+        self._image_checks = image_checks
 
     def _build_bielik(self) -> LLMProvider | None:
         """Lokalny model do ekstrakcji słów kluczowych (Ollama/vLLM, API zgodne z OpenAI)."""
@@ -271,10 +291,24 @@ class VerificationService:
                 run.incidents.setdefault(match.incident_id, match)
             for warning in cached.warnings:
                 # Ostrzeżenia zależne od sposobu zgłoszenia liczymy od nowa dla bieżącego kanału.
-                if warning.code not in ("pii_masked", "image_limits", "audio_limits", "input_truncated"):
+                if warning.code not in (
+                    "pii_masked",
+                    "image_limits",
+                    "audio_limits",
+                    "input_truncated",
+                    "image_manipulation",
+                    "image_edit_software",
+                    "ai_generated",
+                    "ai_edited",
+                    "content_credentials",
+                    "image_analysis_unavailable",
+                ):
                     run.warn(warning.code, warning.message)
         else:
             claims, limitations = await self._assess_material(run)
+
+        self._apply_image_verdict(run)
+        limitations = self._with_image_limitations(limitations, run)
 
         unresolved = sorted(
             (c for c in claims if c.verdict == Verdict.INSUFFICIENT), key=lambda c: c.risk != "high"
@@ -295,7 +329,7 @@ class VerificationService:
         origin = "user_input"
         if submission.image is not None:
             origin = "image_text"
-            raw = await self._read_image(submission.image, run)
+            raw = await self._read_image_with_inspection(submission.image, run)
         elif submission.audio is not None:
             origin = "audio_text"
             raw = await self._read_audio(submission.audio, run)
@@ -337,6 +371,91 @@ class VerificationService:
             run.warnings.setdefault(status.code, status)
         for match in self._context.url_matches(url):
             run.incidents.setdefault(match.incident_id, match)
+
+    async def _read_image_with_inspection(self, data: bytes, run: _Run) -> str:
+        """Czyta tekst z obrazu i równolegle sprawdza, czy obraz był przerabiany.
+
+        Analiza obrazu nie może zepsuć odczytu tekstu: jej awaria to tylko ostrzeżenie,
+        a wynik (jeśli jest) wzmacnia werdykt całego materiału.
+        """
+        task = (
+            asyncio.create_task(self._image_checks.inspect(data))
+            if self._image_checks is not None
+            else None
+        )
+        try:
+            raw = await self._read_image(data, run)
+        except _Stop:
+            if task is not None:
+                self._apply_image_inspection(run, await self._image_result(task))
+            raise
+        if task is not None:
+            self._apply_image_inspection(run, await self._image_result(task))
+        return raw
+
+    @staticmethod
+    async def _image_result(task: "asyncio.Task[ImageInspection]") -> ImageInspection:
+        try:
+            return await task
+        except Exception:
+            log.exception("analiza zdjęcia nie powiodła się")
+            return ImageInspection(
+                error_code="internal_error",
+                error_message="Nie udało się sprawdzić, czy zdjęcie było przerabiane.",
+            )
+
+    @staticmethod
+    def _apply_image_inspection(run: _Run, inspection: ImageInspection) -> None:
+        if inspection.failed:
+            run.warn(
+                "image_analysis_unavailable",
+                "Nie udało się sprawdzić, czy zdjęcie było przerabiane ani gdzie pojawiło się wcześniej. "
+                + (inspection.error_message or ""),
+            )
+            return
+        run.image_analysis = inspection.analysis
+        run.image_sources = inspection.sources
+        run.image_limitations = inspection.limitations
+        for warning in inspection.warnings:
+            run.warnings.setdefault(warning.code, warning)
+
+        analysis = inspection.analysis
+        ai = analysis.ai if analysis else None
+        if inspection.verdict is None or inspection.confidence is None or not inspection.justification:
+            return
+        # Zdjęcie z generatora AI albo z doklejonym fragmentem jest samo w sobie dowodem fałszu.
+        if (ai and ai.result == "ai_generated") or (
+            analysis and analysis.assessment == "manipulation_suspected"
+        ):
+            run.image_override = ("replace", inspection.verdict, inspection.confidence, inspection.justification)
+        elif ai and ai.result == "ai_edited":
+            run.image_override = ("downgrade", inspection.verdict, 0.5, inspection.justification)
+
+    @staticmethod
+    def _apply_image_verdict(run: _Run) -> None:
+        override = run.image_override
+        if override is None:
+            return
+        mode, verdict, confidence, justification = override
+        if mode == "replace":
+            run.verdict, run.confidence, run.justification = verdict, confidence, justification
+        elif run.verdict == Verdict.CONFIRMED:
+            run.verdict = Verdict.INSUFFICIENT
+            run.confidence = min(run.confidence if run.confidence is not None else 1.0, confidence)
+            run.justification = justification
+
+    @staticmethod
+    def _with_image_limitations(limitations: list[str], run: _Run) -> list[str]:
+        if run.input.kind != "image":
+            return limitations
+        # Wiersz o OCR jest wspólny dla wszystkich ścieżek, a ograniczenia analizy mogą być świeże
+        # nawet przy trafieniu w cache – dlatego stare wpisy o zdjęciu podmieniamy.
+        kept = [item for item in limitations if not item.startswith(_IMAGE_LIMITATION_STARTS)]
+        items = [*kept, "Tekst z obrazu odczytał model – mógł się pomylić."]
+        items.extend(run.image_limitations)
+        if run.image_analysis is None:
+            items.append("Nie udało się sprawdzić, czy obraz jest przerobiony ani gdzie pojawił się wcześniej.")
+        return items
 
     async def _read_image(self, data: bytes, run: _Run) -> str:
         try:
@@ -659,8 +778,7 @@ class VerificationService:
             items.append("Brak sprawdzeń w Google Fact Check Tools nie oznacza, że informacja jest prawdziwa.")
         if run.input.kind == "url":
             items.append("Sprawdziliśmy treść strony pobraną w chwili zgłoszenia. Strona mogła się później zmienić.")
-        if run.input.kind == "image":
-            items.append("Tekst z obrazu odczytał model – mógł się pomylić. Nie oceniamy autentyczności obrazu.")
+        # Ograniczenia odczytu i analizy zdjęcia dokłada `_with_image_limitations`, gdy znamy jej wynik.
         if run.input.kind == "audio":
             items.append("Nagranie zostało zamienione na tekst lokalnie; transkrypcja może zawierać błędy. Nie oceniamy autentyczności nagrania.")
         if claims_truncated:
@@ -706,8 +824,9 @@ class VerificationService:
             keywords=run.keywords,
             main_topic=run.main_topic,
             fact_check_results=run.fact_check_results,
-            source_articles=_used_sources(claims or []),
+            source_articles=[*_used_sources(claims or []), *run.image_sources],
             limitations=limitations or [],
+            image_analysis=run.image_analysis,
             meta=CheckMeta(
                 duration_ms=int((time.perf_counter() - run.started) * 1000),
                 stages_ms=run.stages_ms,

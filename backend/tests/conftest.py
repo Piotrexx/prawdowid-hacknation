@@ -226,6 +226,7 @@ def make_client(settings, provider):
         corpus = CorpusStore(store.engine)
         seed_corpus(corpus)
         active_provider = overrides.pop("provider", provider)
+        image_checks = overrides.pop("image_checks", None)
         active_settings = settings.model_copy(update=overrides)
         build_state(
             app,
@@ -233,6 +234,7 @@ def make_client(settings, provider):
             provider=active_provider,
             embedder=None,
             corpus=corpus,
+            image_checks=image_checks,
         )
         session = TEST_SESSION
         app.state.store.record_consent(session, active_settings.privacy_policy_version, True)

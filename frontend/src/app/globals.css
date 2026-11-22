@@ -83,6 +83,10 @@
   font-size: 125%;
 }
 
+/* Collapsed desktop sidebar, see lib/sidebar.ts. Only the desktop rail (data-rail) reacts, never the phone drawer. */
+@custom-variant rail-collapsed (:root[data-sidebar="collapsed"] &);
+@custom-variant collapsed (:root[data-sidebar="collapsed"] [data-rail] &);
+
 @theme {
   --radius-sm: 2px;
   --radius-md: 3px;
