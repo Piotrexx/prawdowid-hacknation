@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SessionControls } from "@/components/check/SessionControls";
 import { VerdictBadge } from "@/components/result/VerdictBadge";
 import type { Verdict } from "@/lib/types";
 import { HealthBlock } from "./HealthBlock";
@@ -87,6 +88,7 @@ export function AboutContent() {
             "Mimo to nie wklejaj haseł ani innych danych, których nie chcesz nikomu pokazywać.",
           ]}
         />
+        <SessionControls />
       </Section>
 
       <Section id="ai" title="Sztuczna inteligencja">

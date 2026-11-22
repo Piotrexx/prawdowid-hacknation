@@ -54,7 +54,7 @@ function ModeratorCard({ info }: { info: ModeratorCaseInfo }) {
     // A recommendation only: nothing was queued, so it must not look like a handed-over case.
     return (
       <Card title="Zalecamy ocenę przez człowieka" badge="Zalecenie" tone="neutral">
-        {`${info.message ? `${info.message} ` : ""}To tylko zalecenie. Ta sprawa nie została przekazana moderatorowi.`}
+        {`${info.message ? `${info.message} ` : ""}To tylko zalecenie. To twierdzenie nie zostało przekazane moderatorowi.`}
       </Card>
     );
   }
@@ -72,8 +72,8 @@ function ModeratorCard({ info }: { info: ModeratorCaseInfo }) {
     <Card
       title={
         info.case_id !== null
-          ? `Sprawa nr ${info.case_id} czeka na moderatora`
-          : "Sprawa czeka na moderatora"
+          ? `Twierdzenie nr ${info.case_id} czeka na moderatora`
+          : "Twierdzenie czeka na moderatora"
       }
       badge="Moderacja"
       tone="info"

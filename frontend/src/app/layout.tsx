@@ -7,6 +7,7 @@ interface LayoutProps {
 import { Open_Sans } from "next/font/google";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { PrivacyConsentDialog } from "@/components/privacy/PrivacyConsentDialog";
+import { Toaster } from "@/components/ui/Toaster";
 import { APPLY_SETTINGS_SCRIPT } from "@/lib/a11ySettings";
 import { I18nProvider } from "@/i18n/provider";
 import { SIDEBAR_SCRIPT } from "@/lib/sidebarScript";
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps) {
           <Suspense fallback={null}>
             <PrivacyConsentDialog />
           </Suspense>
+          <Toaster />
         </I18nProvider>
       </body>
     </html>

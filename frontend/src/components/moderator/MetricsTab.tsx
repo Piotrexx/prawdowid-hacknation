@@ -17,7 +17,7 @@ export function MetricsTab({ access }: { access: AdminAccess }) {
   return (
     <div className="space-y-8">
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Wszystkie sprawdzenia" value={formatInteger(metrics.checks_total)} />
+        <StatTile label="Wszystkie analizy" value={formatInteger(metrics.checks_total)} />
         <StatTile
           label="Odsetek wstrzymań od oceny"
           value={formatPercent(metrics.abstention_rate)}
@@ -27,7 +27,7 @@ export function MetricsTab({ access }: { access: AdminAccess }) {
         <StatTile
           label="Czas p95"
           value={formatSeconds(metrics.p95_duration_ms)}
-          hint="95% sprawdzeń trwa krócej."
+          hint="95% analiz trwa krócej."
         />
         <StatTile
           label="Tokeny (wejście / wyjście)"
@@ -35,21 +35,21 @@ export function MetricsTab({ access }: { access: AdminAccess }) {
         />
         <StatTile label="Koszt łączny" value={formatUsd(metrics.cost_usd_total)} />
         <StatTile
-          label="Koszt na 1000 sprawdzeń"
+          label="Koszt na 1000 analiz"
           value={formatUsd(metrics.cost_usd_per_1000)}
         />
-        <StatTile label="Otwarte sprawy" value={formatInteger(metrics.open_cases)} />
+        <StatTile label="Otwarte twierdzenia" value={formatInteger(metrics.open_cases)} />
       </dl>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <CountTable
-          caption="Sprawdzenia według stanu"
+          caption="Analizy według stanu"
           keyHeader="Stan"
           counts={metrics.by_status}
           label={(key) => labelFor(CHECK_STATUS_LABELS, key)}
         />
         <CountTable
-          caption="Sprawdzenia według kanału"
+          caption="Analizy według kanału"
           keyHeader="Kanał"
           counts={metrics.by_channel}
           label={channelLabel}

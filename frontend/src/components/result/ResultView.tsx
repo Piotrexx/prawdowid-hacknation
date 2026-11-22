@@ -90,7 +90,7 @@ function TableOfContents({ result, active }: { result: CheckResponse; active: st
   return (
     <nav aria-labelledby="spis-tytul" className="bg-surface py-6 shadow-card">
       <h2 id="spis-tytul" className="eyebrow mb-3 px-5">
-        Wynik sprawdzenia
+        Wynik analizy
       </h2>
       <ul className="flex flex-col">
         <li>
@@ -256,7 +256,7 @@ export function ResultView({ result, focusHeading = false }: ResultViewProps) {
             tabIndex={-1}
             className="mt-2 text-[1.875rem] leading-tight font-bold outline-none"
           >
-            Wynik sprawdzenia
+            Wynik analizy
           </h1>
           <div className="title-rule my-4" />
           <div className="flex flex-col gap-6">

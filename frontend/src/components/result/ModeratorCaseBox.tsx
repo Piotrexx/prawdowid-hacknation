@@ -13,7 +13,7 @@ export function ModeratorCaseBox({ info }: { info: ModeratorCaseInfo }) {
           <p className="font-semibold">Zalecenie</p>
           {info.message ? <p>{info.message}</p> : null}
           <p className="text-muted">
-            To tylko zalecenie. Ta sprawa nie została przekazana moderatorowi.
+            To tylko zalecenie. To twierdzenie nie zostało przekazane moderatorowi.
           </p>
         </div>
       </div>
@@ -25,8 +25,8 @@ export function ModeratorCaseBox({ info }: { info: ModeratorCaseInfo }) {
   const occurrences = info.occurrences ?? 0;
   const title =
     info.case_id != null
-      ? `Sprawa nr ${info.case_id} czeka na sprawdzenie przez człowieka`
-      : "Sprawa czeka na sprawdzenie przez człowieka";
+      ? `Twierdzenie nr ${info.case_id} czeka na analizę przez człowieka`
+      : "Twierdzenie czeka na analizę przez człowieka";
 
   return (
     <Notice tone="info" icon={UserRoundCheck} title={title}>

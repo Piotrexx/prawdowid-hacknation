@@ -53,9 +53,9 @@ npx tsc --noEmit   # kontrola typów (po `npm run build` lub `npx next typegen`)
 | Adres               | Co zawiera                                                              |
 | ------------------- | ----------------------------------------------------------------------- |
 | `/`                 | Sprawdzanie treści: tekst, link, zrzut ekranu albo nagranie głosowe.    |
-| `/sprawdzenie/[id]` | Zapisany wynik sprawdzenia (stały link).                                |
+| `/analiza/[id]`     | Zapisany wynik analizy (stały link).                                    |
 | `/o-systemie`       | Jak to działa: zakres, oceny, prywatność, użycie AI, stan serwera.      |
-| `/moderator`        | Panel moderatora: sprawy, statystyki, zdarzenia, zgłoszenia, eksport.   |
+| `/moderator`        | Panel moderatora: twierdzenia, statystyki, zdarzenia, zgłoszenia, eksport. |
 
 ## Układ kodu
 

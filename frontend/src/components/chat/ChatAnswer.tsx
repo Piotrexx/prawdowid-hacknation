@@ -29,22 +29,17 @@ import { STRENGTH_LABELS } from "@/lib/labels";
 import { checkPath } from "@/lib/links";
 import type { CheckResponse, ClaimResult, Evidence } from "@/lib/types";
 import { describeFailure } from "./failure";
+import Image from "next/image";
 
 export type TurnState =
   | { kind: "loading" }
   | { kind: "result"; result: CheckResponse }
   | { kind: "failure"; error: unknown };
 
-/** The assistant's side of the thread: a small mark, then the answer. */
 function AssistantRow({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-3">
-      <span
-        aria-hidden="true"
-        className="mt-1 hidden size-8 shrink-0 sm:grid place-items-center bg-accent text-sm font-bold text-on-accent"
-      >
-        P
-      </span>
+      <Image src={"/maskotka-proper.png"} alt="Prawowid" width={100 / 0.67} height={100}/>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

@@ -50,7 +50,7 @@ export function CasesTab({ access }: { access: AdminAccess }) {
   return (
     <div className="space-y-4">
       <label className="block max-w-xs font-medium">
-        Pokaż sprawy
+        Pokaż twierdzenia
         <div className="relative mt-1">
           {filter !== "all" ? (
             <span
@@ -74,39 +74,37 @@ export function CasesTab({ access }: { access: AdminAccess }) {
         </div>
       </label>
 
-      {state.status === "loading" ? <LoadingBlock label="Wczytuję sprawy…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label="Wczytuję twierdzenia…" /> : null}
       {state.status === "error" ? <ErrorBlock error={state.error} onRetry={reload} /> : null}
       {state.status === "ready" ? (
         <>
           <p role="status" className="text-muted">
             {totalCases === 0
-              ? "Brak spraw o tym stanie."
-              : `${totalCases} ${plural(totalCases, "sprawa", "sprawy", "spraw")} w ${groups.length} ${plural(groups.length, "artykule", "artykułach", "artykułach")}.`}
+              ? "Brak twierdzeń o tym stanie."
+              : `${totalCases} ${plural(totalCases, "twierdzenie", "twierdzenia", "twierdzeń")} w ${groups.length} ${plural(groups.length, "artykule", "artykułach", "artykułach")}.`}
           </p>
           <div className="space-y-6">
-            {groups.map(({ checkId, items }) => (
+            {groups.map(({ checkId, items }, index) => (
               <div key={checkId ?? "orphans"} className="rounded-xl border border-line-mid bg-subtle">
-                <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                      Artykuł / sprawdzenie
-                    </p>
+                <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="font-semibold text-ink">Artykuł nr {index + 1}</span>
+                    <span aria-hidden="true" className="text-muted">
+                    
+                    </span>
                     {checkId ? (
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm text-ink">{checkId.slice(0, 12)}…</span>
-                        <Link
-                          href={checkPath(checkId)}
-                          className="inline-flex items-center gap-1 text-xs text-link hover:underline"
-                        >
-                          <ExternalLink className="size-3" aria-hidden="true" />
-                          Wyniki sprawdzenia
-                        </Link>
-                      </div>
+                      <Link
+                        href={checkPath(checkId)}
+                        className="inline-flex min-h-11 items-center gap-1 text-link hover:underline"
+                      >
+                        <ExternalLink className="size-4" aria-hidden="true" />
+                        Wyniki analizy
+                      </Link>
                     ) : (
-                      <span className="text-sm text-muted italic">brak powiązanego sprawdzenia</span>
+                      <span className="text-sm text-muted italic">brak powiązanej analizy</span>
                     )}
                   </div>
-                  <span className="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-xs font-bold text-ink border border-line">
+                  <span className="inline-flex shrink-0 items-center border border-line-strong bg-surface px-2.5 py-1 text-xs font-bold tracking-[0.02em] uppercase tabular-nums text-ink">
                     {items.length} {plural(items.length, "twierdzenie", "twierdzenia", "twierdzeń")}
                   </span>
                 </div>
@@ -116,18 +114,6 @@ export function CasesTab({ access }: { access: AdminAccess }) {
                       key={item.id}
                       item={item}
                       access={access}
-                      onCommented={(delta) =>
-                        mutate((cases) =>
-                          cases.map((current) =>
-                            current.id === item.id
-                              ? {
-                                  ...current,
-                                  comments_count: Math.max(0, current.comments_count + delta),
-                                }
-                              : current,
-                          ),
-                        )
-                      }
                       onUpdated={(updated) =>
                         mutate((cases) =>
                           cases.map((current) => (current.id === updated.id ? updated : current)),

@@ -73,7 +73,7 @@ export function CaseComments({
       {state.status === "error" ? <ErrorBlock error={state.error} onRetry={reload} /> : null}
       {state.status === "ready" ? (
         state.data.length === 0 ? (
-          <p className="mt-2 text-muted">Nikt jeszcze nie dodał opinii do tej sprawy.</p>
+          <p className="mt-2 text-muted">Nikt jeszcze nie dodał opinii do tego twierdzenia.</p>
         ) : (
           <ul className="mt-2 space-y-3">
             {state.data.map((comment) => (
@@ -120,7 +120,7 @@ export function CaseComments({
         }}
       >
         <label className="block font-medium">
-          Dodaj opinię do sprawy
+          Dodaj opinię do twierdzenia
           <textarea
             value={body}
             rows={3}

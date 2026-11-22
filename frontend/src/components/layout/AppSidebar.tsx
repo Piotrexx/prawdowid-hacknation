@@ -30,7 +30,7 @@ const NAV_ITEMS: Array<{ href: string; labelKey: string; icon: LucideIcon }> = [
 
 function isCurrent(pathname: string | null, href: string): boolean {
   if (pathname === null) return false;
-  if (href === "/") return pathname === "/" || pathname.startsWith("/sprawdzenie");
+  if (href === "/") return pathname === "/" || pathname.startsWith("/analiza");
   return pathname.startsWith(href);
 }
 

@@ -12,7 +12,7 @@ export function safeHttpUrl(value: string | null | undefined): string | null {
 }
 
 export function checkPath(id: string): string {
-  return `/sprawdzenie/${encodeURIComponent(id)}`;
+  return `/analiza/${encodeURIComponent(id)}`;
 }
 
 /** True when the whole input is one http(s) address, so it should be sent as `url`. */

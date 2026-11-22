@@ -113,7 +113,7 @@ sprawdzenia”. Brak modelu embeddingów → wyszukiwanie przechodzi w jawny try
 - Obrazów nie zapisujemy; przed wysłaniem do modelu usuwamy EXIF (w tym GPS).
 - Adresy IP służą tylko do limitu żądań w pamięci (w postaci skrótu z solą) i nie są zapisywane.
 - Dla linków zapisujemy tylko początek pobranej treści.
-- Wynik jest dostępny pod losowym, niezgadywalnym adresem (`/sprawdzenie/{id}`) – każdy, kto zna link, może go otworzyć.
+- Wynik jest dostępny pod losowym, niezgadywalnym adresem (`/analiza/{id}`) – każdy, kto zna link, może go otworzyć.
 - Retencja: `RETENTION_DAYS` (domyślnie 30), czyszczenie co godzinę. `DELETE /api/v1/sessions/{id}` usuwa dane sesji.
 
 ## Obserwowalność

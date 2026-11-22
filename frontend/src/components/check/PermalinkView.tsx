@@ -25,16 +25,16 @@ function LoadedResult({ id }: { id: string }) {
 
   return (
     <div className="mx-auto w-full max-w-[52rem] px-5 py-8 sm:p-10">
-      <h1 className="text-[1.875rem] leading-tight font-bold">Wynik sprawdzenia</h1>
+      <h1 className="text-[1.875rem] leading-tight font-bold">Wynik analizy</h1>
       <div className="title-rule my-4" />
       {state.status === "loading" ? (
-        <LoadingBlock label="Wczytuję wynik sprawdzenia…" />
+        <LoadingBlock label="Wczytuję wynik analizy…" />
       ) : state.error instanceof ApiError && state.error.kind === "not_found" ? (
         <div className="flex gap-4 border-2 border-dashed border-line-strong bg-surface p-5">
           <SearchX aria-hidden="true" className="mt-1 size-7 shrink-0 text-muted" />
           <div className="space-y-3">
             <h2 className="text-xl font-semibold">
-              Nie znaleziono sprawdzenia. Mogło zostać usunięte.
+              Nie znaleziono analizy. Mogła zostać usunięta.
             </h2>
             <p className="text-muted">
               Sprawdź, czy link jest pełny. Zapisy są też usuwane po pewnym czasie albo

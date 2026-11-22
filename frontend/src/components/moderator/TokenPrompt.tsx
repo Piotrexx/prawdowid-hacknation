@@ -15,7 +15,8 @@ interface TokenPromptProps {
 
 export function TokenPrompt({ notice, takeFocus, onAccepted }: TokenPromptProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<"account" | "token">("account");
+  // "token" mode (token techniczny) temporarily hidden — only account login shown
+  const [mode] = useState<"account" | "token">("account");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
@@ -81,6 +82,7 @@ export function TokenPrompt({ notice, takeFocus, onAccepted }: TokenPromptProps)
         void submit();
       }}
     >
+      {/* Token techniczny tab temporarily hidden
       <div className="flex gap-2" role="tablist" aria-label="Sposób logowania">
         {(
           [
@@ -107,6 +109,7 @@ export function TokenPrompt({ notice, takeFocus, onAccepted }: TokenPromptProps)
           </button>
         ))}
       </div>
+      */}
 
       {mode === "account" ? (
         <>
