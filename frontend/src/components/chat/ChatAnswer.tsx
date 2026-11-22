@@ -35,17 +35,20 @@ export type TurnState =
   | { kind: "result"; result: CheckResponse }
   | { kind: "failure"; error: unknown };
 
-/** The assistant's side of the thread: a small mark, then the answer. */
+/**
+ * The assistant's side of the thread. The mark hangs in the left margin so the answer lines up
+ * with the composer; below xl there is no margin to hang it in, so it is hidden.
+ */
 function AssistantRow({ children }: { children: ReactNode }) {
   return (
-    <div className="flex gap-3">
+    <div className="relative">
       <span
         aria-hidden="true"
-        className="mt-1 hidden size-8 shrink-0 sm:grid place-items-center bg-accent text-sm font-bold text-on-accent"
+        className="absolute top-1 right-full mr-3 hidden size-8 place-items-center bg-accent text-sm font-bold text-on-accent xl:grid"
       >
         P
       </span>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

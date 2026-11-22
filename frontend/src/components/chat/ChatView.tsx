@@ -15,17 +15,19 @@ import { useNewCheckCount } from "@/lib/newCheck";
 import { cacheResult } from "@/lib/resultCache";
 import { ensureSessionId } from "@/lib/session";
 import type { CheckResponse } from "@/lib/types";
-import { ChatAnswer, type TurnState } from "./ChatAnswer";
+import { ChatAnswer } from "./ChatAnswer";
 import { Composer, TEXT_LIMIT } from "./Composer";
-
-interface Turn {
-  id: number;
-  text: string;
-  file: File | null;
-  /** Own object URL, so clearing the composer does not break the image in the thread. */
-  imageUrl: string | null;
-  state: TurnState;
-}
+import {
+  addTurn,
+  openConversation,
+  reloadResult,
+  saveScroll,
+  savedScroll,
+  trackRequest,
+  updateTurn,
+  useTurns,
+  type Turn,
+} from "./conversationStore";
 
 function announce(result: CheckResponse, t: ReturnType<typeof import("react-i18next").useTranslation>["t"]): string {
   if (result.status !== "completed")
@@ -53,8 +55,10 @@ function UserMessage({ turn }: { turn: Turn }) {
             alt="Dołączony zrzut ekranu"
             className="mb-2 max-h-48 border border-line object-contain"
           />
+        ) : turn.image ? (
+          <p className="text-sm text-muted">Przesłane zdjęcie (podgląd nie jest zapisywany)</p>
         ) : null}
-        {turn.file ? null : (
+        {turn.image ? null : (
           <>
             <p
               className={cx(
@@ -120,7 +124,7 @@ function Welcome({ title }: { title: ReactNode }) {
 
 function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   const { t } = useTranslation();
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const turns = useTurns();
   const [text, setText] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
@@ -130,23 +134,42 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const turnRefs = useRef(new Map<number, HTMLDivElement>());
-  const controllers = useRef(new Set<AbortController>());
-  const urls = useRef(new Set<string>());
-  const nextId = useRef(1);
   const retryAt = useRef(0);
   const scrollTo = useRef<number | null>(null);
+  const scrollToResult = useRef<string | null>(null);
 
   const busy = turns.some((turn) => turn.state.kind === "loading");
   const waiting = waitSeconds > 0;
 
+  // "Wróć do czatu" links here with ?rozmowa=<conversation>&wynik=<check>: reopen that conversation
+  // and show the message that asked for the check. A plain "back" returns to the last position.
   useEffect(() => {
-    const controllerSet = controllers.current;
-    const urlSet = urls.current;
+    const params = new URLSearchParams(window.location.search);
+    const conversation = params.get("rozmowa");
+    let frame = 0;
+    if (conversation) {
+      window.history.replaceState(null, "", "/");
+      if (openConversation(conversation)) scrollToResult.current = params.get("wynik");
+    } else {
+      const y = savedScroll();
+      if (y > 0) frame = requestAnimationFrame(() => window.scrollTo(0, y));
+    }
     return () => {
-      controllerSet.forEach((controller) => controller.abort());
-      urlSet.forEach((url) => URL.revokeObjectURL(url));
+      cancelAnimationFrame(frame);
+      saveScroll(window.scrollY);
     };
   }, []);
+
+  // Results above the target load one by one and change its position, so keep it in view
+  // until every reopened result has arrived.
+  useEffect(() => {
+    const target = scrollToResult.current;
+    if (!target) return;
+    const turn = turns.find((item) => item.resultId === target);
+    if (!turn) return;
+    turnRefs.current.get(turn.id)?.scrollIntoView({ block: "start" });
+    if (!turns.some((item) => item.state.kind === "loading")) scrollToResult.current = null;
+  }, [turns]);
 
   useEffect(() => {
     if (focusOnMount) textareaRef.current?.focus();
@@ -171,14 +194,10 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }, [turns]);
 
-  function update(id: number, state: TurnState) {
-    setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, state } : turn)));
-  }
-
   async function run(id: number, payload: { text: string; file: File | null }) {
     const controller = new AbortController();
-    controllers.current.add(controller);
-    update(id, { kind: "loading" });
+    const untrack = trackRequest(controller);
+    updateTurn(id, { kind: "loading" });
     setStatus(t("chat.checkingStatus"));
     try {
       const sessionId = ensureSessionId();
@@ -198,7 +217,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       if (result.status === "needs_clarification" && payload.file && result.input.text.trim()) {
         setText(result.input.text);
       }
-      update(id, { kind: "result", result });
+      updateTurn(id, { kind: "result", result });
       setStatus(announce(result, t));
     } catch (error) {
       if (isAbort(error)) return;
@@ -207,10 +226,10 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         retryAt.current = Date.now() + seconds * 1000;
         setWaitSeconds(seconds);
       }
-      update(id, { kind: "failure", error });
+      updateTurn(id, { kind: "failure", error });
       setStatus(`Nie udało się sprawdzić. ${describeError(error)}`);
     } finally {
-      controllers.current.delete(controller);
+      untrack();
     }
   }
 
@@ -230,17 +249,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     }
     setFormError(null);
 
-    const id = nextId.current++;
-    let imageUrl: string | null = null;
-    if (file) {
-      imageUrl = URL.createObjectURL(file);
-      urls.current.add(imageUrl);
-    }
+    const id = addTurn(trimmed, file);
     scrollTo.current = id;
-    setTurns((current) => [
-      ...current,
-      { id, text: trimmed, file, imageUrl, state: { kind: "loading" } },
-    ]);
     setText("");
     image.clear();
     textareaRef.current?.focus();
@@ -249,7 +259,9 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
 
   function retry(turn: Turn) {
     if (busy || waiting) return;
-    void run(turn.id, { text: turn.text, file: turn.file });
+    // A reopened message already has a check on the backend: load it again rather than re-check.
+    if (turn.resultId) reloadResult(turn.id);
+    else void run(turn.id, { text: turn.text, file: turn.file });
   }
 
   function focusComposer() {

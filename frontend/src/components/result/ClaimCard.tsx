@@ -15,8 +15,7 @@ interface ClaimCardProps {
   anchor: string;
 }
 
-/** Returns the sub-anchor IDs used by ResultView's table of contents. */
-export function claimAnchors(anchor: string) {
+function claimAnchors(anchor: string) {
   return {
     claim: anchor,
     assessment: `${anchor}-ocena`,
@@ -30,7 +29,6 @@ export function ClaimCard({ claim, index, total, anchor }: ClaimCardProps) {
   return (
     <article
       id={ids.claim}
-      data-claim-anchor={anchor}
       aria-labelledby={`${ids.claim}-tytul`}
       className={cx("scroll-mt-6 border-l-4 bg-surface px-6 py-6 shadow-card", verdictStripe(claim.verdict))}
     >
