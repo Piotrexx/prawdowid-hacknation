@@ -146,9 +146,3 @@ Opis scenariuszy A–J, sposób liczenia mierników i stan pomiarów: [docs/TEST
 - **Wyniki testów z sekcji 6 + dane do odtworzenia** — [docs/TESTY-I-RYZYKA.md](docs/TESTY-I-RYZYKA.md)
   + `backend/eval/cases.jsonl` + `backend/eval/out/*.csv`.
 - **Lista ryzyk** — [docs/TESTY-I-RYZYKA.md#ryzyka](docs/TESTY-I-RYZYKA.md).
-
-## Pochodzenie
-
-Projekt rozwija pomysły z [ellmu](https://github.com/Piotrexx/ellmu): pobieranie artykułów (trafilatura),
-wyszukiwanie semantyczne oraz walidator, który odrzuca odpowiedź modelu, gdy cytat nie występuje w źródle.
-W Prawdowidzie ten walidator stał się podstawą reguł werdyktu.
