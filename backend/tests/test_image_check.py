@@ -425,6 +425,20 @@ def test_endpoint_merges_ocr_with_image_analysis(image_client):
     assert image_client.get(f"/api/v1/checks/{body['id']}").status_code == 200
 
 
+def test_endpoint_keeps_user_comment_apart_from_ocr(image_client):
+    reply = image_client.post(
+        "/api/v1/checks/image",
+        files={"file": ("zdjecie.jpg", _jpeg(ORIGINAL), "image/jpeg")},
+        data={"comment": "  Dostałem to od sąsiada, tel. 600 700 800. Czy to prawda?  "},
+    )
+    assert reply.status_code == 200
+    body = reply.json()
+    assert body["input"]["kind"] == "image"
+    assert "Czy to prawda?" in body["input"]["comment"]
+    assert "600 700 800" not in body["input"]["comment"]
+    assert "Czy to prawda?" not in body["input"]["text"]
+
+
 def test_endpoint_survives_image_search_failure(make_client, settings, provider):
     down = [
         EngineResult("yandex", False, [], error="captcha"),

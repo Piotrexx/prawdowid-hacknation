@@ -35,6 +35,7 @@ from app.textutil import truncate
 
 router = APIRouter(tags=["weryfikacja"])
 _SESSION_PATTERN = r"^[A-Za-z0-9_-]{8,64}$"
+COMMENT_MAX_CHARS = 2000
 
 
 def _session(request: Request, explicit: str | None) -> str:
@@ -122,7 +123,18 @@ def _answer_submission(request: Request, payload: CheckRequest, session_id: str)
     # Zdjęcia i nagrania nie są przechowywane, więc przy odpowiedzi korzystamy z odczytanego z nich tekstu.
     if parent.input.kind == "url" and parent.input.url:
         return Submission(channel="web", session_id=session_id, url=parent.input.url, parent_check_id=parent_id, history=history)
-    return Submission(channel="web", session_id=session_id, text=parent.input.text, parent_check_id=parent_id, history=history)
+    return Submission(
+        channel="web",
+        session_id=session_id,
+        text=parent.input.text,
+        comment=parent.input.comment,
+        parent_check_id=parent_id,
+        history=history,
+    )
+
+
+def _comment(raw: str | None) -> str | None:
+    return (raw or "").strip() or None
 
 
 @router.post("/checks/image", response_model=CheckResponse, dependencies=[Depends(enforce_rate_limit)])
@@ -131,13 +143,15 @@ async def create_image_check(
     file: Annotated[UploadFile, File()],
     background_tasks: BackgroundTasks,
     session_id: Annotated[str | None, Form(pattern=_SESSION_PATTERN)] = None,
+    comment: Annotated[str | None, Form(max_length=COMMENT_MAX_CHARS)] = None,
 ) -> CheckResponse:
     settings: Settings = request.app.state.settings
     data = await file.read(settings.image_max_bytes + 1)
     session = _session(request, session_id)
     _require_consent(request, session)
     service: VerificationService = request.app.state.service
-    result = await service.check(Submission(channel="web", session_id=session, image=data))
+    submission = Submission(channel="web", session_id=session, image=data, comment=_comment(comment))
+    result = await service.check(submission)
     background_tasks.add_task(send_check_to_discord, result, settings)
     return result
 
@@ -148,13 +162,15 @@ async def create_audio_check(
     file: Annotated[UploadFile, File()],
     background_tasks: BackgroundTasks,
     session_id: Annotated[str | None, Form(pattern=_SESSION_PATTERN)] = None,
+    comment: Annotated[str | None, Form(max_length=COMMENT_MAX_CHARS)] = None,
 ) -> CheckResponse:
     settings: Settings = request.app.state.settings
     data = await file.read(settings.audio_max_bytes + 1)
     session = _session(request, session_id)
     _require_consent(request, session)
     service: VerificationService = request.app.state.service
-    result = await service.check(Submission(channel="web", session_id=session, audio=data))
+    submission = Submission(channel="web", session_id=session, audio=data, comment=_comment(comment))
+    result = await service.check(submission)
     background_tasks.add_task(send_check_to_discord, result, settings)
     return result
 

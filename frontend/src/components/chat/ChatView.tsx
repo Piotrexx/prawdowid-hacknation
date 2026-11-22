@@ -19,7 +19,7 @@ import { cacheResult } from "@/lib/resultCache";
 import { ensureSessionId } from "@/lib/session";
 import type { CheckResponse } from "@/lib/types";
 import { ChatAnswer } from "./ChatAnswer";
-import { Composer, MIN_TEXT_LENGTH, TEXT_LIMIT } from "./Composer";
+import { COMMENT_LIMIT, Composer, MIN_TEXT_LENGTH, TEXT_LIMIT } from "./Composer";
 import {
   addTurn,
   openConversation,
@@ -71,7 +71,8 @@ function UserMessage({ turn }: { turn: Turn }) {
             <FileAudio aria-hidden="true" className="size-4" />
             {t("composer.voiceMessage", { defaultValue: "Plik audio" })}
           </p>
-        ) : turn.kind === "image" ? null : (
+        ) : null}
+        {turn.text ? (
           <>
             <p
               className={cx(
@@ -98,7 +99,7 @@ function UserMessage({ turn }: { turn: Turn }) {
               </p>
             ) : null}
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -261,8 +262,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       const sessionId = ensureSessionId();
       const result = payload.file
         ? payload.kind === "audio"
-          ? await createAudioCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct))
-          : await createImageCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct))
+          ? await createAudioCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct), payload.text)
+          : await createImageCheck(payload.file, sessionId, controller.signal, (pct) => setUploadProgress(pct), payload.text)
         : await createCheck(
             payload.parentId
               ? { text: payload.text, parent_check_id: payload.parentId, session_id: sessionId }
@@ -327,6 +328,11 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       textareaRef.current?.focus();
       return;
     }
+    if (file && trimmed.length > COMMENT_LIMIT) {
+      setFormError(t("composer.errorCommentTooLong", { max: COMMENT_LIMIT }));
+      textareaRef.current?.focus();
+      return;
+    }
     setFormError(null);
     const { text: sentText, masked: maskedPii } = maskPii(trimmed);
     setText("");
@@ -353,13 +359,20 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
     focusComposer();
   }
 
+  /** Whatever is typed in the composer goes along with the recording as the user's comment. */
   function sendAudio(file: File) {
     if (busy || waiting) return;
+    const trimmed = text.trim();
+    if (trimmed.length > COMMENT_LIMIT) {
+      setFormError(t("composer.errorCommentTooLong", { max: COMMENT_LIMIT }));
+      textareaRef.current?.focus();
+      return;
+    }
     setFormError(null);
+    const { text: sentText, masked: maskedPii } = maskPii(trimmed);
     setText("");
     image.clear();
-    const label = t("composer.voiceMessage", { defaultValue: "Nagranie głosowe" });
-    submit({ text: label, sentText: "", maskedPii: [], file, kind: "audio" }, null);
+    submit({ text: trimmed, sentText, maskedPii, file, kind: "audio" }, null);
   }
 
   function retry(turn: Turn) {

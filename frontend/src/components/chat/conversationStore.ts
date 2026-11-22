@@ -116,7 +116,7 @@ function persist(): void {
     turn.resultId
       ? [
           {
-            text: turn.kind ? "" : turn.sentText.slice(0, MAX_STORED_TEXT),
+            text: turn.sentText.slice(0, MAX_STORED_TEXT),
             image: turn.image,
             ...(turn.kind ? { kind: turn.kind } : {}),
             resultId: turn.resultId,

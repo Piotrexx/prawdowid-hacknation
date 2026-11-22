@@ -152,6 +152,8 @@ export interface InputInfo {
   title?: string | null;
   image_metadata?: Record<string, string> | null;
   audio_metadata?: Record<string, string> | null;
+  /** The user's own comment sent with an image or recording, masked. */
+  comment?: string | null;
 }
 
 // --- Image analysis (reverse search, copy comparison, AI provenance) ---

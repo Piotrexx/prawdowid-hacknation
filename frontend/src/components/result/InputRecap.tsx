@@ -49,6 +49,12 @@ export function InputRecap({ input, id, level = 3 }: InputRecapProps) {
           </Disclosure>
         )
       ) : null}
+      {input.comment ? (
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="text-sm font-semibold">Twój komentarz</p>
+          <p className="mt-1 whitespace-pre-line">{input.comment}</p>
+        </div>
+      ) : null}
     </section>
   );
 }

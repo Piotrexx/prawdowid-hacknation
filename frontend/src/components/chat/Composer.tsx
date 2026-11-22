@@ -14,6 +14,8 @@ import {
 
 export const TEXT_LIMIT = 20_000;
 export const MIN_TEXT_LENGTH = 20;
+/** Matches the backend's limit for a comment sent with an image or recording. */
+export const COMMENT_LIMIT = 2000;
 const COUNTER_FROM = 18_000;
 const MAX_HEIGHT = 240;
 const AUDIO_ACCEPT = "audio/*,audio/mp3,audio/mpeg,audio/wav,audio/webm,audio/ogg,audio/m4a,audio/aac";
@@ -124,9 +126,7 @@ export function Composer({
               <span className="min-w-0 flex-1 truncate text-sm">
                 {attachment.file.name}
                 <span className="block text-xs text-muted">
-                  {text.trim()
-                    ? t("composer.imageWillSend")
-                    : t("composer.imageWillCheck")}
+                  {text.trim() ? t("composer.imageWithComment") : t("composer.imageWillCheck")}
                 </span>
               </span>
               <button
@@ -152,7 +152,11 @@ export function Composer({
             value={text}
             rows={1}
             placeholder={
-              replying && !attachment ? t("composer.replyPlaceholder") : t("composer.placeholder")
+              attachment
+                ? t("composer.commentPlaceholder")
+                : replying
+                  ? t("composer.replyPlaceholder")
+                  : t("composer.placeholder")
             }
             aria-describedby={describedBy}
             aria-invalid={error || overLimit ? true : undefined}

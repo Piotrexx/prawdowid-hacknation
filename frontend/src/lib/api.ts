@@ -261,10 +261,12 @@ export async function createImageCheck(
   sessionId?: string,
   signal?: AbortSignal,
   onUploadProgress?: (pct: number) => void,
+  comment?: string,
 ): Promise<CheckResponse> {
   const body = new FormData();
   body.append("file", file);
   if (sessionId) body.append("session_id", sessionId);
+  if (comment) body.append("comment", comment);
   if (onUploadProgress) {
     return xhrUpload<CheckResponse>("/checks/image", body, onUploadProgress, signal);
   }
@@ -282,10 +284,12 @@ export async function createAudioCheck(
   sessionId?: string,
   signal?: AbortSignal,
   onUploadProgress?: (pct: number) => void,
+  comment?: string,
 ): Promise<CheckResponse> {
   const body = new FormData();
   body.append("file", file);
   if (sessionId) body.append("session_id", sessionId);
+  if (comment) body.append("comment", comment);
   if (onUploadProgress) {
     return xhrUpload<CheckResponse>("/checks/audio", body, onUploadProgress, signal);
   }

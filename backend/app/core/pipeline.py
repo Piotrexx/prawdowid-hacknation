@@ -125,6 +125,8 @@ class Submission:
     url: str | None = None
     image: bytes | None = None
     audio: bytes | None = None
+    # Własny komentarz użytkownika dołączony do zdjęcia lub nagrania.
+    comment: str | None = None
     # Odpowiedź na pytanie doprecyzowujące: pierwotna treść + wszystkie dotychczasowe pytania i odpowiedzi.
     parent_check_id: str | None = None
     history: list[ClarificationExchange] = field(default_factory=list)
@@ -447,6 +449,14 @@ class VerificationService:
             if masked:
                 run.warn("pii_masked", "Przed analizą ukryliśmy dane wyglądające na osobowe (np. telefon, e-mail, PESEL).")
             run.material = f"{material}\n\n{answers}"
+        if submission.comment:
+            # Komentarz to treść od użytkownika jak każda inna, ale trzymamy go osobno od odczytanego załącznika.
+            comment, masked = mask_pii(sanitize_untrusted(submission.comment).strip())
+            if masked:
+                run.warn("pii_masked", "Przed analizą ukryliśmy dane wyglądające na osobowe (np. telefon, e-mail, PESEL).")
+            if comment:
+                run.input.comment = comment
+                run.material = f"{run.material}\n\nKomentarz użytkownika do załącznika:\n{comment}"
         found = scan_injection(run.material)
         if found:
             run.flag_injection(origin, "; ".join(found))

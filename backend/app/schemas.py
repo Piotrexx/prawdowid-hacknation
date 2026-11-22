@@ -340,6 +340,7 @@ class InputInfo(BaseModel):
     title: str | None = None
     image_metadata: dict[str, str] | None = None
     audio_metadata: dict[str, str] | None = None
+    comment: str | None = Field(default=None, description="Komentarz użytkownika do załącznika, po zamaskowaniu.")
 
 
 class CheckMeta(BaseModel):
