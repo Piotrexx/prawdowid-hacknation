@@ -177,6 +177,37 @@ class Store:
             except Exception:
                 return None
 
+    def find_by_cache_key(self, cache_key: str) -> CheckResponse | None:
+        """Permanentna deduplikacja — szuka bez limitu czasowego."""
+        with self._session() as db:
+            row = db.scalars(
+                select(CheckRow)
+                .where(CheckRow.cache_key == cache_key, CheckRow.status == CheckStatus.COMPLETED.value)
+                .order_by(CheckRow.created_at.desc())
+                .limit(1)
+            ).first()
+            if row is None:
+                return None
+            try:
+                return CheckResponse.model_validate(row.result)
+            except Exception:
+                return None
+
+    def increment_check_count(self, check_id: str) -> CheckResponse | None:
+        """Zwiększa licznik zapytań i zapisuje zaktualizowany wynik w bazie."""
+        with self._session() as db:
+            row = db.get(CheckRow, check_id)
+            if row is None:
+                return None
+            result = dict(row.result)
+            result["request_count"] = result.get("request_count", 1) + 1
+            row.result = result
+            db.commit()
+            try:
+                return CheckResponse.model_validate(result)
+            except Exception:
+                return None
+
     def _forget_checks(self, db: Session, condition) -> int:
         ids = list(db.scalars(select(CheckRow.id).where(condition)))
         if ids:

@@ -240,8 +240,9 @@ class VerificationService:
         run = _Run(channel=submission.channel)
         cache_key = None
         _should_save = True
+        original: CheckResponse | None = None
         try:
-            response, cache_key = await self._verify(submission, run)
+            response, cache_key, original = await self._verify(submission, run)
         except _Stop as stop:
             response = self._response(run, stop.status, status_message=stop.message, error_code=stop.error_code)
             _should_save = stop.save
@@ -257,6 +258,22 @@ class VerificationService:
             )
             # Błąd techniczny nie jest wynikiem sprawdzenia – nie zaśmiecamy bazy.
             _should_save = False
+
+        if original is not None:
+            # Deduplikacja: ta treść była już sprawdzona — zwracamy ten sam wynik z inkrementem.
+            updated = self._store.increment_check_count(original.id)
+            log.info(
+                json.dumps(
+                    {
+                        "check_id": original.id,
+                        "channel": submission.channel,
+                        "status": "deduplicated",
+                        "request_count": (updated or original).request_count,
+                    }
+                )
+            )
+            return updated or original
+
         if _should_save:
             self._store.save_check(response, submission.session_id, cache_key)
         for kind, origin, detail in run.events:
@@ -290,7 +307,7 @@ class VerificationService:
 
     # --- etapy ---
 
-    async def _verify(self, submission: Submission, run: _Run) -> tuple[CheckResponse, str]:
+    async def _verify(self, submission: Submission, run: _Run) -> tuple[CheckResponse, str, CheckResponse | None]:
         started = time.perf_counter()
         await self._prepare_input(submission, run)
         run.mark("input", started)
@@ -298,6 +315,12 @@ class VerificationService:
         model = self._provider.model if self._provider else "none"
         fingerprint = f"{self._retriever.version}|{model}|{normalize_for_match(run.material)}"
         cache_key = hashlib.sha256(fingerprint.encode()).hexdigest()
+
+        # Permanentna deduplikacja: ta sama treść → ten sam wynik, niezależnie od czasu.
+        existing = self._store.find_by_cache_key(cache_key)
+        if existing:
+            return existing, cache_key, existing
+
         since = datetime.now(UTC) - timedelta(hours=self._settings.result_cache_hours)
         cached = self._store.find_cached(cache_key, since)
         if cached:
@@ -342,7 +365,7 @@ class VerificationService:
             limitations=limitations,
             cached=cached is not None,
         )
-        return response, cache_key
+        return response, cache_key, None
 
     async def _prepare_input(self, submission: Submission, run: _Run) -> None:
         origin = "user_input"

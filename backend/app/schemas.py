@@ -293,6 +293,7 @@ class CheckResponse(BaseModel):
     # Wynik osobnej analizy zdjęcia (odwrotne wyszukiwanie, porównanie kopii, ślady AI).
     image_analysis: ImageAnalysis | None = None
     meta: CheckMeta = CheckMeta()
+    request_count: int = 1
 
 
 class CheckRequest(BaseModel):

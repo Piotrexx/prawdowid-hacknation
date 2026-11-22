@@ -1,9 +1,8 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { User } from "lucide-react";
 import { useId, useRef, useState, useEffect, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/Button";
 import { ErrorBlock, LoadingBlock } from "@/components/ui/LoadState";
 import { getProfile, logoutModerator } from "@/lib/api";
 import { useAdminToken, writeAdminToken } from "@/lib/adminToken";
@@ -26,19 +25,22 @@ interface TabDefinition {
   Panel: (props: { access: AdminAccess }) => ReactNode;
 }
 
-function AccountBadge({ profile, onLogout }: { profile: Profile; onLogout: () => void }) {
+function AccountBadge({ profile }: { profile: Profile }) {
   const { display_name, email } = profile.moderator;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-2 border-line-strong bg-surface px-3 py-2">
-      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-semibold">{display_name || email}</span>
-        {display_name ? <span className="text-sm text-muted">{email}</span> : null}
-      </p>
-      <Button variant="danger" onClick={onLogout}>
-        <LogOut aria-hidden="true" className="size-5" />
-        Wyloguj
-      </Button>
+    <div className="flex items-center gap-2.5 border-2 border-line-strong bg-surface px-3 py-2">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-subtle">
+        <User aria-hidden="true" className="size-4 text-muted" />
+      </div>
+      <div className="min-w-0 max-w-[180px]">
+        <p className="truncate text-sm font-semibold leading-tight">
+          {display_name || email}
+        </p>
+        {display_name ? (
+          <p className="truncate text-xs text-muted">{email}</p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -54,9 +56,6 @@ function Dashboard({
 }) {
   const baseId = useId();
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
-  const [lowerSlot, setLowerSlot] = useState<HTMLDivElement | null>(null);
-  const [stixHelpOpen, setStixHelpOpen] = useState(false);
-  const accountSlot = stixHelpOpen ? lowerSlot : headerSlot;
   const isSuperuser = profile.moderator.role === "superuser";
   const tabs: TabDefinition[] = [
     { key: "cases", label: "Twierdzenia", Panel: CasesTab },
@@ -102,13 +101,11 @@ function Dashboard({
 
   return (
     <div className="space-y-6">
-      {accountSlot
-        ? createPortal(<AccountBadge profile={profile} onLogout={onLogout} />, accountSlot)
+      {headerSlot
+        ? createPortal(<AccountBadge profile={profile} />, headerSlot)
         : null}
 
-      <ExportButtons access={access} onStixHelpToggle={setStixHelpOpen} />
-      {/* Konto przenosi się tutaj, gdy rozwinięta jest pomoc eksportu STIX. */}
-      <div ref={setLowerSlot} className="flex justify-end empty:hidden" />
+      <ExportButtons access={access} onLogout={onLogout} />
 
       {profile.moderator.must_change_password ? (
         <p
@@ -141,7 +138,7 @@ function Dashboard({
               tabIndex={selected ? 0 : -1}
               onClick={() => setActive(tab.key)}
               className={cx(
-                "min-h-11 rounded-t-lg border-b-4 px-4 font-medium",
+                "min-h-11 border-b-4 px-4 font-medium",
                 selected
                   ? "border-accent bg-surface text-ink"
                   : "border-transparent text-muted hover:bg-subtle hover:text-ink",

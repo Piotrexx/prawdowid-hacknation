@@ -272,6 +272,7 @@ export interface CheckResponse {
   limitations: string[];
   image_analysis: ImageAnalysis | null;
   meta: CheckMeta;
+  request_count: number;
 }
 
 export interface CheckRequest {
