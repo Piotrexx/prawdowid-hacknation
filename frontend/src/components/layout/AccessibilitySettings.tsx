@@ -65,7 +65,7 @@ export function AccessibilitySettings({ placement = "below" }: AccessibilitySett
           if (!open) setSettings(readSettings());
           setOpen(!open);
         }}
-        className="inline-flex min-h-12 w-full items-center gap-2.5 rounded-[4px_4px_4px_4px] bg-accent px-4 collapsed:justify-center collapsed:px-0 text-[0.9375rem] font-semibold text-on-accent hover:bg-accent-hover"
+        className="inline-flex min-h-12 w-full items-center gap-2.5 rounded-lg bg-accent px-4 collapsed:justify-center collapsed:px-0 text-[0.9375rem] font-semibold text-on-accent hover:bg-accent-hover"
       >
         <Accessibility aria-hidden="true" className="size-5 shrink-0" />
         <span className="collapsed:sr-only">Ustawienia dostępności</span>

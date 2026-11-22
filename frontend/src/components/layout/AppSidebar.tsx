@@ -69,16 +69,20 @@ function CurrentNavList({ onNavigate }: { onNavigate?: () => void }) {
   return <NavList pathname={usePathname()} onNavigate={onNavigate} />;
 }
 
+// The wordmark is a mask filled with the text colour, so it follows the theme and high contrast.
+// Bump ?v= whenever the SVG changes, so browsers drop their cached copy.
+const WORDMARK_MASK = "url(/logo-wordmark.svg?v=2) left center / contain no-repeat";
+
 function Brand({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   return (
-    <Link
-      href="/"
-      onClick={onNavigate}
-      className="inline-flex min-h-11 items-center text-[1.625rem] leading-none font-bold tracking-[-0.02em] text-ink"
-    >
-      Prawdowid
-      <span className="sr-only">{t("nav.homeLink")}</span>
+    <Link href="/" onClick={onNavigate} className="inline-flex min-h-11 items-center text-muted">
+      <span
+        aria-hidden="true"
+        className="block h-5 aspect-[6514/776] bg-current forced-color-adjust-none"
+        style={{ mask: WORDMARK_MASK, WebkitMask: WORDMARK_MASK }}
+      />
+      <span className="sr-only">Prawdowid{t("nav.homeLink")}</span>
     </Link>
   );
 }
@@ -119,7 +123,7 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
   return (
     <>
       <div className="flex flex-col gap-4 px-4 pt-5 collapsed:px-0 collapsed:pt-3">
-        <div className="hidden items-center justify-between gap-2 pl-1 lg:flex collapsed:justify-center collapsed:pl-0">
+        <div className="hidden items-center justify-between gap-2 lg:flex collapsed:justify-center">
           <span className="collapsed:hidden">
             <Brand onNavigate={onNavigate} />
           </span>
@@ -137,6 +141,17 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
         aria-labelledby={historyId}
         className="mt-4 flex min-h-0 flex-1 flex-col border-t border-line pt-4"
       >
+        <div className="shrink-0 pb-3">
+          <button
+            type="button"
+            onClick={startNewCheck}
+            title={t("sidebar.newSession")}
+            className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent collapsed:justify-center collapsed:px-0"
+          >
+            <Plus aria-hidden="true" className="size-5 shrink-0" />
+            <span className="collapsed:sr-only">{t("sidebar.newSession")}</span>
+          </button>
+        </div>
         <div className="mb-2 flex items-center justify-between px-5 collapsed:hidden">
           <h2 id={historyId} className="eyebrow">
             {t("sidebar.sessions")}
@@ -153,20 +168,8 @@ function SidebarContent({ idPrefix, onNavigate }: SidebarContentProps) {
             </button>
           ) : null}
         </div>
-        {/* The list shrinks and scrolls, so the button under it stays in view. */}
         <div className="min-h-0 shrink overflow-y-auto px-2 collapsed:hidden">
           <HistoryList onNavigate={onNavigate} />
-        </div>
-        <div className="shrink-0 pt-1 pb-2">
-          <button
-            type="button"
-            onClick={startNewCheck}
-            title={t("sidebar.newSession")}
-            className="flex min-h-11 w-full items-center gap-3 px-[0.9375rem] text-left text-ink transition-colors hover:bg-surface hover:text-accent collapsed:justify-center collapsed:px-0"
-          >
-            <Plus aria-hidden="true" className="size-5 shrink-0" />
-            <span className="collapsed:sr-only">{t("sidebar.newSession")}</span>
-          </button>
         </div>
       </section>
 
@@ -247,7 +250,7 @@ function MobileBar() {
             aria-label={t("sidebar.menu")}
             className="absolute inset-y-0 left-0 flex w-[min(20rem,88vw)] flex-col bg-subtle shadow-card"
           >
-            <div className="flex items-center justify-between border-b border-line py-1.5 pr-2 pl-5">
+            <div className="flex items-center justify-between border-b border-line py-1.5 pr-2 pl-4">
               <Brand onNavigate={close} />
               <button
                 ref={closeRef}
