@@ -25,7 +25,7 @@ if health=$(curl -fsS --max-time 15 "$BASE/api/v1/health"); then
   docs=$(jq -r '.corpus_documents // 0' <<< "$health")
   (( docs > 0 )) && ok "korpus: $docs dokumentów" || bad "pusty korpus – uruchom: bash scripts/ingest.sh"
   mode=$(jq -r .retrieval_mode <<< "$health")
-  [[ "$mode" == "pgvector" ]] && ok "retrieval: $mode" || bad "retrieval: $mode (oczekiwano pgvector)"
+  [[ "$mode" == "hybrid" ]] && ok "retrieval: $mode" || bad "retrieval: $mode (oczekiwano hybrid)"
 else
   bad "health nie odpowiada"
 fi

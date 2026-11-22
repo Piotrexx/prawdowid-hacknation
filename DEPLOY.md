@@ -269,7 +269,7 @@ Oczekiwane:
 - `"status": "ok"`
 - `"bielik_configured": true`
 - `"corpus_documents"` > 0
-- `"retrieval_mode": "pgvector"`
+- `"retrieval_mode": "hybrid"`
 
 Otwórz `https://<DOMAIN>`, zaakceptuj politykę prywatności i sprawdź **krótkie**
 twierdzenie. Panel moderatora: `https://<DOMAIN>/moderator`, publiczna mapa:
