@@ -48,6 +48,9 @@ function UserMessage({ turn }: { turn: Turn }) {
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-subtle px-4.5 py-3 sm:max-w-[75%]">
         <h2 className="sr-only">{t("chat.myMessage")}</h2>
+        {turn.parentResultId ? (
+          <p className="mb-1 text-xs font-semibold text-muted">{t("chat.answerLabel")}</p>
+        ) : null}
         {turn.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
           <img
@@ -83,6 +86,20 @@ function UserMessage({ turn }: { turn: Turn }) {
       </div>
     </div>
   );
+}
+
+function waitsForAnswer(turn: Turn): boolean {
+  return (
+    turn.state.kind === "result" &&
+    turn.state.result.status === "needs_clarification" &&
+    (turn.state.result.clarification?.questions.length ?? 0) > 0
+  );
+}
+
+/** Coming back to a chat whose last message is an unanswered question continues the reply. */
+function initialReplyTarget(turns: Turn[]): string | null {
+  const last = turns.at(-1);
+  return last && waitsForAnswer(last) ? last.resultId : null;
 }
 
 /** Emphasis only, not a link: the accent colour marks what can be pasted. */
@@ -130,6 +147,7 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
   const [status, setStatus] = useState("");
   const [waitSeconds, setWaitSeconds] = useState(0);
   const [dragActive, setDragActive] = useState(false);
+  const [replyToId, setReplyToId] = useState<string | null>(() => initialReplyTarget(turns));
   const image = useImageAttachment();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -140,6 +158,11 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
 
   const busy = turns.some((turn) => turn.state.kind === "loading");
   const waiting = waitSeconds > 0;
+  const answered = new Set(turns.flatMap((turn) => (turn.parentResultId ? [turn.parentResultId] : [])));
+  const replyTarget =
+    replyToId && !answered.has(replyToId) && turns.some((turn) => turn.resultId === replyToId)
+      ? replyToId
+      : null;
 
   // "Wróć do czatu" links here with ?rozmowa=<conversation>&wynik=<check>: reopen that conversation
   // and show the message that asked for the check. A plain "back" returns to the last position.
@@ -194,7 +217,10 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }, [turns]);
 
-  async function run(id: number, payload: { text: string; file: File | null }) {
+  async function run(
+    id: number,
+    payload: { text: string; file: File | null; parentId: string | null },
+  ) {
     const controller = new AbortController();
     const untrack = trackRequest(controller);
     updateTurn(id, { kind: "loading" });
@@ -204,9 +230,11 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       const result = payload.file
         ? await createImageCheck(payload.file, sessionId, controller.signal)
         : await createCheck(
-            isSingleUrl(payload.text)
-              ? { url: payload.text, session_id: sessionId }
-              : { text: payload.text, session_id: sessionId },
+            payload.parentId
+              ? { text: payload.text, parent_check_id: payload.parentId, session_id: sessionId }
+              : isSingleUrl(payload.text)
+                ? { url: payload.text, session_id: sessionId }
+                : { text: payload.text, session_id: sessionId },
             controller.signal,
           );
       if (result.status === "completed") {
@@ -218,6 +246,10 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
         setText(result.input.text);
       }
       updateTurn(id, { kind: "result", result });
+      // The next message answers the question, until the user cancels or sends an image.
+      if (result.status === "needs_clarification" && result.clarification?.questions.length) {
+        setReplyToId(result.id);
+      }
       setStatus(announce(result, t));
     } catch (error) {
       if (isAbort(error)) return;
@@ -248,20 +280,35 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
       return;
     }
     setFormError(null);
-
-    const id = addTurn(trimmed, file);
-    scrollTo.current = id;
     setText("");
     image.clear();
     textareaRef.current?.focus();
-    void run(id, { text: trimmed, file });
+    // An image is always a new check; only text can answer a question.
+    submit(trimmed, file, file ? null : replyTarget);
+  }
+
+  function answer(parentId: string, option: string) {
+    if (busy || waiting || answered.has(parentId)) return;
+    submit(option, null, parentId);
+  }
+
+  function submit(message: string, file: File | null, parentId: string | null) {
+    const id = addTurn(message, file, parentId);
+    scrollTo.current = id;
+    setReplyToId(null);
+    void run(id, { text: message, file, parentId });
+  }
+
+  function reply(resultId: string) {
+    setReplyToId(resultId);
+    focusComposer();
   }
 
   function retry(turn: Turn) {
     if (busy || waiting) return;
     // A reopened message already has a check on the backend: load it again rather than re-check.
     if (turn.resultId) reloadResult(turn.id);
-    else void run(turn.id, { text: turn.text, file: turn.file });
+    else void run(turn.id, { text: turn.text, file: turn.file, parentId: turn.parentResultId });
   }
 
   function focusComposer() {
@@ -330,7 +377,12 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
                   <ChatAnswer
                     state={turn.state}
                     onRetry={() => retry(turn)}
-                    onFocusComposer={focusComposer}
+                    answered={turn.resultId !== null && answered.has(turn.resultId)}
+                    busy={busy || waiting}
+                    onReply={() => (turn.resultId ? reply(turn.resultId) : focusComposer())}
+                    onAnswer={(option) => {
+                      if (turn.resultId) answer(turn.resultId, option);
+                    }}
                   />
                 </div>
               ))}
@@ -359,6 +411,8 @@ function Conversation({ focusOnMount }: { focusOnMount: boolean }) {
           error={formError}
           waitSeconds={waitSeconds}
           textareaRef={textareaRef}
+          replying={replyTarget !== null}
+          onCancelReply={() => setReplyToId(null)}
         />
       </div>
     </div>

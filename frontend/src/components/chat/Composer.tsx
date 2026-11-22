@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, ImagePlus, X } from "lucide-react";
+import { ArrowUp, CornerDownRight, ImagePlus, X } from "lucide-react";
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "@/lib/cx";
@@ -27,6 +27,9 @@ interface ComposerProps {
   error: string | null;
   waitSeconds: number;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
+  /** The next text message answers a clarifying question instead of starting a new check. */
+  replying?: boolean;
+  onCancelReply?: () => void;
 }
 
 export function Composer({
@@ -41,6 +44,8 @@ export function Composer({
   error,
   waitSeconds,
   textareaRef,
+  replying = false,
+  onCancelReply,
 }: ComposerProps) {
   const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -76,6 +81,23 @@ export function Composer({
           error || overLimit ? "border-bad-fg" : "border-line-strong",
         )}
       >
+        {replying && !attachment ? (
+          <div className="flex items-center gap-2 border-b border-line bg-subtle py-1 pr-1 pl-4 text-sm">
+            <CornerDownRight aria-hidden="true" className="size-4 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1 font-semibold">{t("composer.replyingTo")}</span>
+            <button
+              type="button"
+              onClick={() => {
+                onCancelReply?.();
+                textareaRef.current?.focus();
+              }}
+              className="inline-flex min-h-11 shrink-0 items-center px-2.5 font-semibold text-link hover:bg-surface"
+            >
+              {t("composer.replyCancel")}
+            </button>
+          </div>
+        ) : null}
+
         {attachment ? (
           <div className="flex items-center gap-3 px-4 pt-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
@@ -114,7 +136,9 @@ export function Composer({
           ref={textareaRef}
           value={text}
           rows={1}
-          placeholder={t("composer.placeholder")}
+          placeholder={
+            replying && !attachment ? t("composer.replyPlaceholder") : t("composer.placeholder")
+          }
           aria-describedby={describedBy}
           aria-invalid={error || overLimit ? true : undefined}
           onChange={(event) => onTextChange(event.target.value)}
@@ -191,7 +215,7 @@ export function Composer({
         </p>
       ) : null}
       <p id="czat-pomoc" className="mt-2 text-center text-xs text-muted">
-        {t("composer.help")}
+        {replying && !attachment ? t("composer.replyHelp") : t("composer.help")}
         <span className="hidden sm:inline">{t("composer.helpDesktop")}</span>
       </p>
     </form>

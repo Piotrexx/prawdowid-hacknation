@@ -13,6 +13,8 @@ export interface Turn {
   image: boolean;
   /** Backend check behind this turn, once it has one. */
   resultId: string | null;
+  /** The check whose clarifying question this turn answers. */
+  parentResultId: string | null;
   state: TurnState;
 }
 
@@ -28,6 +30,7 @@ interface StoredTurn {
   text: string;
   image: boolean;
   resultId: string;
+  parentResultId?: string;
 }
 
 interface StoredConversation {
@@ -102,7 +105,14 @@ function writeStored(conversations: StoredConversation[]): void {
 function persist(): void {
   const stored: StoredTurn[] = turns.flatMap((turn) =>
     turn.resultId
-      ? [{ text: turn.image ? "" : turn.text.slice(0, MAX_STORED_TEXT), image: turn.image, resultId: turn.resultId }]
+      ? [
+          {
+            text: turn.image ? "" : turn.text.slice(0, MAX_STORED_TEXT),
+            image: turn.image,
+            resultId: turn.resultId,
+            ...(turn.parentResultId ? { parentResultId: turn.parentResultId } : {}),
+          },
+        ]
       : [],
   );
   const others = readStored().filter((item) => item.id !== conversationId);
@@ -118,12 +128,21 @@ export function useTurns(): Turn[] {
   );
 }
 
-export function addTurn(text: string, file: File | null): number {
+export function addTurn(text: string, file: File | null, parentResultId: string | null = null): number {
   const id = nextId++;
   const imageUrl = file ? URL.createObjectURL(file) : null;
   turns = [
     ...turns,
-    { id, text, file, imageUrl, image: file !== null, resultId: null, state: { kind: "loading" } },
+    {
+      id,
+      text,
+      file,
+      imageUrl,
+      image: file !== null,
+      resultId: null,
+      parentResultId,
+      state: { kind: "loading" },
+    },
   ];
   emit();
   return id;
@@ -201,6 +220,7 @@ export function openConversation(id: string): boolean {
     imageUrl: null,
     image: turn.image,
     resultId: turn.resultId,
+    parentResultId: turn.parentResultId ?? null,
     state: { kind: "loading" },
   }));
   emit();

@@ -213,7 +213,7 @@ function adaptResponse(raw: any): CheckResponse {
         ? [
             {
               id: raw.id,
-              text: raw.input?.title ?? raw.input?.url ?? "Artykuł",
+              text: raw.input?.title || raw.input?.url || raw.input?.text?.slice(0, 200) || "Artykuł",
               verdict,
               confidence: confidence ?? 0,
               strength: {
@@ -263,6 +263,8 @@ function adaptResponse(raw: any): CheckResponse {
     limitations: raw.limitations ?? [],
     warnings,
     moderator_case: moderatorCase,
+    parent_check_id: raw.parent_check_id ?? null,
+    clarification: raw.clarification ?? null,
     meta: raw.meta ?? {
       duration_ms: 0,
       stages_ms: {},
@@ -294,16 +296,16 @@ export async function createCheck(
   body: CheckRequest,
   signal?: AbortSignal,
 ): Promise<CheckResponse> {
-  // Backend only accepts URL checks; if only text was provided without a URL, return a helpful error.
-  if (!body.url) {
-    throw new ApiError("validation", {
-      detail: "Podaj link do artykułu, który chcesz sprawdzić.",
-    });
-  }
+  // An answer to a clarifying question is always text, even when it looks like a link.
+  const payload = body.parent_check_id
+    ? { text: body.text ?? body.url, parent_check_id: body.parent_check_id }
+    : body.url
+      ? { url: body.url }
+      : { text: body.text };
   return getAdapted("/checks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: body.url, session_id: body.session_id }),
+    body: JSON.stringify({ ...payload, session_id: body.session_id }),
     timeoutMs: CHECK_TIMEOUT_MS,
     signal,
   });
