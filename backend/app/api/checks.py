@@ -2,12 +2,23 @@ import hashlib
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Path, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 
 from app.api.deps import CONSENT_COOKIE, enforce_rate_limit, session_from_cookie
 from app.config import Settings
 from app.core.pipeline import Submission, VerificationService
+from app.notifications import send_check_to_discord
 from app.retrieval.claims import ClaimRetriever
 from app.schemas import (
     ArchiveOut,
@@ -20,7 +31,6 @@ from app.schemas import (
     ConsentResponse,
     HealthResponse,
 )
-from app.notifications import send_check_to_discord
 from app.textutil import truncate
 
 router = APIRouter(tags=["weryfikacja"])

@@ -37,6 +37,7 @@ discord-bot/   Node.js + discord.js (kanał Discord, komenda /fact-check)
 backend/   FastAPI
     ├─ api/                 kanał WWW i panel moderatora (+ ingest)
     ├─ core/pipeline.py     jedna logika weryfikacji, niezależna od kanału
+    ├─ core/events.py       mapa wydarzeń: klastry zgłoszeń i relacje między nimi
     ├─ core/prompts.py      prompty Bielika i DeepSeeka (kontekst + fact-checki)
     ├─ ingest/              konektory źródeł → tekst → embedding → PostgreSQL
     ├─ retrieval/           pgvector + rerank; fallback leksykalny
@@ -48,6 +49,26 @@ backend/   FastAPI
 
 `frontend/` i `backend/` to dwa niezależne projekty (osobne zależności, osobne uruchamianie, brak wspólnego
 narzędzia typu monorepo). Szczegóły, przepływ danych i uzasadnienie wyborów: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
+
+## Mapa wydarzeń
+
+Zapisane zgłoszenia (wyłącznie po zgodzie na politykę prywatności) są łączone w **wydarzenia** —
+klastry twierdzeń o tej samej sytuacji. Mapa pokazuje też relacje między wydarzeniami
+(kolejny etap, sprzeczność, wspólny temat lub podmiot) oraz kotwice do znanych incydentów
+z korpusu fact-checkingowego.
+
+- **Panel moderatora → „Mapa wydarzeń”**: oś czasu, graf, kandydaci do akceptacji, scalanie,
+  wydzielanie obserwacji i eksport śladu decyzji do audytu.
+- **Publiczna `/mapa`**: wyłącznie zagregowane wydarzenia z co najmniej
+  `EVENT_PUBLIC_MIN_MEMBERS` zgłoszeniami. Bez treści zgłoszeń, numerów sesji i danych osobowych.
+- **Łączenie**: pgvector po twierdzeniach + fallback leksykalny. Pary o wysokiej pewności są
+  akceptowane automatycznie, szara strefa trafia do moderatora. Opcjonalny kwalifikator LLM
+  (`EVENT_LLM_QUALIFIER_ENABLED`) ocenia tylko szarą strefę i musi wskazać dosłowne cytaty.
+- **Zasada**: przynależność do wydarzenia jest kontekstem analitycznym. Werdykt nadal wynika
+  wyłącznie z cytatów w źródłach (`claims`). Fałszywe połączenie jest gorsze niż brak połączenia.
+
+Konfiguracja progów i limitów: `EVENT_*` w [backend/.env.example](backend/.env.example).
+Administrator może przebudować mapę z zapisanych zgłoszeń (`POST /api/v1/admin/graph/rebuild`).
 
 ## Uruchomienie
 

@@ -8,6 +8,12 @@ import type {
   CheckResponse,
   Comment,
   ConsentResponse,
+  EventDetail,
+  EventGraphResponse,
+  EventLink,
+  EventLinkReview,
+  EventMemberReview,
+  EventRebuildResult,
   HealthResponse,
   LlmProvider,
   LlmSettings,
@@ -616,4 +622,114 @@ export async function downloadExport(
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
   return { blob: await response.blob(), filename };
+}
+
+// --- Mapa wydarzeń ---
+
+export interface EventGraphQuery {
+  windowDays?: number;
+  limit?: number;
+  includeProposed?: boolean;
+}
+
+function eventGraphQuery(query: EventGraphQuery): string {
+  const params = new URLSearchParams();
+  if (query.windowDays) params.set("window_days", String(query.windowDays));
+  if (query.limit) params.set("limit", String(query.limit));
+  if (query.includeProposed === false) params.set("include_proposed", "false");
+  const value = params.toString();
+  return value ? `?${value}` : "";
+}
+
+export function getEventGraph(
+  token: string,
+  query: EventGraphQuery = {},
+  signal?: AbortSignal,
+): Promise<EventGraphResponse> {
+  return getJson(`/admin/graph${eventGraphQuery(query)}`, {
+    headers: adminHeaders(token),
+    signal,
+  });
+}
+
+export function getEventDetail(
+  token: string,
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<EventDetail> {
+  return getJson(`/admin/graph/events/${eventId}`, {
+    headers: adminHeaders(token),
+    signal,
+  });
+}
+
+export function reviewEventMember(
+  token: string,
+  eventId: string,
+  memberId: number,
+  review: EventMemberReview,
+): Promise<EventDetail> {
+  return getJson(`/admin/graph/events/${eventId}/members/${memberId}`, {
+    method: "PATCH",
+    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(review),
+  });
+}
+
+export function reviewEventLink(
+  token: string,
+  linkId: number,
+  review: EventLinkReview,
+): Promise<EventLink> {
+  return getJson(`/admin/graph/links/${linkId}`, {
+    method: "PATCH",
+    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(review),
+  });
+}
+
+export function mergeEvents(
+  token: string,
+  targetEventId: string,
+  sourceEventId: string,
+): Promise<EventDetail> {
+  return getJson(`/admin/graph/events/${targetEventId}/merge`, {
+    method: "POST",
+    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ source_event_id: sourceEventId }),
+  });
+}
+
+export function splitEventMember(
+  token: string,
+  eventId: string,
+  memberId: number,
+): Promise<EventDetail> {
+  return getJson(`/admin/graph/events/${eventId}/members/${memberId}/split`, {
+    method: "POST",
+    headers: adminHeaders(token),
+  });
+}
+
+export function rebuildEventGraph(
+  token: string,
+  payload: { limit?: number; reset?: boolean } = {},
+): Promise<EventRebuildResult> {
+  return getJson("/admin/graph/rebuild", {
+    method: "POST",
+    headers: { ...adminHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    timeoutMs: 120_000,
+  });
+}
+
+export function getPublicEventMap(
+  query: { windowDays?: number; limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<EventGraphResponse> {
+  const params = new URLSearchParams();
+  if (query.windowDays) params.set("window_days", String(query.windowDays));
+  if (query.limit) params.set("limit", String(query.limit));
+  const suffix = params.toString() ? `?${params}` : "";
+  return getJson(`/public/event-map${suffix}`, { signal });
 }

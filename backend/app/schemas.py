@@ -135,6 +135,149 @@ class IncidentMatch(BaseModel):
     note: str
 
 
+EventMemberStatus = Literal["accepted", "proposed", "rejected"]
+EventLinkStatus = Literal["accepted", "proposed", "rejected"]
+EventRelation = Literal[
+    "same_event",
+    "follow_up",
+    "contradiction",
+    "related_topic",
+    "shared_actor",
+    "anchor",
+]
+
+
+class EventAnchor(BaseModel):
+    """Publiczny materiał kotwiczący wydarzenie w znanym incydencie z korpusu."""
+
+    incident_id: str
+    title: str
+    publisher: str = ""
+    url: str = ""
+    date: dt.date | None = None
+    note: str = ""
+
+
+class EventMemberOut(BaseModel):
+    id: int
+    event_id: str
+    check_id: str
+    claim_id: str
+    claim_text: str
+    verdict: Verdict | None = None
+    risk: Literal["standard", "high"] = "standard"
+    score: float = 0.0
+    reason: str = ""
+    status: EventMemberStatus = "accepted"
+    source: Literal["auto", "review", "llm", "manual"] = "auto"
+    created_at: datetime
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+
+
+class EventLinkOut(BaseModel):
+    id: int
+    src_event_id: str
+    dst_event_id: str
+    relation: EventRelation = "related_topic"
+    score: float = 0.0
+    reason: str = ""
+    evidence: dict[str, str] = {}
+    model: str | None = None
+    status: EventLinkStatus = "proposed"
+    created_at: datetime
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+
+
+class EventOut(BaseModel):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    title: str
+    topic: str = ""
+    public_label: str = ""
+    summary: str = ""
+    status: Literal["active", "merged"] = "active"
+    merged_into: str | None = None
+    risk: Literal["standard", "high"] = "standard"
+    member_count: int = 0
+    proposed_count: int = 0
+    keywords: list[str] = []
+    verdicts: dict[str, int] = {}
+    anchors: list[EventAnchor] = []
+    first_seen: datetime
+    last_seen: datetime
+
+
+class EventDetailOut(BaseModel):
+    event: EventOut
+    members: list[EventMemberOut] = []
+    links: list[EventLinkOut] = []
+
+
+class GraphNode(BaseModel):
+    id: str
+    kind: Literal["event", "anchor"] = "event"
+    label: str
+    subtitle: str | None = None
+    url: str | None = None
+    event_id: str | None = None
+    risk: Literal["standard", "high"] = "standard"
+    member_count: int = 0
+    proposed_count: int = 0
+    keywords: list[str] = []
+    verdicts: dict[str, int] = {}
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: EventRelation = "related_topic"
+    score: float | None = None
+    status: Literal["accepted", "proposed"] = "accepted"
+    reason: str = ""
+    model: str | None = None
+
+
+class EventGraphResponse(BaseModel):
+    generated_at: datetime
+    window_days: int
+    public: bool = False
+    min_members: int = 0
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+
+
+class EventMemberReview(BaseModel):
+    status: Literal["accepted", "rejected"]
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class EventLinkReview(BaseModel):
+    status: Literal["accepted", "rejected"]
+    relation: EventRelation | None = None
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class EventMergeRequest(BaseModel):
+    source_event_id: str = Field(min_length=32, max_length=32)
+
+
+class EventRebuildRequest(BaseModel):
+    limit: int = Field(default=500, ge=1, le=2000)
+    reset: bool = True
+
+
+class EventRebuildOut(BaseModel):
+    processed_checks: int
+    events: int
+    skipped: int = 0
+
+
 class ModeratorCaseInfo(BaseModel):
     # "recommended" = tylko zalecenie; "created"/"updated" = sprawa faktycznie jest w kolejce.
     state: Literal["none", "recommended", "created", "updated"] = "none"

@@ -4,6 +4,7 @@ import {
   Library,
   Menu,
   MessageSquareText,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -27,6 +28,7 @@ import { AccessibilitySettings } from "./AccessibilitySettings";
 const NAV_ITEMS: Array<{ href: string; labelKey: string; icon: LucideIcon }> = [
   { href: "/", labelKey: "nav.check", icon: MessageSquareText },
   { href: "/zrodla", labelKey: "nav.sources", icon: Library },
+  { href: "/mapa", labelKey: "nav.eventMap", icon: Network },
   { href: "/prywatnosc", labelKey: "nav.privacy", icon: Shield },
 ];
 

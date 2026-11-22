@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from app.config import Settings
 from app.core.audio import AudioError, transcribe_audio
 from app.core.cases import CaseLoop
+from app.core.events import EventGraph
 from app.core.image_check import ImageCheckService, ImageInspection
 from app.core.media import ImageError, prepare_image
 from app.core.prompts import (
@@ -218,6 +219,7 @@ class VerificationService:
         retrieval_degraded: bool = False,
         bielik_provider: LLMProvider | None = None,
         image_checks: ImageCheckService | None = None,
+        event_graph: EventGraph | None = None,
     ):
         self._settings = settings
         self._retriever = retriever
@@ -229,6 +231,7 @@ class VerificationService:
         self._retrieval_degraded = retrieval_degraded
         self._bielik_provider = bielik_provider or self._build_bielik()
         self._image_checks = image_checks
+        self._event_graph = event_graph
         # Cennik wybrany w panelu ma pierwszeństwo przed wartościami z `.env`.
         self._price_override: tuple[float | None, float | None] | None = None
 
@@ -299,6 +302,16 @@ class VerificationService:
 
         if _should_save:
             self._store.save_check(response, submission.session_id, cache_key)
+            # Mapa wydarzeń jest kontekstem analitycznym: jej błąd nie może zepsuć
+            # ani opóźnić odpowiedzi użytkownikowi.
+            if self._event_graph is not None:
+                if self._settings.event_graph_async:
+                    self._event_graph.spawn(response)
+                else:
+                    try:
+                        await self._event_graph.ingest_check(response)
+                    except Exception:
+                        log.exception("mapa wydarzeń: błąd linkowania %s", response.id)
         for kind, origin, detail in run.events:
             self._store.add_event(kind, origin, detail, response.id)
         log.info(

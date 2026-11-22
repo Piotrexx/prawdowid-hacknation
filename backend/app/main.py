@@ -6,9 +6,10 @@ from datetime import UTC, datetime, timedelta
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, checks, moderator
+from app.api import admin, checks, graph, moderator
 from app.config import Settings, get_settings
 from app.core.cases import CaseLoop
+from app.core.events import EventGraph
 from app.core.image_check import ImageCheckService
 from app.core.pipeline import VerificationService
 from app.ingest.registry import source_names
@@ -59,6 +60,7 @@ def build_state(
     context = context or ContextIndex(corpus, embedder)
     cases = CaseLoop(settings, store, embedder)
     image_checks = image_checks or ImageCheckService(settings, store)
+    event_graph = EventGraph(settings, store, embedder)
     service = VerificationService(
         settings=settings,
         retriever=retriever,
@@ -70,7 +72,11 @@ def build_state(
         retrieval_degraded=settings.embedding_backend != "none" and retriever.mode == "bm25",
         bielik_provider=bielik_provider,
         image_checks=image_checks,
+        event_graph=event_graph,
     )
+    # Model może zostać podmieniony w panelu bez restartu – kwalifikator czyta
+    # aktualnego dostawcę przy każdym wywołaniu.
+    event_graph.set_provider_getter(lambda: service._provider)
     app.state.settings = settings
     app.state.store = store
     app.state.corpus = corpus
@@ -78,6 +84,7 @@ def build_state(
     app.state.retriever = retriever
     app.state.context = context
     app.state.service = service
+    app.state.event_graph = event_graph
     app.state.llm_ready = provider is not None
     app.state.image_service = image_checks
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute)
@@ -163,6 +170,7 @@ async def lifespan(app: FastAPI):
     purge.cancel()
     with suppress(asyncio.CancelledError):
         await purge
+    await app.state.event_graph.drain()
 
 
 def create_app(with_lifespan: bool = True) -> FastAPI:
@@ -195,7 +203,14 @@ def create_app(with_lifespan: bool = True) -> FastAPI:
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    for router in (checks.router, admin.router, moderator.auth_router, moderator.router):
+    for router in (
+        checks.router,
+        admin.router,
+        moderator.auth_router,
+        moderator.router,
+        graph.router,
+        graph.public_router,
+    ):
         app.include_router(router, prefix="/api/v1")
 
     # Alias dla platform/probek, które pytają o zdrowie usługi pod gołym /health.

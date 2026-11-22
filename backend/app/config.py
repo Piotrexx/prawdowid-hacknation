@@ -144,6 +144,29 @@ class Settings(BaseSettings):
     case_notify_threshold: int = 2
     moderator_webhook_url: str | None = None
 
+    # --- mapa wydarzeń (graf zgłoszeń i incydentów) ---
+    event_graph_enabled: bool = True
+    # Linkowanie w tle nie wydłuża odpowiedzi użytkownikowi. W testach wyłączone,
+    # żeby wynik był deterministyczny.
+    event_graph_async: bool = True
+    # Kwalifikator LLM ocenia tylko pary w szarej strefie. Domyślnie wyłączony,
+    # bo każde wywołanie kosztuje i wysyła do dostawcy treść starszych zgłoszeń.
+    event_llm_qualifier_enabled: bool = False
+    event_llm_accept_confidence: float = 0.7
+    event_link_window_days: int = 90
+    event_link_candidates: int = 8
+    # Progi dla podobieństwa semantycznego (cosine) i zastępczego leksykalnego.
+    event_link_auto_similarity: float = 0.84
+    event_link_review_similarity: float = 0.68
+    event_link_auto_lexical: float = 0.5
+    event_link_review_lexical: float = 0.3
+    # Publiczna mapa pokazuje wyłącznie zagregowane wydarzenia z co najmniej tyloma
+    # zaakceptowanymi zgłoszeniami (k-anonimowość).
+    event_public_min_members: int = 3
+    event_public_limit: int = 300
+    event_graph_limit: int = 500
+    event_rebuild_limit: int = 500
+
     # --- webhook do powiadamiania o każdej nowej analizie fact-check ---
     fact_check_webhook_url: str | None = None
 

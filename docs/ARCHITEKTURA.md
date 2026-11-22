@@ -120,6 +120,35 @@ sprawdzenia”. Brak modelu embeddingów → wyszukiwanie przechodzi w jawny try
 - Dla linków zapisujemy tylko początek pobranej treści.
 - Wynik jest dostępny pod losowym, niezgadywalnym adresem (`/analiza/{id}`) – każdy, kto zna link, może go otworzyć.
 - Retencja: `RETENTION_DAYS` (domyślnie 30), czyszczenie co godzinę. `DELETE /api/v1/sessions/{id}` usuwa dane sesji.
+- Mapa wydarzeń korzysta wyłącznie z zapisanych zgłoszeń, czyli po zgodzie. Publiczna mapa
+  publikuje tylko agregaty z progiem k-anonimowości i nigdy nie pokazuje treści zgłoszeń.
+  Usunięcie sesji kaskadowo usuwa obserwacje i przelicza wydarzenia.
+- Włączony kwalifikator LLM wysyła do dostawcy treść starszych zgłoszeń (nie tylko bieżącego).
+  To trzeba uwzględnić w polityce prywatności; domyślnie funkcja jest wyłączona.
+
+## Mapa wydarzeń
+
+Zapisane zgłoszenia są łączone w **wydarzenia** (klastry twierdzeń o tej samej sytuacji).
+Mapa jest warstwą kontekstu analitycznego: nie tworzy werdyktów i nie zastępuje dowodów.
+
+- **Warstwy**: obserwacja (zgłoszenie + twierdzenia) → wydarzenie (klaster) → kotwica
+  (publiczny incydent lub fact-check z korpusu). Relacje między wydarzeniami:
+  `same_event`, `follow_up`, `contradiction`, `related_topic`, `shared_actor`.
+- **Kandydaci**: pgvector po embeddingach twierdzeń, z fallbackiem leksykalnym. Okno czasu
+  i limit kandydatów ograniczają koszt i zapobiegają porównaniom O(n²).
+- **Decyzja**: próg automatyczny akceptuje tylko pary o wysokiej pewności. Szara strefa
+  trafia jako `proposed` do moderatora (akceptacja, odrzucenie, scalenie, wydzielenie).
+  Odrzucenie nie usuwa obserwacji — trafia do osobnego wydarzenia.
+- **Kwalifikator LLM** (`EVENT_LLM_QUALIFIER_ENABLED`, domyślnie wyłączony) ocenia tylko
+  szarą strefę. Musi zwrócić relację, pewność, uzasadnienie i dosłowne cytaty z obu tekstów;
+  niepotwierdzony cytat obniża pewność. Wynik to zawsze propozycja, nie werdykt.
+- **Publiczna mapa** (`/mapa`) pokazuje wyłącznie zagregowane etykiety tematyczne wydarzeń
+  z co najmniej `EVENT_PUBLIC_MIN_MEMBERS` zaakceptowanymi zgłoszeniami. Nie zawiera treści
+  zgłoszeń, identyfikatorów sesji ani danych osobowych.
+- **Retencja**: usunięcie sesji lub czyszczenie retencyjne usuwa obserwacje i przelicza
+  wydarzenia; wydarzenie bez członków znika wraz z relacjami i kotwicami.
+
+Tabele: `events`, `event_members`, `event_links`. Kod: `app/core/events.py`, `app/api/graph.py`.
 
 ## Obserwowalność
 

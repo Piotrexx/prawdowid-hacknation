@@ -54,12 +54,13 @@ npx tsc --noEmit   # kontrola typów (po `npm run build` lub `npx next typegen`)
 | ------------------- | ----------------------------------------------------------------------- |
 | `/`                 | Sprawdzanie treści: tekst, link, zrzut ekranu albo nagranie głosowe.    |
 | `/analiza/[id]`     | Zapisany wynik analizy (stały link).                                    |
+| `/mapa`             | Publiczna, zagregowana mapa wydarzeń: oś czasu i graf powiązań.         |
 | `/o-systemie`       | Jak to działa: zakres, oceny, prywatność, użycie AI, stan serwera.      |
-| `/moderator`        | Panel moderatora: twierdzenia, statystyki, zdarzenia, zgłoszenia, eksport. |
+| `/moderator`        | Panel moderatora: twierdzenia, mapa wydarzeń, statystyki, zgłoszenia, eksport. |
 
 ## Układ kodu
 
 - `src/app` – strony i układ główny.
-- `src/components` – komponenty pogrupowane według stron (`check`, `result`, `moderator`, `about`) oraz wspólne (`ui`, `layout`).
+- `src/components` – komponenty pogrupowane według stron (`check`, `result`, `moderator`, `events`, `about`) oraz wspólne (`ui`, `layout`).
 - `src/lib` – typy zgodne z `backend/app/schemas.py`, klient API, formatowanie, etykiety.
 - `public` – logo.
